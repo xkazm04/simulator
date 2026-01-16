@@ -24,10 +24,50 @@ export interface GalleryPoster {
 interface PosterGalleryProps {
   posters: GalleryPoster[];
   isLoading?: boolean;
+  /** Show skeleton placeholders while generating new images */
+  isGenerating?: boolean;
+  /** Number of skeleton cards to show during generation */
+  skeletonCount?: number;
   onPosterClick?: (poster: GalleryPoster) => void;
 }
 
-export function PosterGallery({ posters, isLoading = false, onPosterClick }: PosterGalleryProps) {
+/**
+ * Skeleton loading card for gallery items
+ * Matches the aspect ratio and styling of actual poster cards
+ */
+function PosterSkeleton({ index }: { index: number }) {
+  return (
+    <div
+      className="relative aspect-[2/3] radius-lg overflow-hidden border border-slate-700/30 bg-slate-800/50 animate-pulse"
+      data-testid={`poster-skeleton-${index}`}
+    >
+      {/* Shimmer effect */}
+      <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent skeleton-shimmer" />
+
+      {/* Decorative elements */}
+      <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
+        <div className="p-3 rounded-full bg-rose-500/10 border border-rose-500/20">
+          <Loader2 size={20} className="text-rose-400/50 animate-spin" />
+        </div>
+        <span className="font-mono type-label text-slate-600">generating...</span>
+      </div>
+
+      {/* Bottom gradient placeholder */}
+      <div className="absolute bottom-0 left-0 right-0 p-3 bg-gradient-to-t from-black/40 to-transparent">
+        <div className="h-3 w-3/4 bg-slate-700/50 rounded mb-2" />
+        <div className="h-2 w-1/2 bg-slate-700/30 rounded" />
+      </div>
+    </div>
+  );
+}
+
+export function PosterGallery({
+  posters,
+  isLoading = false,
+  isGenerating = false,
+  skeletonCount = 4,
+  onPosterClick,
+}: PosterGalleryProps) {
   if (isLoading) {
     return (
       <div className="flex flex-col items-center justify-center py-24 gap-4">
@@ -57,6 +97,12 @@ export function PosterGallery({ posters, isLoading = false, onPosterClick }: Pos
 
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 p-4">
+      {/* Skeleton loading cards during generation */}
+      {isGenerating && Array.from({ length: skeletonCount }).map((_, index) => (
+        <PosterSkeleton key={`skeleton-${index}`} index={index} />
+      ))}
+
+      {/* Actual poster cards */}
       {posters.map((poster, index) => (
         <motion.div
           key={poster.id}
