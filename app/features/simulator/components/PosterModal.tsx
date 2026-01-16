@@ -5,10 +5,10 @@
 
 'use client';
 
-import React from 'react';
+import React, { useState, useCallback } from 'react';
 import Image from 'next/image';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Film, Calendar, FileText } from 'lucide-react';
+import { X, Film, Calendar, FileText, Download, Loader2, Check } from 'lucide-react';
 import { GalleryPoster } from './PosterGallery';
 import { fadeIn, transitions } from '../lib/motion';
 
@@ -19,6 +19,45 @@ interface PosterModalProps {
 }
 
 export function PosterModal({ poster, isOpen, onClose }: PosterModalProps) {
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [downloadSuccess, setDownloadSuccess] = useState(false);
+
+  const handleDownload = useCallback(async () => {
+    if (!poster?.image_url || isDownloading) return;
+
+    setIsDownloading(true);
+    setDownloadSuccess(false);
+
+    try {
+      const response = await fetch(poster.image_url);
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+
+      // Generate filename from project name and timestamp
+      const sanitizedName = poster.project_name
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-|-$/g, '');
+      const timestamp = new Date().toISOString().slice(0, 10);
+      const filename = `simulator-${sanitizedName}-${timestamp}.png`;
+
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      URL.revokeObjectURL(url);
+      setDownloadSuccess(true);
+      setTimeout(() => setDownloadSuccess(false), 2000);
+    } catch (error) {
+      console.error('Failed to download image:', error);
+    } finally {
+      setIsDownloading(false);
+    }
+  }, [poster, isDownloading]);
+
   if (!poster) return null;
 
   return (
@@ -33,14 +72,38 @@ export function PosterModal({ poster, isOpen, onClose }: PosterModalProps) {
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-md"
           onClick={onClose}
         >
-          {/* Close button */}
-          <button
-            onClick={onClose}
-            data-testid="poster-modal-close-btn"
-            className="absolute top-4 right-4 p-2 rounded-full bg-slate-800/80 border border-slate-700 text-slate-400 hover:text-white hover:border-slate-600 transition-colors z-10"
-          >
-            <X size={20} />
-          </button>
+          {/* Header buttons */}
+          <div className="absolute top-4 right-4 flex items-center gap-2 z-10">
+            {/* Download button */}
+            <button
+              onClick={handleDownload}
+              disabled={isDownloading}
+              data-testid="poster-modal-download-btn"
+              className={`p-2 rounded-full border transition-colors ${
+                downloadSuccess
+                  ? 'bg-green-500/20 border-green-500/30 text-green-400'
+                  : 'bg-slate-800/80 border-slate-700 text-slate-400 hover:text-white hover:border-slate-600'
+              } ${isDownloading ? 'cursor-wait' : ''}`}
+              title={downloadSuccess ? 'Downloaded!' : 'Download image'}
+            >
+              {isDownloading ? (
+                <Loader2 size={20} className="animate-spin" />
+              ) : downloadSuccess ? (
+                <Check size={20} />
+              ) : (
+                <Download size={20} />
+              )}
+            </button>
+
+            {/* Close button */}
+            <button
+              onClick={onClose}
+              data-testid="poster-modal-close-btn"
+              className="p-2 rounded-full bg-slate-800/80 border border-slate-700 text-slate-400 hover:text-white hover:border-slate-600 transition-colors"
+            >
+              <X size={20} />
+            </button>
+          </div>
 
           {/* Modal content */}
           <motion.div
