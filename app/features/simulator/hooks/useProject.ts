@@ -1,0 +1,308 @@
+/**
+ * useProject - Hook for project persistence
+ *
+ * Composes usePersistedEntity with project-specific logic:
+ * - Loading and listing projects
+ * - Creating and deleting projects
+ * - Selecting active project
+ * - Autosave with debouncing
+ * - Panel image management
+ */
+
+import { useState, useCallback, useMemo } from 'react';
+import { Dimension, OutputMode, SavedPanelImage, ProjectPoster } from '../types';
+import { usePersistedEntity } from './usePersistedEntity';
+
+interface Project {
+  id: string;
+  name: string;
+  created_at: string;
+  updated_at: string;
+}
+
+interface ProjectState {
+  basePrompt: string;
+  baseImageFile: string | null;
+  outputMode: OutputMode;
+  dimensions: Dimension[];
+  feedback: { positive: string; negative: string };
+}
+
+interface ProjectWithState extends Project {
+  state: ProjectState | null;
+  panelImages: SavedPanelImage[];
+  poster: ProjectPoster | null;
+}
+
+interface UseProjectReturn {
+  projects: Project[];
+  currentProject: Project | null;
+  isLoading: boolean;
+  error: string | null;
+
+  // CRUD operations
+  loadProjects: () => Promise<void>;
+  createProject: (name: string) => Promise<Project | null>;
+  selectProject: (id: string) => Promise<ProjectWithState | null>;
+  deleteProject: (id: string) => Promise<boolean>;
+
+  // Autosave
+  saveState: (state: Partial<ProjectState>) => void;
+  savePanelImage: (side: 'left' | 'right', slotIndex: number, imageUrl: string, prompt?: string) => Promise<void>;
+  removePanelImage: (imageId: string) => Promise<void>;
+}
+
+const AUTOSAVE_DEBOUNCE = 500; // 500ms debounce
+
+/**
+ * Parse raw API project data to Project interface
+ */
+function parseProject(data: unknown): Project {
+  const d = data as Record<string, unknown>;
+  return {
+    id: d.id as string,
+    name: d.name as string,
+    created_at: d.created_at as string,
+    updated_at: d.updated_at as string,
+  };
+}
+
+/**
+ * Parse raw API response to ProjectWithState (for selectProject)
+ */
+function parseProjectWithState(projectWithState: Record<string, unknown>): ProjectWithState {
+  // Parse JSON fields
+  const rawState = projectWithState.state as Record<string, unknown> | null;
+  const state: ProjectState | null = rawState
+    ? {
+        basePrompt: (rawState.base_prompt as string) || '',
+        baseImageFile: (rawState.base_image_file as string) || null,
+        outputMode: ((rawState.output_mode as string) || 'gameplay') as OutputMode,
+        dimensions: rawState.dimensions_json
+          ? JSON.parse(rawState.dimensions_json as string)
+          : [],
+        feedback: rawState.feedback_json
+          ? JSON.parse(rawState.feedback_json as string)
+          : { positive: '', negative: '' },
+      }
+    : null;
+
+  // Convert panel images
+  const rawPanelImages = (projectWithState.panelImages || []) as Array<{
+    id: string;
+    side: string;
+    slot_index: number;
+    image_url: string;
+    prompt: string | null;
+    created_at: string;
+  }>;
+  const panelImages: SavedPanelImage[] = rawPanelImages.map((img) => ({
+    id: img.id,
+    url: img.image_url,
+    prompt: img.prompt || '',
+    side: img.side as 'left' | 'right',
+    slotIndex: img.slot_index,
+    createdAt: img.created_at,
+  }));
+
+  // Convert poster (if exists)
+  const rawPoster = projectWithState.poster as {
+    id: string;
+    project_id: string;
+    image_url: string;
+    prompt: string | null;
+    dimensions_json: string | null;
+    created_at: string;
+  } | null;
+  const poster: ProjectPoster | null = rawPoster
+    ? {
+        id: rawPoster.id,
+        projectId: rawPoster.project_id,
+        imageUrl: rawPoster.image_url,
+        prompt: rawPoster.prompt || '',
+        dimensionsJson: rawPoster.dimensions_json || '',
+        createdAt: rawPoster.created_at,
+      }
+    : null;
+
+  return {
+    id: projectWithState.id as string,
+    name: projectWithState.name as string,
+    created_at: projectWithState.created_at as string,
+    updated_at: projectWithState.updated_at as string,
+    state,
+    panelImages,
+    poster,
+  };
+}
+
+export function useProject(): UseProjectReturn {
+  // Track currently selected project separately (for panel image operations)
+  const [currentProject, setCurrentProject] = useState<Project | null>(null);
+
+  // Use the generic persisted entity hook for core CRUD
+  const projectEntity = usePersistedEntity<Project, { name: string }, Partial<ProjectState>>({
+    api: {
+      baseEndpoint: '/api/projects',
+      parseResponse: parseProject,
+    },
+    autosaveDebounce: AUTOSAVE_DEBOUNCE,
+    enableAutosave: true,
+  });
+
+  /**
+   * Load all projects
+   */
+  const loadProjects = useCallback(async () => {
+    await projectEntity.loadAll();
+  }, [projectEntity.loadAll]);
+
+  /**
+   * Create a new project
+   */
+  const createProject = useCallback(async (name: string): Promise<Project | null> => {
+    const created = await projectEntity.create({ name });
+    if (created) {
+      setCurrentProject(created);
+    }
+    return created;
+  }, [projectEntity.create]);
+
+  /**
+   * Select a project and load its full state
+   * This needs custom handling for the complex state structure
+   */
+  const selectProject = useCallback(async (id: string): Promise<ProjectWithState | null> => {
+    try {
+      const response = await fetch(`/api/projects/${id}`);
+      const data = await response.json();
+
+      if (data.success) {
+        const projectWithState = parseProjectWithState(data.project);
+
+        // Update current project
+        setCurrentProject({
+          id: projectWithState.id,
+          name: projectWithState.name,
+          created_at: projectWithState.created_at,
+          updated_at: projectWithState.updated_at,
+        });
+
+        // Update entity in the persisted entity hook
+        projectEntity.setEntity({
+          id: projectWithState.id,
+          name: projectWithState.name,
+          created_at: projectWithState.created_at,
+          updated_at: projectWithState.updated_at,
+        });
+
+        return projectWithState;
+      } else {
+        console.error('Failed to load project:', data.error);
+        return null;
+      }
+    } catch (err) {
+      console.error('Network error loading project');
+      return null;
+    }
+  }, [projectEntity.setEntity]);
+
+  /**
+   * Delete a project
+   */
+  const deleteProject = useCallback(async (id: string): Promise<boolean> => {
+    const success = await projectEntity.remove(id);
+    if (success && currentProject?.id === id) {
+      setCurrentProject(null);
+    }
+    return success;
+  }, [projectEntity.remove, currentProject?.id]);
+
+  /**
+   * Autosave state (uses the debounced update from usePersistedEntity)
+   */
+  const saveState = useCallback((state: Partial<ProjectState>) => {
+    if (!currentProject) return;
+
+    // The usePersistedEntity.update handles debouncing
+    projectEntity.setEntity(currentProject);
+    projectEntity.update(state);
+  }, [currentProject, projectEntity.setEntity, projectEntity.update]);
+
+  /**
+   * Save a panel image
+   */
+  const savePanelImage = useCallback(
+    async (side: 'left' | 'right', slotIndex: number, imageUrl: string, prompt?: string) => {
+      if (!currentProject) return;
+
+      try {
+        const response = await fetch(`/api/projects/${currentProject.id}/images`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ side, slotIndex, imageUrl, prompt }),
+        });
+
+        const data = await response.json();
+        if (!data.success) {
+          console.error('Failed to save panel image:', data.error);
+        }
+      } catch (err) {
+        console.error('Save panel image error:', err);
+      }
+    },
+    [currentProject]
+  );
+
+  /**
+   * Remove a panel image
+   */
+  const removePanelImage = useCallback(
+    async (imageId: string) => {
+      if (!currentProject) return;
+
+      try {
+        const response = await fetch(`/api/projects/${currentProject.id}/images`, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ imageId }),
+        });
+
+        const data = await response.json();
+        if (!data.success) {
+          console.error('Failed to remove panel image:', data.error);
+        }
+      } catch (err) {
+        console.error('Remove panel image error:', err);
+      }
+    },
+    [currentProject]
+  );
+
+  // Memoized return to prevent unnecessary re-renders
+  return useMemo(() => ({
+    projects: projectEntity.entities,
+    currentProject,
+    isLoading: projectEntity.isLoading,
+    error: projectEntity.error,
+    loadProjects,
+    createProject,
+    selectProject,
+    deleteProject,
+    saveState,
+    savePanelImage,
+    removePanelImage,
+  }), [
+    projectEntity.entities,
+    projectEntity.isLoading,
+    projectEntity.error,
+    currentProject,
+    loadProjects,
+    createProject,
+    selectProject,
+    deleteProject,
+    saveState,
+    savePanelImage,
+    removePanelImage,
+  ]);
+}
