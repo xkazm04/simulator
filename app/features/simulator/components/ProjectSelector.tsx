@@ -12,7 +12,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronDown, Plus, Trash2, Folder, Loader2 } from 'lucide-react';
+import { ChevronDown, Plus, Trash2, Folder, Loader2, Pencil, Check, X } from 'lucide-react';
 import { slideDown, transitions } from '../lib/motion';
 
 interface Project {
@@ -29,6 +29,7 @@ interface ProjectSelectorProps {
   onSelect: (id: string) => void;
   onCreate: (name: string) => void;
   onDelete: (id: string) => void;
+  onRename?: (id: string, newName: string) => void;
 }
 
 export function ProjectSelector({
@@ -38,14 +39,20 @@ export function ProjectSelector({
   onSelect,
   onCreate,
   onDelete,
+  onRename,
 }: ProjectSelectorProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
+  // Rename state
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editName, setEditName] = useState('');
+
   const dropdownRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const editInputRef = useRef<HTMLInputElement>(null);
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -54,6 +61,7 @@ export function ProjectSelector({
         setIsOpen(false);
         setIsCreating(false);
         setConfirmDelete(null);
+        setEditingId(null);
       }
     };
 
@@ -67,6 +75,14 @@ export function ProjectSelector({
       inputRef.current.focus();
     }
   }, [isCreating]);
+
+  // Focus input when editing
+  useEffect(() => {
+    if (editingId && editInputRef.current) {
+      editInputRef.current.focus();
+      editInputRef.current.select();
+    }
+  }, [editingId]);
 
   const handleCreate = () => {
     if (newProjectName.trim()) {
@@ -92,6 +108,34 @@ export function ProjectSelector({
       setConfirmDelete(null);
     } else {
       setConfirmDelete(id);
+    }
+  };
+
+  // Rename handlers
+  const handleStartEdit = (project: Project) => {
+    setEditingId(project.id);
+    setEditName(project.name);
+    setConfirmDelete(null); // Clear any delete confirmation
+  };
+
+  const handleSaveEdit = async () => {
+    if (editingId && editName.trim() && onRename) {
+      await onRename(editingId, editName.trim());
+    }
+    setEditingId(null);
+    setEditName('');
+  };
+
+  const handleCancelEdit = () => {
+    setEditingId(null);
+    setEditName('');
+  };
+
+  const handleEditKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleSaveEdit();
+    } else if (e.key === 'Escape') {
+      handleCancelEdit();
     }
   };
 
@@ -148,30 +192,90 @@ export function ProjectSelector({
                                   ? 'bg-cyan-500/10 text-accent-primary'
                                   : 'hover:bg-slate-800 text-slate-300'}`}
                   >
-                    <button
-                      onClick={() => {
-                        onSelect(project.id);
-                        setIsOpen(false);
-                      }}
-                      className="flex-1 text-left font-mono text-sm truncate"
-                    >
-                      {project.name}
-                    </button>
+                    {editingId === project.id ? (
+                      // Inline edit mode
+                      <div className="flex-1 flex items-center gap-1">
+                        <input
+                          ref={editInputRef}
+                          type="text"
+                          value={editName}
+                          onChange={(e) => setEditName(e.target.value)}
+                          onKeyDown={handleEditKeyDown}
+                          className="flex-1 px-1.5 py-0.5 bg-slate-800 border border-cyan-500/50
+                                     rounded-sm text-sm text-slate-200 font-mono
+                                     focus:outline-none focus:border-cyan-500"
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleSaveEdit();
+                          }}
+                          className="p-1 rounded-sm bg-cyan-500/20 text-cyan-400 hover:bg-cyan-500/30"
+                          title="Save"
+                        >
+                          <Check size={12} />
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleCancelEdit();
+                          }}
+                          className="p-1 rounded-sm text-slate-500 hover:text-slate-300 hover:bg-slate-700"
+                          title="Cancel"
+                        >
+                          <X size={12} />
+                        </button>
+                      </div>
+                    ) : (
+                      // Normal display mode
+                      <>
+                        <button
+                          onClick={() => {
+                            onSelect(project.id);
+                            setIsOpen(false);
+                          }}
+                          onDoubleClick={(e) => {
+                            e.stopPropagation();
+                            if (onRename) handleStartEdit(project);
+                          }}
+                          className="flex-1 text-left font-mono text-sm truncate"
+                          title="Double-click to rename"
+                        >
+                          {project.name}
+                        </button>
 
-                    {/* Delete button */}
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDelete(project.id);
-                      }}
-                      className={`p-1 rounded-sm transition-colors
-                                  ${confirmDelete === project.id
-                                    ? 'bg-red-500/20 text-red-400'
-                                    : 'opacity-0 group-hover:opacity-100 hover:bg-red-500/20 text-slate-500 hover:text-red-400'}`}
-                      title={confirmDelete === project.id ? 'Click again to confirm' : 'Delete project'}
-                    >
-                      <Trash2 size={12} />
-                    </button>
+                        {/* Edit button */}
+                        {onRename && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleStartEdit(project);
+                            }}
+                            className="p-1 rounded-sm transition-colors
+                                        opacity-0 group-hover:opacity-100 hover:bg-cyan-500/20 text-slate-500 hover:text-cyan-400"
+                            title="Rename project"
+                          >
+                            <Pencil size={12} />
+                          </button>
+                        )}
+
+                        {/* Delete button */}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDelete(project.id);
+                          }}
+                          className={`p-1 rounded-sm transition-colors
+                                      ${confirmDelete === project.id
+                                        ? 'bg-red-500/20 text-red-400'
+                                        : 'opacity-0 group-hover:opacity-100 hover:bg-red-500/20 text-slate-500 hover:text-red-400'}`}
+                          title={confirmDelete === project.id ? 'Click again to confirm' : 'Delete project'}
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      </>
+                    )}
                   </div>
                 ))
               )}

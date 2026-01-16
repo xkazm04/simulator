@@ -45,6 +45,7 @@ interface UseProjectReturn {
   createProject: (name: string) => Promise<Project | null>;
   selectProject: (id: string) => Promise<ProjectWithState | null>;
   deleteProject: (id: string) => Promise<boolean>;
+  renameProject: (id: string, newName: string) => Promise<boolean>;
 
   // Autosave
   saveState: (state: Partial<ProjectState>) => void;
@@ -219,6 +220,47 @@ export function useProject(): UseProjectReturn {
   }, [projectEntity.remove, currentProject?.id]);
 
   /**
+   * Rename a project
+   */
+  const renameProject = useCallback(async (id: string, newName: string): Promise<boolean> => {
+    if (!newName.trim()) return false;
+
+    try {
+      const response = await fetch(`/api/projects/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newName.trim() }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        // Update the entities list
+        projectEntity.setEntities(
+          projectEntity.entities.map((p) =>
+            p.id === id ? { ...p, name: newName.trim() } : p
+          )
+        );
+
+        // Update current project if it's the one being renamed
+        if (currentProject?.id === id) {
+          setCurrentProject((prev) =>
+            prev ? { ...prev, name: newName.trim() } : prev
+          );
+        }
+
+        return true;
+      } else {
+        console.error('Failed to rename project:', data.error);
+        return false;
+      }
+    } catch (err) {
+      console.error('Rename project error:', err);
+      return false;
+    }
+  }, [projectEntity.entities, projectEntity.setEntities, currentProject?.id]);
+
+  /**
    * Autosave state (uses the debounced update from usePersistedEntity)
    */
   const saveState = useCallback((state: Partial<ProjectState>) => {
@@ -289,6 +331,7 @@ export function useProject(): UseProjectReturn {
     createProject,
     selectProject,
     deleteProject,
+    renameProject,
     saveState,
     savePanelImage,
     removePanelImage,
@@ -301,6 +344,7 @@ export function useProject(): UseProjectReturn {
     createProject,
     selectProject,
     deleteProject,
+    renameProject,
     saveState,
     savePanelImage,
     removePanelImage,
