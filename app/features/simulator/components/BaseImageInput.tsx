@@ -14,6 +14,11 @@ import Image from 'next/image';
 import { Upload, X, ImageIcon, Loader2, Sparkles, AlertCircle } from 'lucide-react';
 import { stateClasses, semanticColors } from '../lib/semanticColors';
 
+// File validation constants
+const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+const SUPPORTED_FORMATS = ['image/jpeg', 'image/png', 'image/webp'];
+const SUPPORTED_FORMATS_DISPLAY = 'JPEG, PNG, or WebP';
+
 interface BaseImageInputProps {
   value: string;
   onChange: (value: string) => void;
@@ -37,9 +42,24 @@ export function BaseImageInput({
 }: BaseImageInputProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [validationError, setValidationError] = useState<string | null>(null);
 
   const processFile = useCallback((file: File) => {
-    if (!file.type.startsWith('image/')) return;
+    // Clear any previous validation error
+    setValidationError(null);
+
+    // Validate file format
+    if (!SUPPORTED_FORMATS.includes(file.type)) {
+      setValidationError(`Unsupported format. Please use ${SUPPORTED_FORMATS_DISPLAY}.`);
+      return;
+    }
+
+    // Validate file size
+    if (file.size > MAX_FILE_SIZE) {
+      const sizeMB = (file.size / (1024 * 1024)).toFixed(1);
+      setValidationError(`File too large (${sizeMB}MB). Maximum size is 5MB.`);
+      return;
+    }
 
     const reader = new FileReader();
     reader.onload = (event) => {
@@ -103,7 +123,14 @@ export function BaseImageInput({
     }
   };
 
-  const hasError = !!parseError;
+  // Clear validation error when image is removed or changed successfully
+  const handleRemoveImageWithClear = () => {
+    setValidationError(null);
+    handleRemoveImage();
+  };
+
+  const hasError = !!parseError || !!validationError;
+  const displayError = validationError || parseError;
 
   return (
     <div className="space-y-sm">
@@ -204,18 +231,24 @@ export function BaseImageInput({
                         border-2 border-dashed transition-all duration-200
                         ${isDragging
                           ? 'border-cyan-500 bg-cyan-500/10 text-cyan-400 scale-105'
-                          : 'border-slate-700/50 hover:border-slate-600 text-slate-500 hover:text-slate-400 bg-slate-900/30'}`}
+                          : validationError
+                            ? 'border-red-500/70 bg-red-950/20 text-red-400'
+                            : 'border-slate-700/50 hover:border-slate-600 text-slate-500 hover:text-slate-400 bg-slate-900/30'}`}
             >
-              <Upload size={20} className={isDragging ? 'animate-bounce' : ''} />
-              <span className="font-mono type-label">
-                {isDragging ? 'drop here' : 'drag or click'}
+              {validationError ? (
+                <AlertCircle size={20} />
+              ) : (
+                <Upload size={20} className={isDragging ? 'animate-bounce' : ''} />
+              )}
+              <span className="font-mono type-label text-center px-1">
+                {isDragging ? 'drop here' : validationError ? 'try again' : 'drag or click'}
               </span>
             </button>
           )}
           <input
             ref={fileInputRef}
             type="file"
-            accept="image/*"
+            accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
             onChange={handleFileSelect}
             className="hidden"
           />
@@ -242,7 +275,7 @@ export function BaseImageInput({
             {isParsingImage
               ? '// AI is analyzing the uploaded image...'
               : hasError
-                ? `// ${parseError}`
+                ? `// ${displayError}`
                 : '// describe the foundation visual or drag & drop an image'}
           </p>
         </div>
