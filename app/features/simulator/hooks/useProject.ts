@@ -46,6 +46,7 @@ interface UseProjectReturn {
   selectProject: (id: string) => Promise<ProjectWithState | null>;
   deleteProject: (id: string) => Promise<boolean>;
   renameProject: (id: string, newName: string) => Promise<boolean>;
+  duplicateProject: (id: string) => Promise<Project | null>;
 
   // Autosave
   saveState: (state: Partial<ProjectState>) => void;
@@ -261,6 +262,67 @@ export function useProject(): UseProjectReturn {
   }, [projectEntity.entities, projectEntity.setEntities, currentProject?.id]);
 
   /**
+   * Duplicate a project with all its state
+   */
+  const duplicateProject = useCallback(async (id: string): Promise<Project | null> => {
+    try {
+      // 1. Fetch the source project's full state
+      const response = await fetch(`/api/projects/${id}`);
+      const data = await response.json();
+
+      if (!data.success) {
+        console.error('Failed to load source project:', data.error);
+        return null;
+      }
+
+      const sourceProject = parseProjectWithState(data.project);
+
+      // 2. Create a new project with "(Copy)" suffix
+      const newName = `${sourceProject.name} (Copy)`;
+      const created = await projectEntity.create({ name: newName });
+
+      if (!created) {
+        console.error('Failed to create duplicate project');
+        return null;
+      }
+
+      // 3. If source has state, save it to the new project
+      if (sourceProject.state) {
+        try {
+          const saveResponse = await fetch(`/api/projects/${created.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              basePrompt: sourceProject.state.basePrompt,
+              baseImageFile: sourceProject.state.baseImageFile,
+              outputMode: sourceProject.state.outputMode,
+              dimensions: sourceProject.state.dimensions,
+              feedback: sourceProject.state.feedback,
+            }),
+          });
+
+          const saveData = await saveResponse.json();
+          if (!saveData.success) {
+            console.error('Failed to save duplicated state:', saveData.error);
+            // Continue anyway - project was created, just without state
+          }
+        } catch (err) {
+          console.error('Error saving duplicated state:', err);
+        }
+      }
+
+      // 4. Select the new project
+      setCurrentProject(created);
+      projectEntity.setEntity(created);
+
+      return created;
+    } catch (err) {
+      console.error('Duplicate project error:', err);
+      return null;
+    }
+  }, [projectEntity.create, projectEntity.setEntity]);
+
+  /**
    * Autosave state (uses the debounced update from usePersistedEntity)
    */
   const saveState = useCallback((state: Partial<ProjectState>) => {
@@ -332,6 +394,7 @@ export function useProject(): UseProjectReturn {
     selectProject,
     deleteProject,
     renameProject,
+    duplicateProject,
     saveState,
     savePanelImage,
     removePanelImage,
@@ -345,6 +408,7 @@ export function useProject(): UseProjectReturn {
     selectProject,
     deleteProject,
     renameProject,
+    duplicateProject,
     saveState,
     savePanelImage,
     removePanelImage,

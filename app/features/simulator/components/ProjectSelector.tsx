@@ -12,7 +12,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronDown, Plus, Trash2, Folder, Loader2, Pencil, Check, X } from 'lucide-react';
+import { ChevronDown, Plus, Trash2, Folder, Loader2, Pencil, Check, X, Copy } from 'lucide-react';
 import { slideDown, transitions } from '../lib/motion';
 
 interface Project {
@@ -30,6 +30,7 @@ interface ProjectSelectorProps {
   onCreate: (name: string) => void;
   onDelete: (id: string) => void;
   onRename?: (id: string, newName: string) => void;
+  onDuplicate?: (id: string) => void;
 }
 
 export function ProjectSelector({
@@ -40,6 +41,7 @@ export function ProjectSelector({
   onCreate,
   onDelete,
   onRename,
+  onDuplicate,
 }: ProjectSelectorProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
@@ -257,6 +259,22 @@ export function ProjectSelector({
                             title="Rename project"
                           >
                             <Pencil size={12} />
+                          </button>
+                        )}
+
+                        {/* Duplicate button */}
+                        {onDuplicate && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onDuplicate(project.id);
+                              setIsOpen(false);
+                            }}
+                            className="p-1 rounded-sm transition-colors
+                                        opacity-0 group-hover:opacity-100 hover:bg-purple-500/20 text-slate-500 hover:text-purple-400"
+                            title="Duplicate project"
+                          >
+                            <Copy size={12} />
                           </button>
                         )}
 
