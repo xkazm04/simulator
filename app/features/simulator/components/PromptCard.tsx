@@ -19,7 +19,7 @@
 
 import React, { useState } from 'react';
 import Image from 'next/image';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Copy, Check, Lock, Eye, Image as ImageIcon, Sparkles, Loader2, CheckCircle, Gamepad2, MousePointer2, Film } from 'lucide-react';
 import { GeneratedPrompt, PromptElement, GeneratedImage, InteractiveMode, InteractivePrototype } from '../types';
 import { semanticColors } from '../lib/semanticColors';
@@ -281,16 +281,38 @@ export function PromptCard({
               <Lock size={12} />
             </button>
 
-            {/* Copy button - cyan for primary action success */}
+            {/* Copy button - cyan for primary action success with animation */}
             <button
               onClick={handleCopy}
               data-testid={`prompt-copy-${prompt.id}`}
               className={`p-1 radius-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/50 focus-visible:ring-offset-1 focus-visible:ring-offset-slate-900 ${justCopied
                 ? `${semanticColors.primary.bgHover} ${semanticColors.primary.text}`
                 : 'bg-slate-800/80 text-slate-400 hover:text-white'}`}
-              title="Copy prompt"
+              title={justCopied ? 'Copied!' : 'Copy prompt'}
             >
-              {justCopied ? <Check size={12} /> : <Copy size={12} />}
+              <AnimatePresence mode="wait" initial={false}>
+                {justCopied ? (
+                  <motion.div
+                    key="check"
+                    initial={{ scale: 0, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    exit={{ scale: 0, opacity: 0 }}
+                    transition={{ duration: 0.15 }}
+                  >
+                    <Check size={12} />
+                  </motion.div>
+                ) : (
+                  <motion.div
+                    key="copy"
+                    initial={{ scale: 0, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    exit={{ scale: 0, opacity: 0 }}
+                    transition={{ duration: 0.15 }}
+                  >
+                    <Copy size={12} />
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </button>
 
             {/* View button */}
