@@ -26,6 +26,7 @@ export function OnionLayout({
     handleDimensionWeightChange,
     handleDimensionFilterModeChange,
     handleDimensionTransformModeChange,
+    handleDimensionReferenceImageChange,
     handleDimensionRemove,
     handleDimensionAdd,
     handleDimensionReorder,
@@ -300,6 +301,7 @@ export function OnionLayout({
                                             onWeightChange={handleDimensionWeightChange}
                                             onFilterModeChange={handleDimensionFilterModeChange}
                                             onTransformModeChange={handleDimensionTransformModeChange}
+                                            onReferenceImageChange={handleDimensionReferenceImageChange}
                                             onRemove={handleDimensionRemove}
                                             onAdd={handleDimensionAdd}
                                             onReorder={handleLeftReorder}
@@ -506,6 +508,7 @@ export function OnionLayout({
                                             onWeightChange={handleDimensionWeightChange}
                                             onFilterModeChange={handleDimensionFilterModeChange}
                                             onTransformModeChange={handleDimensionTransformModeChange}
+                                            onReferenceImageChange={handleDimensionReferenceImageChange}
                                             onRemove={handleDimensionRemove}
                                             onAdd={handleDimensionAdd}
                                             onReorder={handleRightReorder}

@@ -15,9 +15,14 @@
 
 'use client';
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
+import Image from 'next/image';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, ImagePlus, Image as ImageIcon, ArrowDownToLine, SlidersHorizontal, GripVertical } from 'lucide-react';
+
+// File validation constants (same as BaseImageInput)
+const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+const SUPPORTED_FORMATS = ['image/jpeg', 'image/png', 'image/webp'];
 import { Dimension, DimensionFilterMode, DimensionTransformMode, PromptElement } from '../types';
 import { semanticColors, stateClasses } from '../lib/semanticColors';
 import { IconButton } from '@/app/components/ui';
@@ -51,6 +56,8 @@ interface DimensionCardProps {
   index: number;
   /** Callback when an element is dropped on this dimension */
   onDropElement?: (element: PromptElement, dimensionId: string) => void;
+  /** Callback when a reference image is added or removed */
+  onReferenceImageChange?: (id: string, imageDataUrl: string | null) => void;
 }
 
 export function DimensionCard({
@@ -62,11 +69,15 @@ export function DimensionCard({
   onRemove,
   index,
   onDropElement,
+  onReferenceImageChange,
 }: DimensionCardProps) {
-  const [hasImage, setHasImage] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
   const [showLensControls, setShowLensControls] = useState(false);
+  const [imageError, setImageError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const hasContent = dimension.reference.trim().length > 0;
+  const hasImage = !!dimension.referenceImage;
 
   // Reduced motion support for accessibility (WCAG 2.1 Level AAA)
   const prefersReducedMotion = useReducedMotion();
@@ -77,11 +88,54 @@ export function DimensionCard({
   const filterMode = dimension.filterMode ?? 'preserve_structure';
   const transformMode = dimension.transformMode ?? 'replace';
 
-  // Dummy image upload handler
-  const handleImageUpload = () => {
-    // TODO: Implement actual image upload
-    setHasImage(!hasImage);
-  };
+  // Image upload handler
+  const handleImageUpload = useCallback(() => {
+    if (hasImage) {
+      // Remove existing image
+      onReferenceImageChange?.(dimension.id, null);
+      setImageError(null);
+    } else {
+      // Trigger file input
+      fileInputRef.current?.click();
+    }
+  }, [hasImage, dimension.id, onReferenceImageChange]);
+
+  // File selection handler
+  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Clear previous error
+    setImageError(null);
+
+    // Validate file format
+    if (!SUPPORTED_FORMATS.includes(file.type)) {
+      setImageError('Use JPEG, PNG, or WebP');
+      return;
+    }
+
+    // Validate file size
+    if (file.size > MAX_FILE_SIZE) {
+      setImageError('Max size is 5MB');
+      return;
+    }
+
+    // Read file as data URL
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const dataUrl = event.target?.result as string;
+      onReferenceImageChange?.(dimension.id, dataUrl);
+    };
+    reader.onerror = () => {
+      setImageError('Failed to read file');
+    };
+    reader.readAsDataURL(file);
+
+    // Reset input for re-selection of same file
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  }, [dimension.id, onReferenceImageChange]);
 
   // ============================================
   // Drop handlers for bidirectional flow (element → dimension)
@@ -315,16 +369,47 @@ export function DimensionCard({
 
         {/* Input */}
         <div className="p-sm flex-1 flex flex-col">
-          {/* Dummy image preview area - purple for AI/processing */}
-          {hasImage && (
+          {/* Hidden file input */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
+            onChange={handleFileSelect}
+            className="hidden"
+            data-testid={`dimension-image-input-${dimension.id}`}
+          />
+
+          {/* Image preview area - purple for AI/processing */}
+          {hasImage && dimension.referenceImage && (
             <div className={`mb-sm p-sm ${semanticColors.processing.bg} ${semanticColors.processing.border} border radius-sm flex items-center gap-sm`}>
-              <div className={`w-10 h-10 ${semanticColors.processing.bgHover} radius-sm flex items-center justify-center`}>
-                <ImageIcon size={16} className={semanticColors.processing.text} />
+              <div className="relative w-10 h-10 radius-sm overflow-hidden flex-shrink-0">
+                <Image
+                  src={dimension.referenceImage}
+                  alt="Reference image"
+                  fill
+                  className="object-cover"
+                  unoptimized
+                />
               </div>
-              <div className="flex-1">
-                <p className="font-mono type-label text-purple-400">reference_image.jpg</p>
+              <div className="flex-1 min-w-0">
+                <p className="font-mono type-label text-purple-400 truncate">reference_image</p>
                 <p className="font-mono type-label text-slate-500">// visual reference attached</p>
               </div>
+              <button
+                onClick={() => onReferenceImageChange?.(dimension.id, null)}
+                className="p-1 radius-sm hover:bg-red-500/20 text-slate-500 hover:text-red-400 transition-colors"
+                title="Remove reference image"
+                data-testid={`dimension-image-remove-${dimension.id}`}
+              >
+                <X size={12} />
+              </button>
+            </div>
+          )}
+
+          {/* Image error message */}
+          {imageError && (
+            <div className="mb-sm px-sm py-1 bg-red-500/10 border border-red-500/30 radius-sm">
+              <p className="font-mono type-label text-red-400">// {imageError}</p>
             </div>
           )}
 

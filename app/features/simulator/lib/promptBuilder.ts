@@ -165,6 +165,7 @@ function getTransformModeInstruction(transformMode: DimensionTransformMode): str
 
 /**
  * Build a weighted dimension clause that incorporates the lens model
+ * Optionally includes a visual reference indicator when a reference image is attached
  */
 function buildWeightedClause(dim: Dimension, maxLength: number = 60): string | null {
   if (!dim.reference?.trim()) return null;
@@ -176,16 +177,42 @@ function buildWeightedClause(dim: Dimension, maxLength: number = 60): string | n
   const weightPhrase = getWeightPhrase(weight);
   const transformInstruction = getTransformModeInstruction(dim.transformMode ?? 'replace');
 
-  // Build the clause based on weight and transform mode
+  // Build the base clause based on weight and transform mode
+  let clause: string;
   if (weightPhrase && transformInstruction) {
-    return `${weightPhrase} ${transformInstruction} ${ref}`;
+    clause = `${weightPhrase} ${transformInstruction} ${ref}`;
   } else if (weightPhrase) {
-    return `${weightPhrase} ${ref}`;
+    clause = `${weightPhrase} ${ref}`;
   } else if (transformInstruction) {
-    return `${transformInstruction} ${ref}`;
+    clause = `${transformInstruction} ${ref}`;
+  } else {
+    clause = ref;
   }
 
-  return ref;
+  // Add visual reference indicator if reference image is attached
+  if (dim.referenceImage) {
+    clause = `(visual reference) ${clause}`;
+  }
+
+  return clause;
+}
+
+/**
+ * Get dimensions that have reference images attached
+ * Useful for API calls that support image-to-image or style reference
+ */
+export function getDimensionsWithReferenceImages(dimensions: Dimension[]): Array<{
+  type: string;
+  label: string;
+  referenceImage: string;
+}> {
+  return dimensions
+    .filter((d) => d.referenceImage)
+    .map((d) => ({
+      type: d.type,
+      label: d.label,
+      referenceImage: d.referenceImage!,
+    }));
 }
 
 /**

@@ -61,6 +61,7 @@ export interface SimulatorActions {
   handleDimensionWeightChange: (id: string, weight: number) => void;
   handleDimensionFilterModeChange: (id: string, filterMode: DimensionFilterMode) => void;
   handleDimensionTransformModeChange: (id: string, transformMode: DimensionTransformMode) => void;
+  handleDimensionReferenceImageChange: (id: string, imageDataUrl: string | null) => void;
   handleDimensionRemove: (id: string) => void;
   handleDimensionAdd: (preset: DimensionPreset) => void;
   handleDimensionReorder: (reorderedDimensions: Dimension[]) => void;
@@ -157,6 +158,13 @@ export function useSimulator(): SimulatorState & SimulatorActions {
    */
   const handleDimensionTransformModeChange = useCallback((id: string, transformMode: DimensionTransformMode) => {
     setDimensions((prev) => prev.map((d) => (d.id === id ? { ...d, transformMode } : d)));
+  }, []);
+
+  /**
+   * Update dimension reference image for visual style matching
+   */
+  const handleDimensionReferenceImageChange = useCallback((id: string, imageDataUrl: string | null) => {
+    setDimensions((prev) => prev.map((d) => (d.id === id ? { ...d, referenceImage: imageDataUrl ?? undefined } : d)));
   }, []);
 
   const handleDimensionRemove = useCallback((id: string) => {
@@ -567,6 +575,7 @@ export function useSimulator(): SimulatorState & SimulatorActions {
     setBaseImage, setBaseImageFile, setFeedback, setOutputMode,
     handleDimensionChange, handleDimensionWeightChange,
     handleDimensionFilterModeChange, handleDimensionTransformModeChange,
+    handleDimensionReferenceImageChange,
     handleDimensionRemove, handleDimensionAdd, handleDimensionReorder,
     handleSmartBreakdownApply, handleImageParse, handleReset, handleLoadExample,
     handlePromptRate, handlePromptLock, handleElementLock, handleCopy,

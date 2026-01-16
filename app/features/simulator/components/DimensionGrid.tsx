@@ -19,6 +19,7 @@ interface DimensionGridProps {
   onWeightChange?: (id: string, weight: number) => void;
   onFilterModeChange?: (id: string, filterMode: DimensionFilterMode) => void;
   onTransformModeChange?: (id: string, transformMode: DimensionTransformMode) => void;
+  onReferenceImageChange?: (id: string, imageDataUrl: string | null) => void;
   onRemove: (id: string) => void;
   onAdd: (preset: DimensionPreset) => void;
   /** Handler for reordering dimensions via drag-and-drop */
@@ -33,6 +34,7 @@ export function DimensionGrid({
   onWeightChange,
   onFilterModeChange,
   onTransformModeChange,
+  onReferenceImageChange,
   onRemove,
   onAdd,
   onReorder,
@@ -78,6 +80,7 @@ export function DimensionGrid({
               onWeightChange={onWeightChange}
               onFilterModeChange={onFilterModeChange}
               onTransformModeChange={onTransformModeChange}
+              onReferenceImageChange={onReferenceImageChange}
               onRemove={onRemove}
               index={index}
               onDropElement={onDropElement}

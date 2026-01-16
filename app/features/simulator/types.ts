@@ -79,6 +79,12 @@ export interface Dimension {
   reference: string;
 
   /**
+   * Optional reference image for visual style matching
+   * Stored as data URL (base64 encoded)
+   */
+  referenceImage?: string;
+
+  /**
    * Filter mode - what to preserve from the base image for this dimension
    * Default: 'preserve_structure'
    */
@@ -956,6 +962,7 @@ export interface SimulatorLayoutProps {
   handleDimensionWeightChange: (id: string, weight: number) => void;
   handleDimensionFilterModeChange: (id: string, filterMode: DimensionFilterMode) => void;
   handleDimensionTransformModeChange: (id: string, transformMode: DimensionTransformMode) => void;
+  handleDimensionReferenceImageChange?: (id: string, imageDataUrl: string | null) => void;
   handleDimensionRemove: (id: string) => void;
   handleDimensionAdd: (preset: DimensionPreset) => void;
   handleDimensionReorder: (reorderedDimensions: Dimension[]) => void;
