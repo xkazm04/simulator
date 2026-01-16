@@ -9,7 +9,7 @@
 
 import React, { useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Gamepad2, MousePointer2, Film, Image as ImageIcon, Loader2 } from 'lucide-react';
+import { X, Loader2 } from 'lucide-react';
 import {
   InteractivePrototype,
   InteractiveMode,
@@ -20,6 +20,7 @@ import {
 import { GenerationProgress } from '../hooks/useInteractivePrototype';
 import { WebGLDemo, ClickablePrototype, AnimatedTrailer } from './interactive';
 import { fadeIn, scaleIn, transitions } from '../lib/motion';
+import { getModeIcon, getModeColors } from '../lib/interactiveModeHelpers';
 
 interface InteractivePreviewModalProps {
   isOpen: boolean;
@@ -31,38 +32,6 @@ interface InteractivePreviewModalProps {
   onGeneratePrototype?: () => void;
   /** Generation progress (if currently generating) */
   progress?: GenerationProgress | null;
-}
-
-/**
- * Get icon for mode
- */
-function getModeIcon(mode: InteractiveMode): React.ReactNode {
-  switch (mode) {
-    case 'webgl':
-      return <Gamepad2 size={16} />;
-    case 'clickable':
-      return <MousePointer2 size={16} />;
-    case 'trailer':
-      return <Film size={16} />;
-    default:
-      return <ImageIcon size={16} />;
-  }
-}
-
-/**
- * Get mode color classes
- */
-function getModeColors(mode: InteractiveMode): { bg: string; border: string; text: string } {
-  switch (mode) {
-    case 'webgl':
-      return { bg: 'bg-cyan-500/10', border: 'border-cyan-500/30', text: 'text-cyan-400' };
-    case 'clickable':
-      return { bg: 'bg-purple-500/10', border: 'border-purple-500/30', text: 'text-purple-400' };
-    case 'trailer':
-      return { bg: 'bg-rose-500/10', border: 'border-rose-500/30', text: 'text-rose-400' };
-    default:
-      return { bg: 'bg-slate-500/10', border: 'border-slate-500/30', text: 'text-slate-400' };
-  }
 }
 
 export function InteractivePreviewModal({
@@ -110,7 +79,7 @@ export function InteractivePreviewModal({
 
           <div className="relative z-10 flex flex-col items-center gap-4">
             <div className={`p-4 rounded-full ${colors.bg} border ${colors.border}`}>
-              {getModeIcon(mode)}
+              {getModeIcon(mode, 16)}
             </div>
             <h2 className="text-xl font-mono text-white">
               Generate {INTERACTIVE_MODES[mode].label}
@@ -125,7 +94,7 @@ export function InteractivePreviewModal({
                            hover:brightness-125 transition-all flex items-center gap-2 mt-4`}
                 data-testid="interactive-modal-generate-btn"
               >
-                <span className={colors.text}>{getModeIcon(mode)}</span>
+                <span className={colors.text}>{getModeIcon(mode, 16)}</span>
                 <span className={`font-mono type-body-sm ${colors.text} uppercase tracking-wider`}>
                   Generate Now
                 </span>
@@ -286,7 +255,7 @@ export function InteractivePreviewModal({
             <div className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between p-4 bg-gradient-to-b from-black/80 to-transparent">
               {/* Mode indicator */}
               <div className={`flex items-center gap-2 px-3 py-1 radius-md ${colors.bg} border ${colors.border}`}>
-                <span className={colors.text}>{getModeIcon(mode)}</span>
+                <span className={colors.text}>{getModeIcon(mode, 16)}</span>
                 <span className={`font-mono type-body-sm ${colors.text} uppercase tracking-wider`}>
                   {INTERACTIVE_MODES[mode].label}
                 </span>

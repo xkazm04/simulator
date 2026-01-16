@@ -17,9 +17,6 @@ import Image from 'next/image';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Image as ImageIcon,
-  Gamepad2,
-  MousePointer2,
-  Film,
   X,
   Sparkles,
   Loader2,
@@ -32,8 +29,8 @@ import {
 import { WebGLDemo } from './WebGLDemo';
 import { ClickablePrototype } from './ClickablePrototype';
 import { AnimatedTrailer } from './AnimatedTrailer';
-import { semanticColors } from '../../lib/semanticColors';
 import { fadeIn, scaleIn, transitions } from '../../lib/motion';
+import { getModeIcon, getModeColors } from '../../lib/interactiveModeHelpers';
 
 interface InteractivePreviewProps {
   /** The generated image URL */
@@ -52,62 +49,6 @@ interface InteractivePreviewProps {
   onGeneratePrototype?: () => void;
   /** Optional className */
   className?: string;
-}
-
-/**
- * Get icon component for mode
- */
-function getModeIcon(mode: InteractiveMode): React.ReactNode {
-  switch (mode) {
-    case 'static':
-      return <ImageIcon size={14} />;
-    case 'webgl':
-      return <Gamepad2 size={14} />;
-    case 'clickable':
-      return <MousePointer2 size={14} />;
-    case 'trailer':
-      return <Film size={14} />;
-    default:
-      return <ImageIcon size={14} />;
-  }
-}
-
-/**
- * Get mode color scheme
- */
-function getModeColors(mode: InteractiveMode): { bg: string; border: string; text: string } {
-  switch (mode) {
-    case 'static':
-      return {
-        bg: 'bg-slate-500/10',
-        border: 'border-slate-500/30',
-        text: 'text-slate-400',
-      };
-    case 'webgl':
-      return {
-        bg: 'bg-cyan-500/10',
-        border: 'border-cyan-500/30',
-        text: 'text-cyan-400',
-      };
-    case 'clickable':
-      return {
-        bg: 'bg-purple-500/10',
-        border: 'border-purple-500/30',
-        text: 'text-purple-400',
-      };
-    case 'trailer':
-      return {
-        bg: 'bg-rose-500/10',
-        border: 'border-rose-500/30',
-        text: 'text-rose-400',
-      };
-    default:
-      return {
-        bg: 'bg-slate-500/10',
-        border: 'border-slate-500/30',
-        text: 'text-slate-400',
-      };
-  }
 }
 
 export function InteractivePreview({
