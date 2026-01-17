@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { analyzeImage } from '@/app/lib/gemini';
+import { getUnifiedProvider, isGeminiAvailable, AIError } from '@/app/lib/ai';
 import { createErrorResponse, HTTP_STATUS } from '@/app/utils/apiErrorHandling';
 
 /**
- * Image Description API - Uses Gemini Vision to analyze images
+ * Image Description API - Uses unified AI provider (Gemini Vision) to analyze images
+ *
+ * Uses the unified AI provider layer for consistent error handling,
+ * rate limiting, caching, and cost tracking.
  *
  * POST /api/ai/image-describe
  * Body: { imageDataUrl: string }
@@ -105,24 +108,28 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if API key is configured
-    if (!process.env.GOOGLE_AI_API_KEY) {
+    if (!isGeminiAvailable()) {
       return NextResponse.json({
         success: false,
         error: 'GOOGLE_AI_API_KEY not configured',
       });
     }
 
-    // Always try Gemini Vision
+    // Use unified provider for Gemini Vision
     try {
-      const response = await analyzeImage(imageDataUrl, IMAGE_ANALYSIS_PROMPT, {
+      const provider = getUnifiedProvider();
+      const result = await provider.analyzeImage({
+        imageDataUrl,
+        prompt: IMAGE_ANALYSIS_PROMPT,
         systemInstruction: IMAGE_ANALYSIS_INSTRUCTION,
         temperature: 0.3,
         maxTokens: 1500,
+        metadata: { feature: 'image-describe' },
       });
 
       // Parse JSON from response (handle potential markdown wrapping)
-      let jsonStr = response;
-      const jsonMatch = response.match(/\{[\s\S]*\}/);
+      let jsonStr = result.text;
+      const jsonMatch = result.text.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         jsonStr = jsonMatch[0];
       }
@@ -130,8 +137,12 @@ export async function POST(request: NextRequest) {
       const parsed = JSON.parse(jsonStr);
       return NextResponse.json(parsed);
     } catch (error) {
-      console.error('Gemini API error:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Failed to analyze image';
+      console.error('AI provider error:', error);
+      const errorMessage = error instanceof AIError
+        ? `${error.code}: ${error.message}`
+        : error instanceof Error
+          ? error.message
+          : 'Failed to analyze image';
       return NextResponse.json({
         success: false,
         error: errorMessage,

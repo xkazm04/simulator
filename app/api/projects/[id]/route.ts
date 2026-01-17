@@ -3,6 +3,7 @@
  *
  * GET /api/projects/[id] - Get project with state and images
  * PUT /api/projects/[id] - Update project state (autosave)
+ * PATCH /api/projects/[id] - Update project metadata (name only)
  * DELETE /api/projects/[id] - Delete project
  */
 
@@ -146,6 +147,51 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     });
   } catch (error) {
     console.error('Update project error:', error);
+    return NextResponse.json(
+      { success: false, error: 'Failed to update project' },
+      { status: 500 }
+    );
+  }
+}
+
+/**
+ * PATCH - Update project metadata (name only)
+ */
+export async function PATCH(request: NextRequest, { params }: RouteParams) {
+  try {
+    const { id } = await params;
+    const body = await request.json();
+
+    const db = getDb();
+    const now = new Date().toISOString();
+
+    // Check project exists
+    const project = db.prepare('SELECT id FROM projects WHERE id = ?').get(id);
+    if (!project) {
+      return NextResponse.json(
+        { success: false, error: 'Project not found' },
+        { status: 404 }
+      );
+    }
+
+    // Update project name if provided
+    if (body.name !== undefined) {
+      if (!body.name.trim()) {
+        return NextResponse.json(
+          { success: false, error: 'Project name cannot be empty' },
+          { status: 400 }
+        );
+      }
+      db.prepare('UPDATE projects SET name = ?, updated_at = ? WHERE id = ?')
+        .run(body.name.trim(), now, id);
+    }
+
+    return NextResponse.json({
+      success: true,
+      updatedAt: now,
+    });
+  } catch (error) {
+    console.error('Patch project error:', error);
     return NextResponse.json(
       { success: false, error: 'Failed to update project' },
       { status: 500 }

@@ -45,7 +45,7 @@ interface UseImageGenerationReturn {
   isGeneratingImages: boolean;
   leftPanelSlots: PanelSlot[];
   rightPanelSlots: PanelSlot[];
-  generateImagesFromPrompts: (prompts: Array<{ id: string; prompt: string }>) => Promise<void>;
+  generateImagesFromPrompts: (prompts: Array<{ id: string; prompt: string; negativePrompt?: string }>) => Promise<void>;
   saveImageToPanel: (promptId: string, promptText: string) => void;
   removePanelImage: (imageId: string) => void;
   updatePanelImage: (imageId: string, newUrl: string) => void;
@@ -207,7 +207,7 @@ export function useImageGeneration(): UseImageGenerationReturn {
    * Generate images from an array of prompts
    */
   const generateImagesFromPrompts = useCallback(
-    async (prompts: Array<{ id: string; prompt: string }>) => {
+    async (prompts: Array<{ id: string; prompt: string; negativePrompt?: string }>) => {
       if (prompts.length === 0) return;
 
       // Step 1: Delete previous generations from Leonardo
@@ -230,7 +230,11 @@ export function useImageGeneration(): UseImageGenerationReturn {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            prompts: prompts.map((p) => ({ id: p.id, text: p.prompt })),
+            prompts: prompts.map((p) => ({
+              id: p.id,
+              text: p.prompt,
+              negativePrompt: p.negativePrompt,
+            })),
             width: 1344,  // 16:9 aspect ratio (1344/768 = 1.75)
             height: 768,
           }),

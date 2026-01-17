@@ -64,6 +64,11 @@ export interface UsePersistedEntityOptions<T, TCreate = Partial<T>, TUpdate = Pa
 }
 
 /**
+ * Save status for tracking autosave state
+ */
+export type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
+
+/**
  * Return type for usePersistedEntity hook
  */
 export interface UsePersistedEntityReturn<T, TCreate = Partial<T>, TUpdate = Partial<T>> {
@@ -81,6 +86,12 @@ export interface UsePersistedEntityReturn<T, TCreate = Partial<T>, TUpdate = Par
 
   /** True if there are pending unsaved changes */
   isDirty: boolean;
+
+  /** Current save status for UI feedback */
+  saveStatus: SaveStatus;
+
+  /** Timestamp of last successful save */
+  lastSavedAt: Date | null;
 
   /** Load all entities */
   loadAll: () => Promise<T[]>;
@@ -135,6 +146,8 @@ export function usePersistedEntity<T extends { id: string }, TCreate = Partial<T
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isDirty, setIsDirty] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
+  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
 
   // Refs for autosave
   const autosaveTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -278,6 +291,7 @@ export function usePersistedEntity<T extends { id: string }, TCreate = Partial<T
    * Internal save function
    */
   const performSave = useCallback(async (id: string, updateData: TUpdate): Promise<boolean> => {
+    setSaveStatus('saving');
     try {
       const serializeForUpdate = serializeForUpdateRef.current;
       const body = serializeForUpdate ? serializeForUpdate(updateData) : updateData;
@@ -298,13 +312,17 @@ export function usePersistedEntity<T extends { id: string }, TCreate = Partial<T
           onUpdatedRef.current?.(updated);
         }
         setIsDirty(false);
+        setSaveStatus('saved');
+        setLastSavedAt(new Date());
         return true;
       } else {
         console.error('Save failed:', result.error);
+        setSaveStatus('error');
         return false;
       }
     } catch (err) {
       console.error('Autosave error:', err);
+      setSaveStatus('error');
       return false;
     }
   }, [api.baseEndpoint, fetchFn, entity]);
@@ -414,6 +432,8 @@ export function usePersistedEntity<T extends { id: string }, TCreate = Partial<T
     isLoading,
     error,
     isDirty,
+    saveStatus,
+    lastSavedAt,
     loadAll,
     load,
     create,

@@ -1027,3 +1027,151 @@ export interface SimulatorLayoutProps {
   onPromptUndo?: () => void;
   onPromptRedo?: () => void;
 }
+
+// ============================================
+// Enhanced Feedback Learning Types (Phase 1-4)
+// ============================================
+
+/**
+ * GenerationSession - Tracks a complete generation session for learning
+ */
+export interface GenerationSession {
+  id: string;
+  /** When the session started */
+  startedAt: string;
+  /** When user indicated satisfaction (rated positively or moved on) */
+  satisfiedAt?: string;
+  /** Number of generation iterations before satisfaction */
+  iterationCount: number;
+  /** Time from first generation to satisfaction (ms) */
+  timeToSatisfaction?: number;
+  /** Dimensions used in this session */
+  dimensionsSnapshot: Array<{
+    type: DimensionType;
+    reference: string;
+    weight: number;
+    filterMode: DimensionFilterMode;
+    transformMode: DimensionTransformMode;
+  }>;
+  /** Base image description */
+  baseImageSnapshot: string;
+  /** Output mode used */
+  outputMode: OutputMode;
+  /** Did the session end with a positive outcome? */
+  successful: boolean;
+  /** All prompt IDs generated in this session */
+  promptIds: string[];
+  /** Final feedback state */
+  finalFeedback?: {
+    positive: string;
+    negative: string;
+  };
+}
+
+/**
+ * DimensionCombinationPattern - Learned pattern about dimension combinations
+ */
+export interface DimensionCombinationPattern {
+  id: string;
+  /** The combination of dimension types */
+  dimensionTypes: DimensionType[];
+  /** Example reference values that worked well */
+  successfulReferences: string[];
+  /** Success rate for this combination */
+  successRate: number;
+  /** Number of times this combination was used */
+  usageCount: number;
+  /** Average weight settings that worked */
+  avgSuccessfulWeights: Record<DimensionType, number>;
+  /** Last updated */
+  updatedAt: string;
+}
+
+/**
+ * StylePreference - Detailed artistic style preference
+ */
+export interface StylePreference {
+  id: string;
+  /** Style category (e.g., 'rendering', 'lighting', 'composition') */
+  category: 'rendering' | 'lighting' | 'composition' | 'color' | 'texture' | 'detail';
+  /** The preferred value (e.g., 'cinematic lighting', 'hand-painted') */
+  value: string;
+  /** Strength of preference (0-100) */
+  strength: number;
+  /** Number of positive associations */
+  positiveAssociations: number;
+  /** Number of negative associations */
+  negativeAssociations: number;
+  /** Source dimension types that led to this preference */
+  sourceDimensions: DimensionType[];
+  /** Last updated */
+  updatedAt: string;
+}
+
+/**
+ * SmartSuggestion - AI-powered suggestion for user
+ */
+export interface SmartSuggestion {
+  id: string;
+  /** Type of suggestion */
+  type: 'dimension' | 'weight' | 'element_lock' | 'negative_prompt' | 'output_mode';
+  /** What is being suggested */
+  suggestion: string;
+  /** Why this is being suggested */
+  reason: string;
+  /** Confidence score (0-1) */
+  confidence: number;
+  /** Data to apply if accepted */
+  data: {
+    dimensionType?: DimensionType;
+    dimensionReference?: string;
+    weight?: number;
+    elementId?: string;
+    negativePrompt?: string;
+    outputMode?: OutputMode;
+  };
+  /** Was this suggestion shown to user? */
+  shown: boolean;
+  /** Was this suggestion accepted? */
+  accepted?: boolean;
+  /** When was this generated */
+  createdAt: string;
+}
+
+/**
+ * EnhancedLearnedContext - Extended context for adaptive generation
+ */
+export interface EnhancedLearnedContext extends LearnedContext {
+  /** Suggested negative prompts based on history */
+  suggestedNegativePrompts: string[];
+  /** Recommended weights for dimensions */
+  recommendedWeights: Record<DimensionType, number>;
+  /** Elements that should be auto-locked */
+  autoLockElements: string[];
+  /** Confidence in these recommendations */
+  confidence: number;
+  /** Whether sufficient data exists for personalization */
+  hasEnoughData: boolean;
+  /** Dimension combinations that work well together */
+  successfulCombinations: DimensionCombinationPattern[];
+  /** Style preferences learned from history */
+  stylePreferences: StylePreference[];
+}
+
+/**
+ * FeedbackLearningConfig - Configuration for the learning system
+ */
+export interface FeedbackLearningConfig {
+  /** Minimum feedback items before learning kicks in */
+  minFeedbackForLearning: number;
+  /** How quickly preferences decay (0-1, lower = slower decay) */
+  preferenceDecayRate: number;
+  /** Minimum confidence to show suggestions */
+  minSuggestionConfidence: number;
+  /** Maximum suggestions to show at once */
+  maxSuggestionsToShow: number;
+  /** Whether to track time-to-satisfaction */
+  trackTimeMetrics: boolean;
+  /** Whether to auto-suggest negative prompts */
+  autoSuggestNegatives: boolean;
+}

@@ -20,6 +20,13 @@ import {
   getAllFeedback,
   getPatternsAboveConfidence,
   buildLearnedContext,
+  getSuccessfulSessions,
+  getAverageTimeToSatisfaction,
+  getDimensionPatterns,
+  getStylePreferences,
+  generateSmartSuggestions,
+  buildEnhancedLearnedContext,
+  learnStylePreferences,
 } from './preferenceEngine';
 
 // ============================================================================
@@ -628,3 +635,130 @@ export async function getLearningStatus(): Promise<{
     lastUpdated: profile.updatedAt || null,
   };
 }
+
+// ============================================================================
+// Enhanced Learning Functions (Phase 1-4 Integration)
+// ============================================================================
+
+/**
+ * Get enhanced learning status with time metrics
+ */
+export async function getEnhancedLearningStatus(): Promise<{
+  totalFeedback: number;
+  preferences: number;
+  patterns: number;
+  positiveRate: number;
+  lastUpdated: string | null;
+  avgTimeToSatisfaction: number | null;
+  avgIterations: number | null;
+  sessionCount: number;
+  dimensionPatterns: number;
+  stylePreferences: number;
+}> {
+  const basicStatus = await getLearningStatus();
+  const timeMetrics = await getAverageTimeToSatisfaction();
+  const dimensionPatterns = await getDimensionPatterns(1);
+  const stylePrefs = await getStylePreferences(30);
+
+  return {
+    ...basicStatus,
+    avgTimeToSatisfaction: timeMetrics.avgTime,
+    avgIterations: timeMetrics.avgIterations,
+    sessionCount: timeMetrics.sampleSize,
+    dimensionPatterns: dimensionPatterns.length,
+    stylePreferences: stylePrefs.length,
+  };
+}
+
+/**
+ * Enhanced feedback processing that includes style learning
+ */
+export async function processEnhancedFeedback(
+  feedback: PromptFeedback,
+  prompt: GeneratedPrompt
+): Promise<void> {
+  // Learn style preferences from rated prompts
+  if (feedback.rating) {
+    await learnStylePreferences(prompt, feedback.rating);
+  }
+}
+
+/**
+ * Get smart suggestions for the current context
+ */
+export async function getSmartSuggestions(
+  dimensions: Array<{ id: string; type: string; reference: string; weight: number; filterMode: string; transformMode: string }>,
+  baseImageDescription: string
+): Promise<SmartSuggestion[]> {
+  // Convert to Dimension-like objects for the suggestion engine
+  const dimensionLike = dimensions.map((d) => ({
+    ...d,
+    label: d.type,
+    icon: null,
+    placeholder: '',
+  }));
+
+  return generateSmartSuggestions(dimensionLike as any, baseImageDescription);
+}
+
+/**
+ * Generate enhanced analytics with all new metrics
+ */
+export async function generateEnhancedFeedbackAnalytics(): Promise<FeedbackAnalytics & {
+  avgTimeToSatisfaction: number | null;
+  avgIterations: number | null;
+  sessionCount: number;
+  dimensionPatternCount: number;
+  stylePreferenceCount: number;
+  topDimensionCombinations: Array<{
+    dimensions: string[];
+    usageCount: number;
+    successRate: number;
+  }>;
+  topStylePreferences: Array<{
+    category: string;
+    value: string;
+    strength: number;
+  }>;
+}> {
+  const baseAnalytics = await generateFeedbackAnalytics();
+  const timeMetrics = await getAverageTimeToSatisfaction();
+  const dimensionPatterns = await getDimensionPatterns(1);
+  const stylePrefs = await getStylePreferences(30);
+
+  return {
+    ...baseAnalytics,
+    avgTimeToSatisfaction: timeMetrics.avgTime,
+    avgIterations: timeMetrics.avgIterations,
+    sessionCount: timeMetrics.sampleSize,
+    dimensionPatternCount: dimensionPatterns.length,
+    stylePreferenceCount: stylePrefs.length,
+    topDimensionCombinations: dimensionPatterns
+      .sort((a, b) => b.usageCount - a.usageCount)
+      .slice(0, 5)
+      .map((p) => ({
+        dimensions: p.dimensionTypes,
+        usageCount: p.usageCount,
+        successRate: p.successRate,
+      })),
+    topStylePreferences: stylePrefs
+      .sort((a, b) => b.strength - a.strength)
+      .slice(0, 5)
+      .map((p) => ({
+        category: p.category,
+        value: p.value,
+        strength: p.strength,
+      })),
+  };
+}
+
+// Re-export enhanced preference engine functions for convenience
+export {
+  generateSmartSuggestions,
+  buildEnhancedLearnedContext,
+  getSuccessfulSessions,
+  getDimensionPatterns,
+  getStylePreferences,
+};
+
+import type { SmartSuggestion } from '../types';

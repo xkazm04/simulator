@@ -76,10 +76,20 @@ export async function POST(request: NextRequest) {
     // Initialize Gemini client
     const client = new GoogleGenAI({ apiKey });
 
-    // Build the modification prompt
-    const modificationPrompt = `Based on the provided image, create a new version that incorporates the following changes: ${prompt.trim()}
+    // Build the modification prompt - allow full transformations
+    const modificationPrompt = `Using the provided image as reference, generate a new image that applies these changes: ${prompt.trim()}
 
-Maintain the same composition, camera angle, and overall style while applying the requested modifications. Generate a high-quality image.`;
+You may change composition, camera angle, style, and any other aspects as needed to fulfill the request. The reference image shows the subject matter and context, but you should transform it according to the user's instructions. Generate a high-quality, detailed image.`;
+
+    // Map aspect ratio to width/height for image generation config
+    const aspectRatioMap: Record<string, { width: number; height: number }> = {
+      '16:9': { width: 1920, height: 1080 },
+      '9:16': { width: 1080, height: 1920 },
+      '1:1': { width: 1024, height: 1024 },
+      '4:3': { width: 1536, height: 1152 },
+      '3:4': { width: 1152, height: 1536 },
+    };
+    const dimensions = aspectRatioMap[aspectRatio] || aspectRatioMap['16:9'];
 
     // Generate using Gemini's image generation model
     const response = await client.models.generateContent({
@@ -102,6 +112,12 @@ Maintain the same composition, camera angle, and overall style while applying th
       ],
       config: {
         responseModalities: ['image', 'text'],
+        // Image generation specific config
+        ...(dimensions && {
+          imageGenerationConfig: {
+            aspectRatio: aspectRatio,
+          },
+        }),
       },
     });
 

@@ -11,7 +11,7 @@
 
 import { useState, useCallback, useMemo } from 'react';
 import { Dimension, OutputMode, SavedPanelImage, ProjectPoster } from '../types';
-import { usePersistedEntity } from './usePersistedEntity';
+import { usePersistedEntity, SaveStatus } from './usePersistedEntity';
 
 interface Project {
   id: string;
@@ -39,6 +39,10 @@ interface UseProjectReturn {
   currentProject: Project | null;
   isLoading: boolean;
   error: string | null;
+
+  // Save status for UI feedback
+  saveStatus: SaveStatus;
+  lastSavedAt: Date | null;
 
   // CRUD operations
   loadProjects: () => Promise<void>;
@@ -389,6 +393,8 @@ export function useProject(): UseProjectReturn {
     currentProject,
     isLoading: projectEntity.isLoading,
     error: projectEntity.error,
+    saveStatus: projectEntity.saveStatus,
+    lastSavedAt: projectEntity.lastSavedAt,
     loadProjects,
     createProject,
     selectProject,
@@ -402,6 +408,8 @@ export function useProject(): UseProjectReturn {
     projectEntity.entities,
     projectEntity.isLoading,
     projectEntity.error,
+    projectEntity.saveStatus,
+    projectEntity.lastSavedAt,
     currentProject,
     loadProjects,
     createProject,

@@ -2,17 +2,21 @@
  * POST /api/ai/generate-images
  * Start image generation for multiple prompts using Leonardo AI
  *
+ * Uses the unified AI provider layer for consistent error handling,
+ * rate limiting, and cost tracking.
+ *
  * GET /api/ai/generate-images?generationId=xxx
  * Check status of a generation
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getLeonardoService, LeonardoService } from '@/app/lib/services/leonardo';
+import { getLeonardoProvider, isLeonardoAvailable, AIError } from '@/app/lib/ai';
 
 interface GenerateRequest {
   prompts: Array<{
     id: string;  // Prompt ID to track which prompt this is for
     text: string;
+    negativePrompt?: string;  // Negative prompt for elements to avoid
   }>;
   width?: number;
   height?: number;
@@ -30,8 +34,8 @@ interface GenerationResult {
  */
 export async function POST(request: NextRequest) {
   try {
-    // Check if Leonardo API is available
-    if (!LeonardoService.isAvailable()) {
+    // Check if Leonardo API is available via unified provider
+    if (!isLeonardoAvailable()) {
       return NextResponse.json(
         { success: false, error: 'Leonardo API key not configured' },
         { status: 503 }
@@ -48,30 +52,37 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const leonardo = getLeonardoService();
-    const results: GenerationResult[] = [];
+    const leonardo = getLeonardoProvider();
 
     // Start all generations in parallel (non-blocking)
     const generationPromises = prompts.map(async (prompt) => {
       try {
-        const { generationId } = await leonardo.startGeneration({
+        const result = await leonardo.startGeneration({
+          type: 'image-generation',
           prompt: prompt.text,
           width,
           height,
           numImages: 1,
+          negativePrompt: prompt.negativePrompt,
+          metadata: { feature: 'generate-images', promptId: prompt.id },
         });
 
         return {
           promptId: prompt.id,
-          generationId,
+          generationId: result.generationId,
           status: 'started' as const,
         };
       } catch (error) {
+        const errorMessage = error instanceof AIError
+          ? `${error.code}: ${error.message}`
+          : error instanceof Error
+            ? error.message
+            : 'Unknown error';
         return {
           promptId: prompt.id,
           generationId: '',
           status: 'failed' as const,
-          error: error instanceof Error ? error.message : 'Unknown error',
+          error: errorMessage,
         };
       }
     });
@@ -109,14 +120,14 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    if (!LeonardoService.isAvailable()) {
+    if (!isLeonardoAvailable()) {
       return NextResponse.json(
         { success: false, error: 'Leonardo API key not configured' },
         { status: 503 }
       );
     }
 
-    const leonardo = getLeonardoService();
+    const leonardo = getLeonardoProvider();
     const result = await leonardo.checkGeneration(generationId);
 
     return NextResponse.json({
@@ -167,7 +178,7 @@ export async function DELETE(request: NextRequest) {
       });
     }
 
-    if (!LeonardoService.isAvailable()) {
+    if (!isLeonardoAvailable()) {
       return NextResponse.json(
         {
           success: false,
@@ -179,7 +190,7 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    const leonardo = getLeonardoService();
+    const leonardo = getLeonardoProvider();
     const deleted: string[] = [];
     const failed: Array<{ id: string; error: string }> = [];
 
@@ -190,7 +201,11 @@ export async function DELETE(request: NextRequest) {
         return { id: generationId, success: true };
       } catch (error) {
         // 404 means already deleted - treat as success for idempotency
-        const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+        const errorMsg = error instanceof AIError
+          ? error.message
+          : error instanceof Error
+            ? error.message
+            : 'Unknown error';
         if (errorMsg.includes('404') || errorMsg.includes('not found')) {
           return { id: generationId, success: true };
         }

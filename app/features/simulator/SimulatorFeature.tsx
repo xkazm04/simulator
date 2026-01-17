@@ -3,34 +3,81 @@
  *
  * A tool for combining cultural references (games, movies, art) to generate
  * unique image generation prompts. Uses content-swap transformation approach.
+ *
+ * Uses React Context for state management via provider hierarchy:
+ * - DimensionsProvider: Dimension state and handlers
+ * - BrainProvider: Base image, feedback, output mode
+ * - PromptsProvider: Generated prompts, elements, history
+ * - SimulatorProvider: Cross-subfeature coordination
  */
 
 'use client';
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react';
 
 import { GeneratedPrompt, Dimension, OutputMode, SavedPanelImage, InteractiveMode } from './types';
-import { useSimulator } from './hooks/useSimulator';
 import { useProject } from './hooks/useProject';
 import { useImageGeneration } from './hooks/useImageGeneration';
 import { usePoster } from './hooks/usePoster';
 import { useInteractivePrototype } from './hooks/useInteractivePrototype';
 import { OnionLayout } from './components/variants/OnionLayout';
-import { PromptDetailModal } from './components/PromptDetailModal';
-import { SavedImageModal } from './components/SavedImageModal';
-import { InteractivePreviewModal } from './components/InteractivePreviewModal';
-import { ComparisonModal } from './components/ComparisonModal';
-import { SimulatorHeader } from './components/SimulatorHeader';
 import { Toast, useToast } from '@/app/components/ui';
 
-export function SimulatorFeature() {
+// Subfeature providers, contexts, and components
+import { DimensionsProvider, useDimensionsContext } from './subfeature_dimensions';
+import { BrainProvider, useBrainContext } from './subfeature_brain';
+import { PromptsProvider, usePromptsContext } from './subfeature_prompts';
+import { SimulatorProvider, useSimulatorContext } from './SimulatorContext';
+import { SimulatorHeader } from './subfeature_project';
+
+// Lazy load modal components for performance
+// These are only loaded when needed (when the modal opens)
+const PromptDetailModal = lazy(() =>
+  import('./subfeature_prompts').then(mod => ({ default: mod.PromptDetailModal }))
+);
+const SavedImageModal = lazy(() =>
+  import('./subfeature_panels').then(mod => ({ default: mod.SavedImageModal }))
+);
+const InteractivePreviewModal = lazy(() =>
+  import('./subfeature_interactive').then(mod => ({ default: mod.InteractivePreviewModal }))
+);
+const ComparisonModal = lazy(() =>
+  import('./subfeature_comparison').then(mod => ({ default: mod.ComparisonModal }))
+);
+
+/**
+ * Loading fallback for lazy-loaded modals
+ * Shows a minimal loading state while the modal component loads
+ */
+function ModalLoadingFallback() {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+      <div className="flex items-center gap-3 px-6 py-4 bg-slate-800 rounded-lg border border-slate-700">
+        <div className="w-5 h-5 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin" />
+        <span className="font-mono text-sm text-slate-300">Loading...</span>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * SimulatorContent - Inner component that uses contexts
+ * Must be wrapped by all providers
+ */
+function SimulatorContent() {
   const [selectedPrompt, setSelectedPrompt] = useState<GeneratedPrompt | null>(null);
   const [selectedPanelImage, setSelectedPanelImage] = useState<SavedPanelImage | null>(null);
   const [showPosterOverlay, setShowPosterOverlay] = useState(false);
   const [interactivePreviewPromptId, setInteractivePreviewPromptId] = useState<string | null>(null);
   const [showComparisonModal, setShowComparisonModal] = useState(false);
 
-  const simulator = useSimulator();
+  // Get state from contexts
+  const dimensions = useDimensionsContext();
+  const brain = useBrainContext();
+  const prompts = usePromptsContext();
+  const simulator = useSimulatorContext();
+
+  // External hooks (not part of subfeatures)
   const project = useProject();
   const imageGen = useImageGeneration();
   const poster = usePoster();
@@ -38,6 +85,10 @@ export function SimulatorFeature() {
   const { showToast, toastProps } = useToast();
   const [isInitialized, setIsInitialized] = useState(false);
   const [savedPromptIds, setSavedPromptIds] = useState<Set<string>>(new Set());
+
+  // Track which prompt IDs have been submitted for image generation
+  // This prevents re-generation when images are deleted
+  const submittedForGenerationRef = useRef<Set<string>>(new Set());
 
   // Load projects on mount and create default Demo project if needed
   useEffect(() => {
@@ -66,7 +117,6 @@ export function SimulatorFeature() {
         if (projectWithState?.state) {
           restoreProjectState(projectWithState.state);
         }
-        // Use poster from projectWithState (already included in single API call)
         poster.setPoster(projectWithState?.poster || null);
       }
     };
@@ -74,7 +124,7 @@ export function SimulatorFeature() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isInitialized, project.projects.length, project.currentProject?.id, project.isLoading]);
 
-  // Helper to restore project state to simulator
+  // Helper to restore project state to simulator contexts
   const restoreProjectState = useCallback((state: {
     basePrompt: string;
     baseImageFile: string | null;
@@ -84,22 +134,22 @@ export function SimulatorFeature() {
   }) => {
     simulator.handleReset(); // Clear current state first
     if (state.basePrompt) {
-      simulator.setBaseImage(state.basePrompt);
+      brain.setBaseImage(state.basePrompt);
     }
     if (state.baseImageFile) {
-      simulator.setBaseImageFile(state.baseImageFile);
+      brain.setBaseImageFile(state.baseImageFile);
     }
     if (state.outputMode) {
-      simulator.setOutputMode(state.outputMode);
+      brain.setOutputMode(state.outputMode);
     }
     if (state.dimensions?.length > 0) {
-      simulator.handleConvertElementsToDimensions(state.dimensions);
+      dimensions.setDimensions(state.dimensions);
     }
     if (state.feedback) {
-      simulator.setFeedback(state.feedback);
+      brain.setFeedback(state.feedback);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [simulator.handleReset, simulator.setBaseImage, simulator.setBaseImageFile, simulator.setOutputMode, simulator.handleConvertElementsToDimensions, simulator.setFeedback]);
+  }, [simulator.handleReset, brain.setBaseImage, brain.setBaseImageFile, brain.setOutputMode, dimensions.setDimensions, brain.setFeedback]);
 
   // Handle project selection - load existing project state
   const handleProjectSelect = useCallback(async (projectId: string) => {
@@ -107,23 +157,25 @@ export function SimulatorFeature() {
     if (projectWithState?.state) {
       restoreProjectState(projectWithState.state);
     } else {
-      // New project or no state - reset to blank
       simulator.handleReset();
     }
-    // Use poster from projectWithState (already included in single API call)
+    // Clear image generation tracking for new project
+    imageGen.clearGeneratedImages();
+    setSavedPromptIds(new Set());
+    submittedForGenerationRef.current.clear();
     poster.setPoster(projectWithState?.poster || null);
     setShowPosterOverlay(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [project.selectProject, simulator.handleReset, restoreProjectState, poster.setPoster]);
+  }, [project.selectProject, simulator.handleReset, restoreProjectState, imageGen.clearGeneratedImages, poster.setPoster]);
 
   // Handle new project creation - save current, create new with blank state
   const handleProjectCreate = useCallback(async (name: string) => {
     const newProject = await project.createProject(name);
     if (newProject) {
-      // Reset simulator for new project
       simulator.handleReset();
       imageGen.clearGeneratedImages();
       setSavedPromptIds(new Set());
+      submittedForGenerationRef.current.clear(); // Clear submitted tracking
       poster.setPoster(null);
       setShowPosterOverlay(false);
     }
@@ -132,14 +184,13 @@ export function SimulatorFeature() {
 
   // Handle reset - clears all data in current project
   const handleResetProject = useCallback(async () => {
-    // Reset local simulator state
     simulator.handleReset();
     imageGen.clearGeneratedImages();
     setSavedPromptIds(new Set());
+    submittedForGenerationRef.current.clear(); // Clear submitted tracking
     poster.setPoster(null);
     setShowPosterOverlay(false);
 
-    // Save cleared state to current project
     if (project.currentProject) {
       project.saveState({
         basePrompt: '',
@@ -148,60 +199,85 @@ export function SimulatorFeature() {
         dimensions: [],
         feedback: { positive: '', negative: '' },
       });
-      // Delete poster from database
       await poster.deletePoster(project.currentProject.id);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [simulator.handleReset, imageGen.clearGeneratedImages, project.currentProject?.id, project.saveState, poster.setPoster, poster.deletePoster]);
 
-  // Wrapped generate handler that also triggers image generation
-  const handleGenerateWithImages = useCallback(async () => {
-    if (simulator.outputMode === 'poster') {
-      // Poster mode: generate single poster image
-      if (project.currentProject) {
-        // Show overlay immediately to display loading state
-        setShowPosterOverlay(true);
-        await poster.generatePoster(
-          project.currentProject.id,
-          simulator.dimensions,
-          simulator.baseImage
-        );
-        // Keep overlay showing after generation completes
+  // Handler specifically for poster generation (called from DirectorControl when in poster mode)
+  const handleGeneratePoster = useCallback(async () => {
+    if (project.currentProject) {
+      setShowPosterOverlay(true);
+      const generatedPoster = await poster.generatePoster(
+        project.currentProject.id,
+        dimensions.dimensions,
+        brain.baseImage
+      );
+      // Explicitly set the poster to ensure UI updates
+      // (generatePoster internally sets it, but this guarantees the state propagates)
+      if (generatedPoster) {
+        poster.setPoster(generatedPoster);
       }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dimensions.dimensions, brain.baseImage, project.currentProject?.id, poster.generatePoster, poster.setPoster]);
+
+  // Wrapped generate handler that also triggers image generation (legacy, kept for backwards compatibility)
+  const handleGenerateWithImages = useCallback(async () => {
+    if (brain.outputMode === 'poster') {
+      await handleGeneratePoster();
     } else {
-      // Normal mode: generate 4 scene prompts + images
       await simulator.handleGenerate();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [simulator.outputMode, simulator.dimensions, simulator.baseImage, simulator.handleGenerate, project.currentProject?.id, poster.generatePoster]);
+  }, [brain.outputMode, handleGeneratePoster, simulator.handleGenerate]);
+
+  // Clear generated images when generation starts (before new prompts arrive)
+  // This ensures UI shows loading state immediately, not old images
+  const wasGeneratingRef = useRef(false);
+  useEffect(() => {
+    if (simulator.isGenerating && !wasGeneratingRef.current) {
+      // Generation just started - clear old images and delete from Leonardo
+      imageGen.deleteAllGenerations();
+      submittedForGenerationRef.current.clear();
+    }
+    wasGeneratingRef.current = simulator.isGenerating;
+  }, [simulator.isGenerating, imageGen.deleteAllGenerations]);
 
   // Trigger image generation when new prompts are generated
+  // Uses ref to track submitted prompts and prevent re-generation after deletion
   useEffect(() => {
-    if (simulator.generatedPrompts.length > 0 && !simulator.isGenerating) {
-      // Check if we haven't already generated images for these prompts
-      const promptsNeedingImages = simulator.generatedPrompts.filter(
-        (p) => !imageGen.generatedImages.some((img) => img.promptId === p.id)
+    if (prompts.generatedPrompts.length > 0 && !simulator.isGenerating) {
+      // Filter prompts that haven't been submitted for generation yet
+      const promptsNeedingImages = prompts.generatedPrompts.filter(
+        (p) => !submittedForGenerationRef.current.has(p.id)
       );
 
       if (promptsNeedingImages.length > 0) {
+        // Mark these prompts as submitted before starting generation
+        promptsNeedingImages.forEach((p) => submittedForGenerationRef.current.add(p.id));
+
         imageGen.generateImagesFromPrompts(
-          promptsNeedingImages.map((p) => ({ id: p.id, prompt: p.prompt }))
+          promptsNeedingImages.map((p) => ({
+            id: p.id,
+            prompt: p.prompt,
+            negativePrompt: p.negativePrompt,
+          }))
         );
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [simulator.generatedPrompts.length, simulator.isGenerating, imageGen.generatedImages.length, imageGen.generateImagesFromPrompts]);
+  }, [prompts.generatedPrompts.length, simulator.isGenerating, imageGen.generateImagesFromPrompts]);
 
   // Handle saving an image to panel
   const handleStartImage = useCallback((promptId: string) => {
-    // Find the prompt text from generated prompts
-    const prompt = simulator.generatedPrompts.find((p) => p.id === promptId);
+    const prompt = prompts.generatedPrompts.find((p) => p.id === promptId);
     const promptText = prompt?.prompt || '';
 
     imageGen.saveImageToPanel(promptId, promptText);
     setSavedPromptIds((prev) => new Set(prev).add(promptId));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [imageGen.saveImageToPanel, simulator.generatedPrompts]);
+  }, [imageGen.saveImageToPanel, prompts.generatedPrompts]);
 
   // Get generated image for selected prompt (for modal)
   const selectedPromptImage = selectedPrompt
@@ -210,18 +286,16 @@ export function SimulatorFeature() {
 
   // Calculate available interactive modes based on current scene types
   const availableInteractiveModes = useCallback((): InteractiveMode[] => {
-    // Get unique scene types from generated prompts
-    const sceneTypes = simulator.generatedPrompts.map(p => p.sceneType);
+    const sceneTypes = prompts.generatedPrompts.map(p => p.sceneType);
     if (sceneTypes.length === 0) {
       return ['static'];
     }
-    // Get modes available for all scene types
     const allModes = new Set<InteractiveMode>(['static']);
     sceneTypes.forEach(sceneType => {
       interactive.getAvailableModes(sceneType).forEach(mode => allModes.add(mode));
     });
     return Array.from(allModes);
-  }, [simulator.generatedPrompts, interactive.getAvailableModes]);
+  }, [prompts.generatedPrompts, interactive.getAvailableModes]);
 
   // Handle interactive prototype click from PromptCard
   const handleInteractiveClick = useCallback((promptId: string) => {
@@ -238,11 +312,46 @@ export function SimulatorFeature() {
     setShowComparisonModal(true);
   }, []);
 
+  // Handle poster upload from local file
+  const handleUploadPoster = useCallback(async (imageDataUrl: string) => {
+    if (!project.currentProject) return;
+
+    try {
+      // Save uploaded poster to API
+      const response = await fetch(`/api/projects/${project.currentProject.id}/poster`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          imageUrl: imageDataUrl,
+          prompt: 'Uploaded poster',
+          dimensionsJson: JSON.stringify(dimensions.dimensions),
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.poster) {
+          poster.setPoster({
+            id: data.poster.id,
+            projectId: data.poster.project_id,
+            imageUrl: data.poster.image_url,
+            prompt: data.poster.prompt || 'Uploaded poster',
+            dimensionsJson: data.poster.dimensions_json || '',
+            createdAt: data.poster.created_at,
+          });
+          setShowPosterOverlay(true);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to upload poster:', err);
+    }
+  }, [project.currentProject, dimensions.dimensions, poster]);
+
   // Handle interactive prototype generation
   const handleGeneratePrototype = useCallback(async () => {
     if (!interactivePreviewPromptId) return;
 
-    const prompt = simulator.generatedPrompts.find(p => p.id === interactivePreviewPromptId);
+    const prompt = prompts.generatedPrompts.find(p => p.id === interactivePreviewPromptId);
     if (!prompt) return;
 
     const generatedImage = imageGen.generatedImages.find(img => img.promptId === interactivePreviewPromptId);
@@ -252,13 +361,13 @@ export function SimulatorFeature() {
       imageUrl: generatedImage?.url ?? undefined,
       prompt: prompt.prompt,
       sceneType: prompt.sceneType,
-      dimensions: simulator.dimensions.map(d => ({ type: d.type, reference: d.reference })),
+      dimensions: dimensions.dimensions.map(d => ({ type: d.type, reference: d.reference })),
     });
-  }, [interactivePreviewPromptId, simulator.generatedPrompts, simulator.dimensions, imageGen.generatedImages, interactive.generatePrototype]);
+  }, [interactivePreviewPromptId, prompts.generatedPrompts, dimensions.dimensions, imageGen.generatedImages, interactive.generatePrototype]);
 
   // Get data for interactive modal
   const interactiveModalPrompt = interactivePreviewPromptId
-    ? simulator.generatedPrompts.find(p => p.id === interactivePreviewPromptId)
+    ? prompts.generatedPrompts.find(p => p.id === interactivePreviewPromptId)
     : undefined;
   const interactiveModalImage = interactivePreviewPromptId
     ? imageGen.generatedImages.find(img => img.promptId === interactivePreviewPromptId)
@@ -272,51 +381,43 @@ export function SimulatorFeature() {
   const isInitialMountRef = useRef(true);
 
   useEffect(() => {
-    // Skip autosave on initial mount to prevent saving default/loaded state
     if (isInitialMountRef.current) {
       isInitialMountRef.current = false;
       return;
     }
 
-    // Skip if no project is selected
     if (!project.currentProject) {
       return;
     }
 
-    // Clear any pending autosave
     if (autosaveTimerRef.current) {
       clearTimeout(autosaveTimerRef.current);
     }
 
-    // Debounce the save operation (300ms delay)
     autosaveTimerRef.current = setTimeout(() => {
       const stateToSave: {
-        dimensions?: typeof simulator.dimensions;
+        dimensions?: typeof dimensions.dimensions;
         basePrompt?: string;
         baseImageFile?: string | null;
-        outputMode?: typeof simulator.outputMode;
-        feedback?: typeof simulator.feedback;
+        outputMode?: typeof brain.outputMode;
+        feedback?: typeof brain.feedback;
       } = {};
 
-      // Only include non-empty values to avoid overwriting with defaults
-      if (simulator.dimensions.length > 0) {
-        stateToSave.dimensions = simulator.dimensions;
+      if (dimensions.dimensions.length > 0) {
+        stateToSave.dimensions = dimensions.dimensions;
       }
-      if (simulator.baseImage) {
-        stateToSave.basePrompt = simulator.baseImage;
+      if (brain.baseImage) {
+        stateToSave.basePrompt = brain.baseImage;
       }
-      // Always save baseImageFile (can be null to clear it)
-      stateToSave.baseImageFile = simulator.baseImageFile;
-      stateToSave.outputMode = simulator.outputMode;
-      if (simulator.feedback.positive || simulator.feedback.negative) {
-        stateToSave.feedback = simulator.feedback;
+      stateToSave.baseImageFile = brain.baseImageFile;
+      stateToSave.outputMode = brain.outputMode;
+      if (brain.feedback.positive || brain.feedback.negative) {
+        stateToSave.feedback = brain.feedback;
       }
 
-      // Batch save all state in single operation
       project.saveState(stateToSave);
     }, 300);
 
-    // Cleanup on unmount or before next effect run
     return () => {
       if (autosaveTimerRef.current) {
         clearTimeout(autosaveTimerRef.current);
@@ -324,12 +425,12 @@ export function SimulatorFeature() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
-    simulator.dimensions,
-    simulator.baseImage,
-    simulator.baseImageFile,
-    simulator.outputMode,
-    simulator.feedback.positive,
-    simulator.feedback.negative,
+    dimensions.dimensions,
+    brain.baseImage,
+    brain.baseImageFile,
+    brain.outputMode,
+    brain.feedback.positive,
+    brain.feedback.negative,
     project.currentProject?.id,
     project.saveState,
   ]);
@@ -341,9 +442,13 @@ export function SimulatorFeature() {
         projects={project.projects}
         currentProject={project.currentProject}
         isLoadingProjects={project.isLoading}
+        saveStatus={project.saveStatus}
+        lastSavedAt={project.lastSavedAt}
         onProjectSelect={handleProjectSelect}
         onProjectCreate={handleProjectCreate}
         onProjectDelete={project.deleteProject}
+        onProjectRename={project.renameProject}
+        onProjectDuplicate={project.duplicateProject}
         onLoadExample={simulator.handleLoadExample}
         onReset={handleResetProject}
       />
@@ -351,123 +456,116 @@ export function SimulatorFeature() {
       {/* Content */}
       <div className="flex-1 overflow-hidden relative bg-surface-primary">
         <OnionLayout
-          baseImage={simulator.baseImage}
-          setBaseImage={simulator.setBaseImage}
-          baseImageFile={simulator.baseImageFile}
-          setBaseImageFile={simulator.setBaseImageFile}
-          handleImageParse={simulator.handleImageParse}
-          isParsingImage={simulator.isParsingImage}
-          imageParseError={simulator.imageParseError}
-          dimensions={simulator.dimensions}
-          handleDimensionChange={simulator.handleDimensionChange}
-          handleDimensionWeightChange={simulator.handleDimensionWeightChange}
-          handleDimensionFilterModeChange={simulator.handleDimensionFilterModeChange}
-          handleDimensionTransformModeChange={simulator.handleDimensionTransformModeChange}
-          handleDimensionRemove={simulator.handleDimensionRemove}
-          handleDimensionAdd={simulator.handleDimensionAdd}
-          handleDimensionReorder={simulator.handleDimensionReorder}
-          generatedPrompts={simulator.generatedPrompts}
-          handlePromptRate={simulator.handlePromptRate}
-          handlePromptLock={simulator.handlePromptLock}
-          handleElementLock={simulator.handleElementLock}
-          handleCopy={simulator.handleCopy}
-          handleAcceptElement={simulator.handleAcceptElement}
-          acceptingElementId={simulator.acceptingElementId}
-          handleDropElementOnDimension={simulator.handleDropElementOnDimension}
-          feedback={simulator.feedback}
-          setFeedback={simulator.setFeedback}
-          isGenerating={simulator.isGenerating}
-          handleGenerate={handleGenerateWithImages}
-          canGenerate={simulator.canGenerate}
-          outputMode={simulator.outputMode}
-          setOutputMode={simulator.setOutputMode}
-          handleSmartBreakdownApply={simulator.handleSmartBreakdownApply}
-          pendingDimensionChange={simulator.pendingDimensionChange}
-          handleUndoDimensionChange={simulator.handleUndoDimensionChange}
-          onConvertElementsToDimensions={simulator.handleConvertElementsToDimensions}
-          onViewPrompt={setSelectedPrompt}
-          // Image generation props
+          // Side panel props
           leftPanelSlots={imageGen.leftPanelSlots}
           rightPanelSlots={imageGen.rightPanelSlots}
           onRemovePanelImage={imageGen.removePanelImage}
           onViewPanelImage={setSelectedPanelImage}
+          // Image generation props
           generatedImages={imageGen.generatedImages}
           isGeneratingImages={imageGen.isGeneratingImages}
           onStartImage={handleStartImage}
           savedPromptIds={savedPromptIds}
+          onDeleteGenerations={imageGen.deleteAllGenerations}
           // Poster props
           projectPoster={poster.poster}
           showPosterOverlay={showPosterOverlay}
           onTogglePosterOverlay={() => setShowPosterOverlay(!showPosterOverlay)}
           isGeneratingPoster={poster.isGenerating}
-          // Delete generations
-          onDeleteGenerations={imageGen.deleteAllGenerations}
+          onUploadPoster={handleUploadPoster}
+          onGeneratePoster={handleGeneratePoster}
           // Interactive prototype props
           interactiveMode={interactive.interactiveMode}
           availableInteractiveModes={availableInteractiveModes()}
           onInteractiveModeChange={interactive.setInteractiveMode}
-          interactivePrototypes={interactive.prototypes}
-          isGeneratingPrototype={interactive.isGenerating}
-          onGeneratePrototype={handleInteractiveClick}
-          onViewInteractivePrototype={handleInteractiveClick}
           // Comparison props
           onOpenComparison={handleOpenComparison}
-          // Negative prompt props
-          negativePrompts={simulator.negativePrompts}
-          onNegativePromptsChange={simulator.setNegativePrompts}
-          // Prompt history props
-          promptHistory={simulator.promptHistory}
-          onPromptUndo={simulator.handlePromptUndo}
-          onPromptRedo={simulator.handlePromptRedo}
+          // Modal handlers
+          onViewPrompt={setSelectedPrompt}
         />
 
-        <PromptDetailModal
-          prompt={selectedPrompt}
-          isOpen={!!selectedPrompt}
-          onClose={() => setSelectedPrompt(null)}
-          onRate={simulator.handlePromptRate}
-          onLock={simulator.handlePromptLock}
-          onLockElement={simulator.handleElementLock}
-          onAcceptElement={simulator.handleAcceptElement}
-          acceptingElementId={simulator.acceptingElementId}
-          generatedImage={selectedPromptImage}
-          onStartImage={handleStartImage}
-          isSavedToPanel={selectedPrompt ? savedPromptIds.has(selectedPrompt.id) : false}
-          onCopy={handleCopyWithToast}
-        />
+        {/* Lazy-loaded modals with Suspense boundaries */}
+        {/* Only render when open to trigger lazy loading */}
+        {selectedPrompt && (
+          <Suspense fallback={<ModalLoadingFallback />}>
+            <PromptDetailModal
+              prompt={selectedPrompt}
+              isOpen={!!selectedPrompt}
+              onClose={() => setSelectedPrompt(null)}
+              onRate={prompts.handlePromptRate}
+              onLock={prompts.handlePromptLock}
+              onLockElement={prompts.handleElementLock}
+              onAcceptElement={simulator.onAcceptElement}
+              acceptingElementId={prompts.acceptingElementId}
+              generatedImage={selectedPromptImage}
+              onStartImage={handleStartImage}
+              isSavedToPanel={selectedPrompt ? savedPromptIds.has(selectedPrompt.id) : false}
+              onCopy={handleCopyWithToast}
+            />
+          </Suspense>
+        )}
 
-        <SavedImageModal
-          image={selectedPanelImage}
-          isOpen={!!selectedPanelImage}
-          onClose={() => setSelectedPanelImage(null)}
-          onRemove={imageGen.removePanelImage}
-          onUpdateImage={imageGen.updatePanelImage}
-          gameUIDimension={simulator.dimensions.find(d => d.type === 'gameUI')?.reference}
-          onCopy={handleCopyWithToast}
-        />
+        {selectedPanelImage && (
+          <Suspense fallback={<ModalLoadingFallback />}>
+            <SavedImageModal
+              image={selectedPanelImage}
+              isOpen={!!selectedPanelImage}
+              onClose={() => setSelectedPanelImage(null)}
+              onRemove={imageGen.removePanelImage}
+              onUpdateImage={imageGen.updatePanelImage}
+              gameUIDimension={dimensions.dimensions.find(d => d.type === 'gameUI')?.reference}
+              onCopy={handleCopyWithToast}
+            />
+          </Suspense>
+        )}
 
         {/* Global Toast for copy notifications from modals */}
         <Toast {...toastProps} data-testid="simulator-toast" />
 
-        <InteractivePreviewModal
-          isOpen={!!interactivePreviewPromptId && interactive.interactiveMode !== 'static'}
-          onClose={() => setInteractivePreviewPromptId(null)}
-          prompt={interactiveModalPrompt}
-          generatedImage={interactiveModalImage}
-          prototype={interactiveModalPrototype}
-          mode={interactive.interactiveMode}
-          onGeneratePrototype={handleGeneratePrototype}
-        />
+        {interactivePreviewPromptId && interactive.interactiveMode !== 'static' && (
+          <Suspense fallback={<ModalLoadingFallback />}>
+            <InteractivePreviewModal
+              isOpen={true}
+              onClose={() => setInteractivePreviewPromptId(null)}
+              prompt={interactiveModalPrompt}
+              generatedImage={interactiveModalImage}
+              prototype={interactiveModalPrototype}
+              mode={interactive.interactiveMode}
+              onGeneratePrototype={handleGeneratePrototype}
+            />
+          </Suspense>
+        )}
 
-        <ComparisonModal
-          isOpen={showComparisonModal}
-          onClose={() => setShowComparisonModal(false)}
-          allPrompts={simulator.generatedPrompts}
-          allImages={imageGen.generatedImages}
-          dimensions={simulator.dimensions}
-        />
+        {showComparisonModal && (
+          <Suspense fallback={<ModalLoadingFallback />}>
+            <ComparisonModal
+              isOpen={showComparisonModal}
+              onClose={() => setShowComparisonModal(false)}
+              allPrompts={prompts.generatedPrompts}
+              allImages={imageGen.generatedImages}
+              dimensions={dimensions.dimensions}
+            />
+          </Suspense>
+        )}
       </div>
     </div>
+  );
+}
+
+/**
+ * SimulatorFeature - Root component with provider hierarchy
+ */
+export function SimulatorFeature() {
+  return (
+    <DimensionsProvider>
+      <BrainProvider>
+        <PromptsProvider>
+          <SimulatorProvider>
+            <SimulatorContent />
+          </SimulatorProvider>
+        </PromptsProvider>
+      </BrainProvider>
+    </DimensionsProvider>
   );
 }
 

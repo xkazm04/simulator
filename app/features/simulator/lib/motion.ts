@@ -11,21 +11,79 @@
  * - staggerChildren: 50ms - Consistent delay between siblings
  */
 
-import { Variants, Transition, TargetAndTransition, useReducedMotion as useFramerReducedMotion } from 'framer-motion';
+import { Variants, Transition, TargetAndTransition } from 'framer-motion';
+import { useState, useEffect, useSyncExternalStore } from 'react';
 
 // ============================================
 // Reduced Motion Support (WCAG 2.1 Level AAA)
 // ============================================
 
 /**
- * Re-export Framer Motion's useReducedMotion hook
+ * Singleton reduced motion state manager
+ *
+ * Instead of each component creating its own media query listener,
+ * this module maintains a single shared listener and state.
+ * This dramatically reduces the number of event listeners and
+ * prevents unnecessary re-renders across components.
+ */
+let reducedMotionState: boolean | null = null;
+let reducedMotionListeners: Set<() => void> = new Set();
+let mediaQuery: MediaQueryList | null = null;
+
+function getReducedMotionSnapshot(): boolean | null {
+  // Server-side rendering - return null
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  // Initialize on first call
+  if (mediaQuery === null) {
+    mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+    reducedMotionState = mediaQuery.matches;
+
+    // Single listener for all subscribers
+    const handleChange = (e: MediaQueryListEvent) => {
+      reducedMotionState = e.matches;
+      // Notify all subscribers
+      reducedMotionListeners.forEach(listener => listener());
+    };
+
+    mediaQuery.addEventListener('change', handleChange);
+  }
+
+  return reducedMotionState;
+}
+
+function subscribeToReducedMotion(callback: () => void): () => void {
+  reducedMotionListeners.add(callback);
+  return () => {
+    reducedMotionListeners.delete(callback);
+  };
+}
+
+function getServerSnapshot(): boolean | null {
+  return null; // Default for SSR
+}
+
+/**
+ * Singleton hook for reduced motion preference
+ *
+ * Uses useSyncExternalStore to subscribe to a shared media query listener,
+ * ensuring all components share one subscription instead of creating their own.
+ *
  * Returns true if user prefers reduced motion (via OS settings)
  *
  * Usage:
  * const prefersReducedMotion = useReducedMotion();
  * const duration = prefersReducedMotion ? 0 : DURATION.normal;
  */
-export const useReducedMotion = useFramerReducedMotion;
+export function useReducedMotion(): boolean | null {
+  return useSyncExternalStore(
+    subscribeToReducedMotion,
+    getReducedMotionSnapshot,
+    getServerSnapshot
+  );
+}
 
 /**
  * Get duration based on reduced motion preference
