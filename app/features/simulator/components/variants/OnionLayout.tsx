@@ -20,6 +20,7 @@ import {
   PanelSlot,
   SavedPanelImage,
 } from '../../types';
+import { PosterGeneration } from '../../hooks/usePoster';
 import { SidePanel } from '../../subfeature_panels';
 import { Toast, useToast } from '@/app/components/ui';
 
@@ -55,6 +56,14 @@ export interface OnionLayoutProps {
   onUploadPoster?: (imageDataUrl: string) => void;
   onGeneratePoster?: () => Promise<void>;
 
+  // Poster generation state (for 2x2 grid selection)
+  posterGenerations?: PosterGeneration[];
+  selectedPosterIndex?: number | null;
+  isSavingPoster?: boolean;
+  onSelectPoster?: (index: number) => void;
+  onSavePoster?: () => void;
+  onCancelPosterGeneration?: () => void;
+
   // Interactive prototype props (project-level)
   interactiveMode?: InteractiveMode;
   availableInteractiveModes?: InteractiveMode[];
@@ -86,6 +95,13 @@ function OnionLayoutComponent({
   isGeneratingPoster = false,
   onUploadPoster,
   onGeneratePoster,
+  // Poster generation state
+  posterGenerations = [],
+  selectedPosterIndex = null,
+  isSavingPoster = false,
+  onSelectPoster,
+  onSavePoster,
+  onCancelPosterGeneration,
   // Interactive prototype props
   interactiveMode = 'static',
   availableInteractiveModes = ['static'],
@@ -208,6 +224,12 @@ function OnionLayoutComponent({
             isGeneratingPoster={isGeneratingPoster}
             onUploadPoster={onUploadPoster}
             onGeneratePoster={onGeneratePoster}
+            posterGenerations={posterGenerations}
+            selectedPosterIndex={selectedPosterIndex}
+            isSavingPoster={isSavingPoster}
+            onSelectPoster={onSelectPoster}
+            onSavePoster={onSavePoster}
+            onCancelPosterGeneration={onCancelPosterGeneration}
           />
 
           {/* Right Dimensions Column */}

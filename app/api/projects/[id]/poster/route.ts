@@ -121,6 +121,13 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 }
 
 /**
+ * PUT - Save/update project poster (alias for POST)
+ */
+export async function PUT(request: NextRequest, routeParams: RouteParams) {
+  return POST(request, routeParams);
+}
+
+/**
  * DELETE - Delete project poster
  */
 export async function DELETE(request: NextRequest, { params }: RouteParams) {

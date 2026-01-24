@@ -11,10 +11,13 @@ import { GoogleGenAI } from '@google/genai';
 // Gemini 2.5 Flash has native image generation capability
 const GEMINI_IMAGE_MODEL = 'gemini-2.5-flash-image';
 
+type RegenerationMode = 'transform' | 'overlay';
+
 interface GeminiRequest {
   prompt: string;
   sourceImageUrl: string;
   aspectRatio?: '16:9' | '9:16' | '1:1' | '4:3' | '3:4';
+  mode?: RegenerationMode; // 'transform' = redesign the image, 'overlay' = add elements on top
 }
 
 // Convert URL to base64 data URL
@@ -37,7 +40,7 @@ async function urlToBase64(url: string): Promise<{ mimeType: string; data: strin
 export async function POST(request: NextRequest) {
   try {
     const body: GeminiRequest = await request.json();
-    const { prompt, sourceImageUrl, aspectRatio = '16:9' } = body;
+    const { prompt, sourceImageUrl, aspectRatio = '16:9', mode = 'transform' } = body;
 
     if (!prompt || !prompt.trim()) {
       return NextResponse.json(
@@ -76,10 +79,20 @@ export async function POST(request: NextRequest) {
     // Initialize Gemini client
     const client = new GoogleGenAI({ apiKey });
 
-    // Build the modification prompt - allow full transformations
-    const modificationPrompt = `Using the provided image as reference, generate a new image that applies these changes: ${prompt.trim()}
+    // Build the modification prompt based on mode
+    let modificationPrompt: string;
 
-You may change composition, camera angle, style, and any other aspects as needed to fulfill the request. The reference image shows the subject matter and context, but you should transform it according to the user's instructions. Generate a high-quality, detailed image.`;
+    if (mode === 'overlay') {
+      // Overlay mode: Add elements ON TOP of the existing image, preserve the scene
+      modificationPrompt = `Look at this image. ${prompt.trim()}
+
+IMPORTANT: Keep the original image's scene, composition, and content exactly as they are. Only add the requested overlay elements on top. Do not change the underlying image.`;
+    } else {
+      // Transform mode (default): Completely redesign the image based on the prompt
+      modificationPrompt = `Transform this image: ${prompt.trim()}
+
+Create a completely NEW image inspired by the provided reference. You should reimagine and redesign the scene according to the instructions above. Feel free to change the composition, style, colors, atmosphere, and any other aspects to match the requested transformation. Generate a high-quality, detailed image that fulfills the creative direction.`;
+    }
 
     // Map aspect ratio to width/height for image generation config
     const aspectRatioMap: Record<string, { width: number; height: number }> = {

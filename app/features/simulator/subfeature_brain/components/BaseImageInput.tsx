@@ -2,14 +2,14 @@
  * BaseImageInput - Foundation reference input with image upload
  * Design: Clean Manuscript style
  *
- * Supports drag-and-drop image upload.
+ * Supports drag-and-drop image upload and clipboard paste (Ctrl+V).
  * When an image is uploaded, triggers AI parsing to extract description.
  * Shows error state with red border if parsing fails.
  */
 
 'use client';
 
-import React, { useRef, useState, useCallback } from 'react';
+import React, { useRef, useState, useCallback, useEffect } from 'react';
 import Image from 'next/image';
 import { Upload, X, ImageIcon, Loader2, Sparkles, AlertCircle } from 'lucide-react';
 import { stateClasses, semanticColors } from '../../lib/semanticColors';
@@ -71,6 +71,28 @@ export function BaseImageInput({
     };
     reader.readAsDataURL(file);
   }, [onImageChange, onImageParse]);
+
+  // Handle paste from clipboard (Ctrl+V)
+  useEffect(() => {
+    const handlePaste = (e: ClipboardEvent) => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+
+      for (const item of items) {
+        if (item.type.startsWith('image/')) {
+          const file = item.getAsFile();
+          if (file) {
+            e.preventDefault();
+            processFile(file);
+            break;
+          }
+        }
+      }
+    };
+
+    document.addEventListener('paste', handlePaste);
+    return () => document.removeEventListener('paste', handlePaste);
+  }, [processFile]);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -276,7 +298,7 @@ export function BaseImageInput({
               ? '// AI is analyzing the uploaded image...'
               : hasError
                 ? `// ${displayError}`
-                : '// describe the foundation visual or drag & drop an image'}
+                : '// describe the foundation visual, drag & drop, or paste (Ctrl+V) an image'}
           </p>
         </div>
       </div>

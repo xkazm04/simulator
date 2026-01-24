@@ -65,10 +65,27 @@ export interface PromptsActions {
     dimensions: Dimension[],
     outputMode: OutputMode
   ) => GeneratedPrompt[];
+  /** Restore prompts from saved state (used when loading a project) */
+  restorePrompts: (prompts: GeneratedPrompt[]) => void;
 }
 
-export function usePrompts(): PromptsState & PromptsActions {
-  const [generatedPrompts, setGeneratedPromptsState] = useState<GeneratedPrompt[]>([]);
+export interface UsePromptsOptions {
+  /** Callback to persist prompts */
+  onSavePrompts?: (prompts: GeneratedPrompt[]) => Promise<void>;
+  /** Callback to update a single prompt */
+  onUpdatePrompt?: (promptId: string, updates: Partial<GeneratedPrompt>) => Promise<void>;
+  /** Callback to delete all prompts */
+  onDeletePrompts?: () => Promise<void>;
+  /** Initial prompts to restore (from project load) */
+  initialPrompts?: GeneratedPrompt[];
+}
+
+export function usePrompts(options: UsePromptsOptions = {}): PromptsState & PromptsActions {
+  const { onSavePrompts, onUpdatePrompt, onDeletePrompts, initialPrompts } = options;
+
+  const [generatedPrompts, setGeneratedPromptsState] = useState<GeneratedPrompt[]>(
+    initialPrompts || []
+  );
   const [acceptingElementId, setAcceptingElementId] = useState<string | null>(null);
   const [negativePrompts, setNegativePromptsState] = useState<NegativePromptItem[]>([]);
 
@@ -184,12 +201,34 @@ export function usePrompts(): PromptsState & PromptsActions {
 
   const setGeneratedPrompts = useCallback((prompts: GeneratedPrompt[]) => {
     setGeneratedPromptsState(prompts);
+
+    // Persist prompts
+    if (onSavePrompts) {
+      onSavePrompts(prompts).catch(err => {
+        console.error('Failed to persist prompts:', err);
+      });
+    }
+  }, [onSavePrompts]);
+
+  /**
+   * Restore prompts from saved state (used when loading a project)
+   * Does not trigger persistence callback since these are already saved
+   */
+  const restorePrompts = useCallback((prompts: GeneratedPrompt[]) => {
+    setGeneratedPromptsState(prompts);
   }, []);
 
   const clearPrompts = useCallback(() => {
     setGeneratedPromptsState([]);
     setNegativePromptsState([]);
-  }, []);
+
+    // Persist deletion
+    if (onDeletePrompts) {
+      onDeletePrompts().catch(err => {
+        console.error('Failed to delete prompts:', err);
+      });
+    }
+  }, [onDeletePrompts]);
 
   // Prompt history handlers
   const handlePromptUndo = useCallback(() => {
@@ -289,5 +328,6 @@ export function usePrompts(): PromptsState & PromptsActions {
     handlePromptRedo,
     pushToHistory,
     generateFallbackPrompts,
+    restorePrompts,
   };
 }

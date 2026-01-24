@@ -113,6 +113,7 @@ export function PosterGallery({
           className="group cursor-pointer"
           onClick={() => onPosterClick?.(poster)}
         >
+          {/* Image container */}
           <div className="relative aspect-[2/3] radius-lg overflow-hidden border border-slate-700/50 bg-slate-900/50 hover:border-rose-500/50 transition-all duration-300 hover:shadow-elevated hover:shadow-rose-900/20">
             <Image
               src={poster.image_url}
@@ -122,21 +123,20 @@ export function PosterGallery({
               unoptimized
             />
 
-            {/* Overlay gradient */}
-            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-
-            {/* Project name label */}
-            <div className="absolute bottom-0 left-0 right-0 p-3 translate-y-full group-hover:translate-y-0 transition-transform duration-300">
-              <p className="text-sm font-medium text-white truncate">{poster.project_name}</p>
-              <p className="type-label text-slate-400 font-mono mt-1">
-                {new Date(poster.created_at).toLocaleDateString()}
-              </p>
-            </div>
-
-            {/* Film icon badge */}
+            {/* Film icon badge - visible on hover */}
             <div className="absolute top-2 right-2 p-1.5 rounded-full bg-rose-500/20 border border-rose-500/30 opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-sm">
               <Film size={12} className="text-rose-400" />
             </div>
+          </div>
+
+          {/* Title and date below image */}
+          <div className="mt-2 px-1">
+            <p className="text-sm font-medium text-slate-200 truncate group-hover:text-white transition-colors">
+              {poster.project_name}
+            </p>
+            <p className="type-label text-slate-500 font-mono mt-0.5">
+              {new Date(poster.created_at).toLocaleDateString()}
+            </p>
           </div>
         </motion.div>
       ))}

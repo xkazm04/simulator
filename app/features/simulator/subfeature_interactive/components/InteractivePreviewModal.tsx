@@ -18,7 +18,7 @@ import {
   INTERACTIVE_MODES,
 } from '../../types';
 import { GenerationProgress } from '../../hooks/useInteractivePrototype';
-import { WebGLDemo, ClickablePrototype, AnimatedTrailer } from '../../components/interactive';
+import { WebGLDemo, ClickablePrototype } from '../../components/interactive';
 import { fadeIn, scaleIn, transitions } from '../../lib/motion';
 import { getModeIcon, getModeColors } from '../../lib/interactiveModeHelpers';
 
@@ -247,15 +247,6 @@ export function InteractivePreviewModal({
       case 'clickable':
         return (
           <ClickablePrototype
-            prototype={prototype}
-            imageUrl={imageUrl}
-            isFullscreen={isFullscreen}
-            onToggleFullscreen={toggleFullscreen}
-          />
-        );
-      case 'trailer':
-        return (
-          <AnimatedTrailer
             prototype={prototype}
             imageUrl={imageUrl}
             isFullscreen={isFullscreen}

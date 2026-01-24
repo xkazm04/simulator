@@ -5,7 +5,6 @@
  * - static: Regular image display
  * - webgl: WebGLDemo component
  * - clickable: ClickablePrototype component
- * - trailer: AnimatedTrailer component
  *
  * Also provides the mode selector UI and fullscreen capability.
  */
@@ -28,7 +27,6 @@ import {
 } from '../../types';
 import { WebGLDemo } from './WebGLDemo';
 import { ClickablePrototype } from './ClickablePrototype';
-import { AnimatedTrailer } from './AnimatedTrailer';
 import { fadeIn, scaleIn, transitions } from '../../lib/motion';
 import { getModeIcon, getModeColors } from '../../lib/interactiveModeHelpers';
 
@@ -160,16 +158,6 @@ export function InteractivePreview({
       case 'clickable':
         return prototype ? (
           <ClickablePrototype
-            prototype={prototype}
-            imageUrl={imageUrl}
-            isFullscreen={isFullscreen}
-            onToggleFullscreen={handleToggleFullscreen}
-          />
-        ) : null;
-
-      case 'trailer':
-        return prototype ? (
-          <AnimatedTrailer
             prototype={prototype}
             imageUrl={imageUrl}
             isFullscreen={isFullscreen}

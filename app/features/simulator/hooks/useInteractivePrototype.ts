@@ -4,7 +4,6 @@
  * Handles the generation and state management of interactive prototypes:
  * - WebGL demos for gameplay scenes
  * - Clickable prototypes for UI concepts
- * - Animated trailers for movie posters
  */
 
 import { useState, useCallback, useMemo } from 'react';
@@ -14,7 +13,6 @@ import {
   InteractivePrototype,
   InteractiveRegion,
   WebGLSceneConfig,
-  TrailerConfig,
   DimensionType,
 } from '../types';
 
@@ -46,8 +44,6 @@ function getEstimatedTime(mode: InteractiveMode): number {
       return 4; // WebGL demos take longer
     case 'clickable':
       return 2; // Clickable prototypes are simpler
-    case 'trailer':
-      return 6; // Trailers require more processing
     default:
       return 2;
   }
@@ -57,7 +53,7 @@ function getEstimatedTime(mode: InteractiveMode): number {
  * Get stage message based on mode and stage
  */
 function getStageMessage(mode: InteractiveMode, stage: GenerationStage): string {
-  const modeLabel = mode === 'webgl' ? '3D scene' : mode === 'trailer' ? 'animation' : 'prototype';
+  const modeLabel = mode === 'webgl' ? '3D scene' : 'prototype';
 
   switch (stage) {
     case 'analyzing':
@@ -65,20 +61,27 @@ function getStageMessage(mode: InteractiveMode, stage: GenerationStage): string 
     case 'generating':
       return mode === 'webgl'
         ? 'Generating 3D scene configuration...'
-        : mode === 'trailer'
-          ? 'Creating animation keyframes...'
-          : 'Mapping interactive regions...';
+        : 'Mapping interactive regions...';
     case 'rendering':
       return mode === 'webgl'
         ? 'Preparing WebGL renderer...'
-        : mode === 'trailer'
-          ? 'Rendering animation frames...'
-          : 'Finalizing clickable areas...';
+        : 'Finalizing clickable areas...';
     case 'complete':
       return 'Generation complete!';
     default:
       return 'Processing...';
   }
+}
+
+interface UseInteractivePrototypeOptions {
+  /** Callback to persist a prototype */
+  onSavePrototype?: (prototype: InteractivePrototype) => Promise<void>;
+  /** Callback to delete a prototype */
+  onDeletePrototype?: (promptId: string) => Promise<void>;
+  /** Callback to delete all prototypes */
+  onDeleteAllPrototypes?: () => Promise<void>;
+  /** Initial prototypes to restore (from project load) */
+  initialPrototypes?: InteractivePrototype[];
 }
 
 interface UseInteractivePrototypeReturn {
@@ -106,6 +109,8 @@ interface UseInteractivePrototypeReturn {
   clearPrototypes: () => void;
   /** Check if mode is available for scene type */
   getAvailableModes: (sceneType: string) => InteractiveMode[];
+  /** Restore prototypes from saved state */
+  restorePrototypes: (prototypes: InteractivePrototype[]) => void;
 }
 
 /**
@@ -139,17 +144,6 @@ function getModesForSceneType(sceneType: string): InteractiveMode[] {
     sceneTypeLower.includes('key art')
   ) {
     modes.push('clickable');
-  }
-
-  // Poster/cinematic scenes support trailers
-  if (
-    sceneTypeLower.includes('poster') ||
-    sceneTypeLower.includes('key art') ||
-    sceneTypeLower.includes('cinematic') ||
-    sceneTypeLower.includes('dramatic') ||
-    sceneTypeLower.includes('atmospheric')
-  ) {
-    modes.push('trailer');
   }
 
   return modes;
@@ -197,36 +191,6 @@ function generateWebGLConfig(sceneType: string, dimensions: Array<{ type: Dimens
       : isCinematic
         ? ['bloom', 'vignette', 'film-grain']
         : ['bloom'],
-  };
-}
-
-/**
- * Generate default trailer configuration
- */
-function generateTrailerConfig(sceneType: string, dimensions: Array<{ type: DimensionType; reference: string }>): TrailerConfig {
-  const moodDim = dimensions.find(d => d.type === 'mood');
-  const mood = moodDim?.reference || 'epic';
-
-  return {
-    duration: 15,
-    fps: 30,
-    cameraPath: [
-      { time: 0, position: [0, 0, 20], target: [0, 0, 0], easing: 'ease-out' },
-      { time: 0.3, position: [5, 2, 15], target: [0, 0, 0], easing: 'ease-in-out' },
-      { time: 0.6, position: [-5, 3, 10], target: [0, 1, 0], easing: 'ease-in-out' },
-      { time: 1, position: [0, 1, 5], target: [0, 0, 0], easing: 'ease-in' },
-    ],
-    effects: [
-      { type: 'fade', startTime: 0, endTime: 0.1, params: { from: 0, to: 1 } },
-      { type: 'zoom', startTime: 0.2, endTime: 0.4, params: { scale: 1.1 } },
-      { type: 'parallax', startTime: 0.4, endTime: 0.8, params: { layers: 3, speed: 0.5 } },
-      { type: 'title-card', startTime: 0.85, endTime: 1, params: { text: sceneType } },
-      { type: 'fade', startTime: 0.95, endTime: 1, params: { from: 1, to: 0 } },
-    ],
-    audio: {
-      type: 'ambient',
-      mood: mood,
-    },
   };
 }
 
@@ -377,9 +341,19 @@ function generateClickableRegions(sceneType: string, dimensions: Array<{ type: D
   return [...baseRegions, ...regions];
 }
 
-export function useInteractivePrototype(): UseInteractivePrototypeReturn {
+export function useInteractivePrototype(options: UseInteractivePrototypeOptions = {}): UseInteractivePrototypeReturn {
+  const { onSavePrototype, onDeletePrototype, onDeleteAllPrototypes, initialPrototypes } = options;
+
   const [interactiveMode, setInteractiveMode] = useState<InteractiveMode>('static');
-  const [prototypes, setPrototypes] = useState<Map<string, InteractivePrototype>>(new Map());
+  const [prototypes, setPrototypes] = useState<Map<string, InteractivePrototype>>(() => {
+    // Initialize from saved state if provided
+    if (initialPrototypes && initialPrototypes.length > 0) {
+      const map = new Map<string, InteractivePrototype>();
+      initialPrototypes.forEach(p => map.set(p.promptId, p));
+      return map;
+    }
+    return new Map();
+  });
   const [generatingIds, setGeneratingIds] = useState<Set<string>>(new Set());
   const [generationProgress, setGenerationProgress] = useState<GenerationProgress | null>(null);
 
@@ -479,12 +453,6 @@ export function useInteractivePrototype(): UseInteractivePrototypeReturn {
           assets.regions = regions;
           break;
 
-        case 'trailer':
-          config = generateTrailerConfig(sceneType, dimensions);
-          // In production, this would be a real video URL
-          assets.videoUrl = undefined; // Placeholder for generated video
-          break;
-
         default:
           config = null;
       }
@@ -503,6 +471,13 @@ export function useInteractivePrototype(): UseInteractivePrototypeReturn {
         next.delete(promptId);
         return next;
       });
+
+      // Persist the completed prototype
+      if (onSavePrototype) {
+        onSavePrototype(completedPrototype).catch(err => {
+          console.error('Failed to persist prototype:', err);
+        });
+      }
 
       // Clear progress after short delay to show completion
       setTimeout(() => setGenerationProgress(null), 500);
@@ -530,7 +505,7 @@ export function useInteractivePrototype(): UseInteractivePrototypeReturn {
 
       return failedPrototype;
     }
-  }, [interactiveMode, generatingIds]);
+  }, [interactiveMode, generatingIds, onSavePrototype]);
 
   const getPrototype = useCallback((promptId: string): InteractivePrototype | undefined => {
     return prototypes.get(promptId);
@@ -539,10 +514,27 @@ export function useInteractivePrototype(): UseInteractivePrototypeReturn {
   const clearPrototypes = useCallback(() => {
     setPrototypes(new Map());
     setGeneratingIds(new Set());
-  }, []);
+
+    // Persist the deletion
+    if (onDeleteAllPrototypes) {
+      onDeleteAllPrototypes().catch(err => {
+        console.error('Failed to delete all prototypes:', err);
+      });
+    }
+  }, [onDeleteAllPrototypes]);
 
   const getAvailableModes = useCallback((sceneType: string): InteractiveMode[] => {
     return getModesForSceneType(sceneType);
+  }, []);
+
+  /**
+   * Restore prototypes from saved state (used when loading a project)
+   */
+  const restorePrototypes = useCallback((savedPrototypes: InteractivePrototype[]) => {
+    const map = new Map<string, InteractivePrototype>();
+    savedPrototypes.forEach(p => map.set(p.promptId, p));
+    setPrototypes(map);
+    setGeneratingIds(new Set());
   }, []);
 
   return {
@@ -555,5 +547,6 @@ export function useInteractivePrototype(): UseInteractivePrototypeReturn {
     getPrototype,
     clearPrototypes,
     getAvailableModes,
+    restorePrototypes,
   };
 }

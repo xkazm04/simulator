@@ -8,7 +8,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getDb, DbProject, DbProjectState, DbPanelImage, DbProjectPoster, ProjectWithState } from '@/app/lib/db';
+import { getDb, DbProject, DbProjectState, DbPanelImage, DbProjectPoster, DbInteractivePrototype, DbGeneratedPrompt, ProjectWithState } from '@/app/lib/db';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -54,11 +54,38 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       FROM project_posters WHERE project_id = ?
     `).get(id) as DbProjectPoster | undefined;
 
+    // Get interactive prototypes
+    let prototypes: DbInteractivePrototype[] = [];
+    try {
+      prototypes = db.prepare(`
+        SELECT id, project_id, prompt_id, image_id, mode, status, error, config_json, assets_json, created_at
+        FROM interactive_prototypes WHERE project_id = ?
+      `).all(id) as DbInteractivePrototype[];
+    } catch {
+      // Table may not exist yet in older databases
+      prototypes = [];
+    }
+
+    // Get generated prompts
+    let generatedPrompts: DbGeneratedPrompt[] = [];
+    try {
+      generatedPrompts = db.prepare(`
+        SELECT id, project_id, scene_number, scene_type, prompt, negative_prompt, copied, rating, locked, elements_json, created_at
+        FROM generated_prompts WHERE project_id = ?
+        ORDER BY scene_number
+      `).all(id) as DbGeneratedPrompt[];
+    } catch {
+      // Table may not exist yet in older databases
+      generatedPrompts = [];
+    }
+
     const projectWithState: ProjectWithState = {
       ...project,
       state: state || null,
       panelImages,
       poster: poster || null,
+      prototypes,
+      generatedPrompts,
     };
 
     return NextResponse.json({

@@ -15,12 +15,13 @@
 
 'use client';
 
-import React, { useCallback, useState, memo } from 'react';
+import React, { memo } from 'react';
 import { motion } from 'framer-motion';
 import { Sparkles, Loader2, GripVertical } from 'lucide-react';
 import { PromptElement } from '../../types';
 import { getCategoryColors } from '../../lib/semanticColors';
 import { interactiveStates } from '../../lib/motion';
+import { useElementInteraction } from '../../hooks/useElementInteraction';
 
 interface ElementChipProps {
   element: PromptElement;
@@ -78,35 +79,17 @@ function ElementChipComponent({
 }: ElementChipProps) {
   const colors = getCategoryColors(element.category);
   const hoverClasses = getHoverClasses(element.category);
-  const [isDragging, setIsDragging] = useState(false);
 
-  // Click directly triggers dimension refinement via LLM
-  const handleClick = () => {
-    if (isAccepting || isDragging) return; // Don't allow clicking while processing or dragging
-    if (onAccept) {
-      onAccept(element);
-    }
-  };
-
-  // Drag handlers for bidirectional flow (element → dimension)
-  const handleDragStart = useCallback((e: React.DragEvent) => {
-    setIsDragging(true);
-    // Store element data for drop target
-    e.dataTransfer.setData('application/json', JSON.stringify(element));
-    e.dataTransfer.setData('text/plain', element.text);
-    e.dataTransfer.effectAllowed = 'copy';
-  }, [element]);
-
-  const handleDragEnd = useCallback(() => {
-    setIsDragging(false);
-  }, []);
+  // Use shared interaction hook for drag, click, and keyboard handling
+  const { isDragging, dragProps, handleClick, handleKeyDown } = useElementInteraction({
+    element,
+    isProcessing: isAccepting,
+    draggable,
+    onClick: onAccept,
+  });
 
   return (
-    <div
-      draggable={draggable && !isAccepting}
-      onDragStart={handleDragStart}
-      onDragEnd={handleDragEnd}
-    >
+    <div {...dragProps}>
       <motion.div
         whileHover={isDragging ? interactiveStates.hoverDraggable : interactiveStates.hoverScale}
         whileTap={interactiveStates.tapScale}
@@ -126,12 +109,7 @@ function ElementChipComponent({
         `}
         tabIndex={0}
         role="button"
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            handleClick();
-          }
-        }}
+        onKeyDown={handleKeyDown}
         onClick={handleClick}
         title={isAccepting
           ? 'Refining dimensions...'

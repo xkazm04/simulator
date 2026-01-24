@@ -20,7 +20,7 @@
 import React, { useState, useCallback, memo } from 'react';
 import Image from 'next/image';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Copy, Check, Lock, Eye, Image as ImageIcon, Sparkles, Loader2, CheckCircle, Gamepad2, MousePointer2, Film } from 'lucide-react';
+import { Copy, Check, Lock, Eye, Image as ImageIcon, Sparkles, Loader2, CheckCircle, Gamepad2, MousePointer2 } from 'lucide-react';
 import { GeneratedPrompt, PromptElement, GeneratedImage, InteractiveMode, InteractivePrototype } from '../../types';
 import { semanticColors } from '../../lib/semanticColors';
 import { scaleIn, useReducedMotion, getReducedMotionStaggeredTransition } from '../../lib/motion';
@@ -124,8 +124,6 @@ function getInteractiveModeDisplay(mode: InteractiveMode): { icon: React.ReactNo
       return { icon: <Gamepad2 size={10} />, color: 'text-cyan-400', bgColor: 'bg-cyan-500/20' };
     case 'clickable':
       return { icon: <MousePointer2 size={10} />, color: 'text-purple-400', bgColor: 'bg-purple-500/20' };
-    case 'trailer':
-      return { icon: <Film size={10} />, color: 'text-rose-400', bgColor: 'bg-rose-500/20' };
     default:
       return { icon: null, color: '', bgColor: '' };
   }

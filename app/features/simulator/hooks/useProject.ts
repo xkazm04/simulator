@@ -10,7 +10,7 @@
  */
 
 import { useState, useCallback, useMemo } from 'react';
-import { Dimension, OutputMode, SavedPanelImage, ProjectPoster } from '../types';
+import { Dimension, OutputMode, SavedPanelImage, ProjectPoster, GeneratedPrompt, InteractivePrototype, InteractiveMode } from '../types';
 import { usePersistedEntity, SaveStatus } from './usePersistedEntity';
 
 interface Project {
@@ -32,6 +32,8 @@ interface ProjectWithState extends Project {
   state: ProjectState | null;
   panelImages: SavedPanelImage[];
   poster: ProjectPoster | null;
+  prototypes: InteractivePrototype[];
+  generatedPrompts: GeneratedPrompt[];
 }
 
 interface UseProjectReturn {
@@ -56,6 +58,16 @@ interface UseProjectReturn {
   saveState: (state: Partial<ProjectState>) => void;
   savePanelImage: (side: 'left' | 'right', slotIndex: number, imageUrl: string, prompt?: string) => Promise<void>;
   removePanelImage: (imageId: string) => Promise<void>;
+
+  // Prototype persistence
+  savePrototype: (prototype: InteractivePrototype) => Promise<void>;
+  deletePrototype: (promptId: string) => Promise<void>;
+  deleteAllPrototypes: () => Promise<void>;
+
+  // Generated prompts persistence
+  saveGeneratedPrompts: (prompts: GeneratedPrompt[]) => Promise<void>;
+  updateGeneratedPrompt: (promptId: string, updates: Partial<GeneratedPrompt>) => Promise<void>;
+  deleteGeneratedPrompts: () => Promise<void>;
 }
 
 const AUTOSAVE_DEBOUNCE = 500; // 500ms debounce
@@ -131,6 +143,56 @@ function parseProjectWithState(projectWithState: Record<string, unknown>): Proje
       }
     : null;
 
+  // Convert prototypes (if exists)
+  const rawPrototypes = (projectWithState.prototypes || []) as Array<{
+    id: string;
+    project_id: string;
+    prompt_id: string;
+    image_id: string | null;
+    mode: InteractiveMode;
+    status: 'pending' | 'generating' | 'ready' | 'failed';
+    error: string | null;
+    config_json: string | null;
+    assets_json: string | null;
+    created_at: string;
+  }>;
+  const prototypes: InteractivePrototype[] = rawPrototypes.map((p) => ({
+    id: p.id,
+    promptId: p.prompt_id,
+    imageId: p.image_id || undefined,
+    mode: p.mode,
+    status: p.status,
+    error: p.error || undefined,
+    createdAt: p.created_at,
+    config: p.config_json ? JSON.parse(p.config_json) : null,
+    assets: p.assets_json ? JSON.parse(p.assets_json) : undefined,
+  }));
+
+  // Convert generated prompts (if exists)
+  const rawGeneratedPrompts = (projectWithState.generatedPrompts || []) as Array<{
+    id: string;
+    scene_number: number;
+    scene_type: string;
+    prompt: string;
+    negative_prompt: string | null;
+    copied: number;
+    rating: 'up' | 'down' | null;
+    locked: number;
+    elements_json: string | null;
+    created_at: string;
+  }>;
+  const generatedPrompts: GeneratedPrompt[] = rawGeneratedPrompts.map((p) => ({
+    id: p.id,
+    sceneNumber: p.scene_number,
+    sceneType: p.scene_type,
+    prompt: p.prompt,
+    negativePrompt: p.negative_prompt || undefined,
+    copied: Boolean(p.copied),
+    rating: p.rating,
+    locked: Boolean(p.locked),
+    elements: p.elements_json ? JSON.parse(p.elements_json) : [],
+  }));
+
   return {
     id: projectWithState.id as string,
     name: projectWithState.name as string,
@@ -139,6 +201,8 @@ function parseProjectWithState(projectWithState: Record<string, unknown>): Proje
     state,
     panelImages,
     poster,
+    prototypes,
+    generatedPrompts,
   };
 }
 
@@ -387,6 +451,164 @@ export function useProject(): UseProjectReturn {
     [currentProject]
   );
 
+  /**
+   * Save an interactive prototype
+   */
+  const savePrototype = useCallback(
+    async (prototype: InteractivePrototype) => {
+      if (!currentProject) return;
+
+      try {
+        const response = await fetch(`/api/projects/${currentProject.id}/prototypes`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            promptId: prototype.promptId,
+            imageId: prototype.imageId,
+            mode: prototype.mode,
+            status: prototype.status,
+            error: prototype.error,
+            config: prototype.config,
+            assets: prototype.assets,
+          }),
+        });
+
+        const data = await response.json();
+        if (!data.success) {
+          console.error('Failed to save prototype:', data.error);
+        }
+      } catch (err) {
+        console.error('Save prototype error:', err);
+      }
+    },
+    [currentProject]
+  );
+
+  /**
+   * Delete a prototype by promptId
+   */
+  const deletePrototype = useCallback(
+    async (promptId: string) => {
+      if (!currentProject) return;
+
+      try {
+        const response = await fetch(`/api/projects/${currentProject.id}/prototypes`, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ promptId }),
+        });
+
+        const data = await response.json();
+        if (!data.success) {
+          console.error('Failed to delete prototype:', data.error);
+        }
+      } catch (err) {
+        console.error('Delete prototype error:', err);
+      }
+    },
+    [currentProject]
+  );
+
+  /**
+   * Delete all prototypes for the current project
+   */
+  const deleteAllPrototypes = useCallback(
+    async () => {
+      if (!currentProject) return;
+
+      try {
+        const response = await fetch(`/api/projects/${currentProject.id}/prototypes`, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
+        });
+
+        const data = await response.json();
+        if (!data.success) {
+          console.error('Failed to delete all prototypes:', data.error);
+        }
+      } catch (err) {
+        console.error('Delete all prototypes error:', err);
+      }
+    },
+    [currentProject]
+  );
+
+  /**
+   * Save generated prompts (replaces all existing)
+   */
+  const saveGeneratedPrompts = useCallback(
+    async (prompts: GeneratedPrompt[]) => {
+      if (!currentProject) return;
+
+      try {
+        const response = await fetch(`/api/projects/${currentProject.id}/prompts`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompts }),
+        });
+
+        const data = await response.json();
+        if (!data.success) {
+          console.error('Failed to save generated prompts:', data.error);
+        }
+      } catch (err) {
+        console.error('Save generated prompts error:', err);
+      }
+    },
+    [currentProject]
+  );
+
+  /**
+   * Update a single generated prompt
+   */
+  const updateGeneratedPrompt = useCallback(
+    async (promptId: string, updates: Partial<GeneratedPrompt>) => {
+      if (!currentProject) return;
+
+      try {
+        const response = await fetch(`/api/projects/${currentProject.id}/prompts`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ promptId, updates }),
+        });
+
+        const data = await response.json();
+        if (!data.success) {
+          console.error('Failed to update generated prompt:', data.error);
+        }
+      } catch (err) {
+        console.error('Update generated prompt error:', err);
+      }
+    },
+    [currentProject]
+  );
+
+  /**
+   * Delete all generated prompts for the current project
+   */
+  const deleteGeneratedPrompts = useCallback(
+    async () => {
+      if (!currentProject) return;
+
+      try {
+        const response = await fetch(`/api/projects/${currentProject.id}/prompts`, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
+        });
+
+        const data = await response.json();
+        if (!data.success) {
+          console.error('Failed to delete generated prompts:', data.error);
+        }
+      } catch (err) {
+        console.error('Delete generated prompts error:', err);
+      }
+    },
+    [currentProject]
+  );
+
   // Memoized return to prevent unnecessary re-renders
   return useMemo(() => ({
     projects: projectEntity.entities,
@@ -404,6 +626,12 @@ export function useProject(): UseProjectReturn {
     saveState,
     savePanelImage,
     removePanelImage,
+    savePrototype,
+    deletePrototype,
+    deleteAllPrototypes,
+    saveGeneratedPrompts,
+    updateGeneratedPrompt,
+    deleteGeneratedPrompts,
   }), [
     projectEntity.entities,
     projectEntity.isLoading,
@@ -420,5 +648,11 @@ export function useProject(): UseProjectReturn {
     saveState,
     savePanelImage,
     removePanelImage,
+    savePrototype,
+    deletePrototype,
+    deleteAllPrototypes,
+    saveGeneratedPrompts,
+    updateGeneratedPrompt,
+    deleteGeneratedPrompts,
   ]);
 }

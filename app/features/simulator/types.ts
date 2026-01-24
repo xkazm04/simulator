@@ -465,10 +465,9 @@ export interface ProjectPoster {
  * InteractiveMode - The type of interactive experience to generate
  * - webgl: Playable WebGL demo for gameplay scenes
  * - clickable: Clickable Figma-like prototype for UI concepts
- * - trailer: 15-second animated trailer for movie posters
  * - static: Traditional static image (default)
  */
-export type InteractiveMode = 'static' | 'webgl' | 'clickable' | 'trailer';
+export type InteractiveMode = 'static' | 'webgl' | 'clickable';
 
 export const INTERACTIVE_MODES: Record<InteractiveMode, { label: string; description: string; icon: string }> = {
   static: {
@@ -477,19 +476,14 @@ export const INTERACTIVE_MODES: Record<InteractiveMode, { label: string; descrip
     icon: 'Image',
   },
   webgl: {
-    label: 'WebGL Demo',
-    description: 'Playable interactive 3D demo',
+    label: 'Game Prompt',
+    description: 'Generate AI Studio prompt for playable game',
     icon: 'Gamepad2',
   },
   clickable: {
-    label: 'Clickable Prototype',
-    description: 'Interactive UI mockup with click regions',
+    label: 'Image Editor',
+    description: 'Draw regions for inpainting/editing',
     icon: 'MousePointer2',
-  },
-  trailer: {
-    label: 'Animated Trailer',
-    description: '15-second motion preview',
-    icon: 'Film',
   },
 };
 
@@ -557,35 +551,6 @@ export interface WebGLSceneConfig {
 }
 
 /**
- * TrailerConfig - Configuration for animated trailer generation
- */
-export interface TrailerConfig {
-  /** Duration in seconds (default 15) */
-  duration: number;
-  /** Frames per second */
-  fps: number;
-  /** Camera motion path */
-  cameraPath: Array<{
-    time: number; // 0-1 normalized time
-    position: [number, number, number];
-    target: [number, number, number];
-    easing?: 'linear' | 'ease-in' | 'ease-out' | 'ease-in-out';
-  }>;
-  /** Visual effects timeline */
-  effects: Array<{
-    type: 'fade' | 'zoom' | 'pan' | 'parallax' | 'title-card';
-    startTime: number;
-    endTime: number;
-    params?: Record<string, unknown>;
-  }>;
-  /** Audio configuration */
-  audio?: {
-    type: 'generated' | 'ambient' | 'none';
-    mood?: string;
-  };
-}
-
-/**
  * InteractivePrototype - The main interactive prototype entity
  */
 export interface InteractivePrototype {
@@ -603,15 +568,13 @@ export interface InteractivePrototype {
   /** Creation timestamp */
   createdAt: string;
   /** Mode-specific configuration */
-  config: WebGLSceneConfig | TrailerConfig | { regions: InteractiveRegion[] } | null;
+  config: WebGLSceneConfig | { regions: InteractiveRegion[] } | null;
   /** Generated assets */
   assets?: {
     /** Primary preview/thumbnail */
     thumbnail?: string;
     /** WebGL scene data (for webgl mode) */
     sceneData?: string;
-    /** Video URL (for trailer mode) */
-    videoUrl?: string;
     /** Interactive regions (for clickable mode) */
     regions?: InteractiveRegion[];
   };

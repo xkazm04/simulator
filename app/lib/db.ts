@@ -74,6 +74,54 @@ function initializeSchema(database: Database.Database): void {
         CREATE INDEX IF NOT EXISTS idx_project_posters_project ON project_posters(project_id);
       `);
     }
+
+    // Check if interactive_prototypes table exists (added for full state persistence)
+    const prototypesTableExists = database.prepare(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name='interactive_prototypes'"
+    ).get();
+
+    if (!prototypesTableExists) {
+      database.exec(`
+        CREATE TABLE IF NOT EXISTS interactive_prototypes (
+          id TEXT PRIMARY KEY,
+          project_id TEXT REFERENCES projects(id) ON DELETE CASCADE,
+          prompt_id TEXT NOT NULL,
+          image_id TEXT,
+          mode TEXT NOT NULL CHECK(mode IN ('static', 'webgl', 'clickable', 'trailer')),
+          status TEXT NOT NULL CHECK(status IN ('pending', 'generating', 'ready', 'failed')),
+          error TEXT,
+          config_json TEXT,
+          assets_json TEXT,
+          created_at TEXT DEFAULT (datetime('now')),
+          UNIQUE(project_id, prompt_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_interactive_prototypes_project ON interactive_prototypes(project_id);
+      `);
+    }
+
+    // Check if generated_prompts table exists (added for session state persistence)
+    const promptsTableExists = database.prepare(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name='generated_prompts'"
+    ).get();
+
+    if (!promptsTableExists) {
+      database.exec(`
+        CREATE TABLE IF NOT EXISTS generated_prompts (
+          id TEXT PRIMARY KEY,
+          project_id TEXT REFERENCES projects(id) ON DELETE CASCADE,
+          scene_number INTEGER NOT NULL,
+          scene_type TEXT NOT NULL,
+          prompt TEXT NOT NULL,
+          negative_prompt TEXT,
+          copied INTEGER DEFAULT 0,
+          rating TEXT CHECK(rating IN ('up', 'down') OR rating IS NULL),
+          locked INTEGER DEFAULT 0,
+          elements_json TEXT,
+          created_at TEXT DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_generated_prompts_project ON generated_prompts(project_id);
+      `);
+    }
   }
 }
 
@@ -125,9 +173,38 @@ export interface DbProjectPoster {
   created_at: string;
 }
 
+export interface DbInteractivePrototype {
+  id: string;
+  project_id: string;
+  prompt_id: string;
+  image_id: string | null;
+  mode: 'static' | 'webgl' | 'clickable';
+  status: 'pending' | 'generating' | 'ready' | 'failed';
+  error: string | null;
+  config_json: string | null;
+  assets_json: string | null;
+  created_at: string;
+}
+
+export interface DbGeneratedPrompt {
+  id: string;
+  project_id: string;
+  scene_number: number;
+  scene_type: string;
+  prompt: string;
+  negative_prompt: string | null;
+  copied: number; // 0 or 1 in SQLite
+  rating: 'up' | 'down' | null;
+  locked: number; // 0 or 1 in SQLite
+  elements_json: string | null;
+  created_at: string;
+}
+
 // Project with full state
 export interface ProjectWithState extends DbProject {
   state: DbProjectState | null;
   panelImages: DbPanelImage[];
   poster?: DbProjectPoster | null;
+  prototypes?: DbInteractivePrototype[];
+  generatedPrompts?: DbGeneratedPrompt[];
 }

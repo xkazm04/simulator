@@ -14,7 +14,11 @@ import { GeneratedImage, SavedPanelImage, PanelSlot } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 import { useLocalPersistedEntity } from './useLocalPersistedEntity';
 
-const STORAGE_KEY = 'panel_images';
+const STORAGE_KEY_PREFIX = 'panel_images';
+
+// Generate project-scoped storage key
+const getStorageKey = (projectId: string | null) =>
+  projectId ? `${STORAGE_KEY_PREFIX}_${projectId}` : STORAGE_KEY_PREFIX;
 
 interface GenerationStartResponse {
   success: boolean;
@@ -40,6 +44,11 @@ interface PanelSlotsData {
   rightSlots: PanelSlot[];
 }
 
+interface UseImageGenerationOptions {
+  /** Current project ID - used for project-scoped panel image storage */
+  projectId: string | null;
+}
+
 interface UseImageGenerationReturn {
   generatedImages: GeneratedImage[];
   isGeneratingImages: boolean;
@@ -51,6 +60,7 @@ interface UseImageGenerationReturn {
   updatePanelImage: (imageId: string, newUrl: string) => void;
   clearGeneratedImages: () => void;
   deleteAllGenerations: () => Promise<void>;
+  clearPanelSlots: () => void;
 }
 
 const POLL_INTERVAL = 2000; // 2 seconds
@@ -64,7 +74,8 @@ const initialPanelData: PanelSlotsData = {
   rightSlots: createEmptySlots(),
 };
 
-export function useImageGeneration(): UseImageGenerationReturn {
+export function useImageGeneration(options: UseImageGenerationOptions): UseImageGenerationReturn {
+  const { projectId } = options;
   const [generatedImages, setGeneratedImages] = useState<GeneratedImage[]>([]);
   const [isGeneratingImages, setIsGeneratingImages] = useState(false);
 
@@ -76,8 +87,10 @@ export function useImageGeneration(): UseImageGenerationReturn {
   const savedPromptIdsRef = useRef<Set<string>>(new Set());
 
   // Use local persistence hook for panel slots (IndexedDB)
+  // Storage key is project-scoped so each project has separate panel images
+  const storageKey = getStorageKey(projectId);
   const panelStorage = useLocalPersistedEntity<PanelSlotsData>({
-    storageKey: STORAGE_KEY,
+    storageKey,
     initialValue: initialPanelData,
     onLoaded: (data) => {
       // Rebuild saved prompt IDs ref when loaded
@@ -467,6 +480,14 @@ export function useImageGeneration(): UseImageGenerationReturn {
     }
   }, [generatedImages]);
 
+  /**
+   * Clear all panel slots (reset to empty)
+   */
+  const clearPanelSlots = useCallback(() => {
+    savedPromptIdsRef.current.clear();
+    panelStorage.setData(initialPanelData);
+  }, [panelStorage]);
+
   // Update isGeneratingImages when all images are done
   useEffect(() => {
     if (generatedImages.length > 0) {
@@ -490,5 +511,6 @@ export function useImageGeneration(): UseImageGenerationReturn {
     updatePanelImage,
     clearGeneratedImages,
     deleteAllGenerations,
+    clearPanelSlots,
   };
 }

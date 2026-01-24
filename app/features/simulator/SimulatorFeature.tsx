@@ -79,7 +79,7 @@ function SimulatorContent() {
 
   // External hooks (not part of subfeatures)
   const project = useProject();
-  const imageGen = useImageGeneration();
+  const imageGen = useImageGeneration({ projectId: project.currentProject?.id ?? null });
   const poster = usePoster();
   const interactive = useInteractivePrototype();
   const { showToast, toastProps } = useToast();
@@ -204,23 +204,46 @@ function SimulatorContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [simulator.handleReset, imageGen.clearGeneratedImages, project.currentProject?.id, project.saveState, poster.setPoster, poster.deletePoster]);
 
+  // State for poster saving animation
+  const [isSavingPoster, setIsSavingPoster] = useState(false);
+
   // Handler specifically for poster generation (called from DirectorControl when in poster mode)
+  // Now generates 4 poster variations
   const handleGeneratePoster = useCallback(async () => {
     if (project.currentProject) {
       setShowPosterOverlay(true);
-      const generatedPoster = await poster.generatePoster(
+      await poster.generatePosters(
         project.currentProject.id,
         dimensions.dimensions,
         brain.baseImage
       );
-      // Explicitly set the poster to ensure UI updates
-      // (generatePoster internally sets it, but this guarantees the state propagates)
-      if (generatedPoster) {
-        poster.setPoster(generatedPoster);
-      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dimensions.dimensions, brain.baseImage, project.currentProject?.id, poster.generatePoster, poster.setPoster]);
+  }, [dimensions.dimensions, brain.baseImage, project.currentProject?.id, poster.generatePosters]);
+
+  // Handler for selecting a poster from the grid
+  const handleSelectPoster = useCallback((index: number) => {
+    poster.selectPoster(index);
+  }, [poster]);
+
+  // Handler for saving the selected poster
+  const handleSavePoster = useCallback(async () => {
+    if (!project.currentProject) return;
+
+    setIsSavingPoster(true);
+    const savedPoster = await poster.savePoster(project.currentProject.id);
+    setIsSavingPoster(false);
+
+    if (savedPoster) {
+      // Poster saved successfully, stay in poster overlay to show it
+      poster.setPoster(savedPoster);
+    }
+  }, [project.currentProject, poster]);
+
+  // Handler for canceling poster generation
+  const handleCancelPosterGeneration = useCallback(async () => {
+    await poster.cancelGeneration();
+  }, [poster]);
 
   // Wrapped generate handler that also triggers image generation (legacy, kept for backwards compatibility)
   const handleGenerateWithImages = useCallback(async () => {
@@ -474,6 +497,13 @@ function SimulatorContent() {
           isGeneratingPoster={poster.isGenerating}
           onUploadPoster={handleUploadPoster}
           onGeneratePoster={handleGeneratePoster}
+          // Poster generation state
+          posterGenerations={poster.posterGenerations}
+          selectedPosterIndex={poster.selectedIndex}
+          isSavingPoster={isSavingPoster}
+          onSelectPoster={handleSelectPoster}
+          onSavePoster={handleSavePoster}
+          onCancelPosterGeneration={handleCancelPosterGeneration}
           // Interactive prototype props
           interactiveMode={interactive.interactiveMode}
           availableInteractiveModes={availableInteractiveModes()}

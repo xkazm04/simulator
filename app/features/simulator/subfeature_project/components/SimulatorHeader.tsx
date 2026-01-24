@@ -60,21 +60,21 @@ export function SimulatorHeader({
         return (
           <div className="flex items-center gap-1.5 px-2 py-1 text-amber-400" title="Saving...">
             <Loader2 size={12} className="animate-spin" />
-            <span className="font-mono type-label">Saving...</span>
+            <span className="font-mono ">Saving...</span>
           </div>
         );
       case 'saved':
         return (
           <div className="flex items-center gap-1.5 px-2 py-1 text-green-400" title={lastSavedAt ? `Saved ${formatSavedTime(lastSavedAt)}` : 'Saved'}>
             <Check size={12} />
-            <span className="font-mono type-label">Saved</span>
+            <span className="font-mono ">Saved</span>
           </div>
         );
       case 'error':
         return (
           <div className="flex items-center gap-1.5 px-2 py-1 text-red-400" title="Failed to save">
             <AlertCircle size={12} />
-            <span className="font-mono type-label">Error</span>
+            <span className="font-mono ">Error</span>
           </div>
         );
       default:
@@ -100,46 +100,30 @@ export function SimulatorHeader({
       {renderSaveStatus()}
 
       {/* Navigation */}
-      <div className="flex-1 max-w-xl mx-auto flex justify-center">
+      <div className="flex-1 mx-auto flex justify-center">
         <div className="flex items-center p-1 bg-slate-900/80 rounded-lg border border-slate-800/50 backdrop-blur-sm">
-          <button className="px-4 py-1.5 rounded-md type-label font-mono uppercase tracking-wider shadow-sm transition-all shadow-cyan-900/20 text-cyan-400 bg-cyan-950/30 border border-cyan-500/20">
+          <button className="px-4 py-1.5 rounded-md  font-mono uppercase tracking-wider shadow-sm transition-all shadow-cyan-900/20 text-cyan-400 bg-cyan-950/30 border border-cyan-500/20">
             Main Simulator
           </button>
           <div className="w-px h-4 bg-slate-800 mx-1" />
           <Link href="/character-studio">
-            <button className="px-4 py-1.5 rounded-md type-label font-mono uppercase tracking-wider text-slate-500 hover:text-slate-300 transition-colors">
+            <button className="px-4 py-1.5 rounded-md  font-mono uppercase tracking-wider text-slate-500 hover:text-slate-300 transition-colors">
               Character Studio
             </button>
           </Link>
           <div className="w-px h-4 bg-slate-800 mx-1" />
           <Link href="/posters">
-            <button className="px-4 py-1.5 rounded-md type-label font-mono uppercase tracking-wider text-slate-500 hover:text-slate-300 transition-colors">
+            <button className="px-4 py-1.5 rounded-md  font-mono uppercase tracking-wider text-slate-500 hover:text-slate-300 transition-colors">
               Posters
             </button>
           </Link>
         </div>
       </div>
 
-      {/* Presets */}
-      <div className="hidden md:flex items-center gap-sm mr-md">
-        <span className="font-mono type-label text-slate-600 mr-2">// presets:</span>
-        {EXAMPLE_SIMULATIONS.map((example, index) => (
-          <button
-            key={example.id}
-            onClick={() => onLoadExample(index)}
-            className="group px-3 py-1.5 font-mono type-label text-slate-500 hover:text-cyan-400
-                       hover:bg-slate-900/50 border border-transparent hover:border-slate-800 rounded-full transition-all"
-            title={example.subtitle}
-          >
-            {example.title}
-          </button>
-        ))}
-      </div>
-
       {/* Reset */}
       <button
         onClick={onReset}
-        className="flex items-center gap-1.5 px-3 py-1.5 font-mono type-label text-slate-500
+        className="flex items-center gap-1.5 px-3 py-1.5 font-mono  text-slate-500
                    hover:text-slate-300 hover:bg-slate-800/50 rounded-lg transition-colors border border-transparent hover:border-slate-800"
       >
         <RotateCcw size={12} />

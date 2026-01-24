@@ -5,7 +5,7 @@
 
 'use client';
 
-import React, { useState, memo, useMemo, useCallback } from 'react';
+import React, { useState, memo, useMemo, useCallback, useRef, useEffect } from 'react';
 import { motion, AnimatePresence, Reorder } from 'framer-motion';
 import { Plus } from 'lucide-react';
 import { Dimension, DimensionPreset, DimensionFilterMode, DimensionTransformMode, PromptElement } from '../../types';
@@ -41,6 +41,29 @@ function DimensionGridComponent({
   onDropElement,
 }: DimensionGridProps) {
   const [showAddMenu, setShowAddMenu] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdown on click outside or Escape key
+  useEffect(() => {
+    if (!showAddMenu) return;
+
+    const handleClickOutside = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setShowAddMenu(false);
+      }
+    };
+
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setShowAddMenu(false);
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleEscape);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [showAddMenu]);
 
   // Memoize derived values
   const usedTypes = useMemo(
@@ -114,6 +137,7 @@ function DimensionGridComponent({
 
         {/* Add More Button */}
         <motion.div
+          ref={dropdownRef}
           variants={fadeIn}
           initial="initial"
           animate="animate"

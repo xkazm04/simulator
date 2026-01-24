@@ -20,6 +20,7 @@ import {
   GeneratedImage,
   ProjectPoster,
 } from '../../types';
+import { PosterGeneration } from '../../hooks/usePoster';
 import { BaseImageInput } from './BaseImageInput';
 import { SmartBreakdown } from './SmartBreakdown';
 import { PosterOverlay } from './PosterOverlay';
@@ -51,6 +52,14 @@ export interface CentralBrainProps {
   isGeneratingPoster: boolean;
   onUploadPoster?: (imageDataUrl: string) => void;
   onGeneratePoster?: () => Promise<void>;
+
+  // Poster generation state (for 2x2 grid selection)
+  posterGenerations?: PosterGeneration[];
+  selectedPosterIndex?: number | null;
+  isSavingPoster?: boolean;
+  onSelectPoster?: (index: number) => void;
+  onSavePoster?: () => void;
+  onCancelPosterGeneration?: () => void;
 }
 
 function CentralBrainComponent({
@@ -66,6 +75,12 @@ function CentralBrainComponent({
   isGeneratingPoster,
   onUploadPoster,
   onGeneratePoster,
+  posterGenerations = [],
+  selectedPosterIndex = null,
+  isSavingPoster = false,
+  onSelectPoster,
+  onSavePoster,
+  onCancelPosterGeneration,
 }: CentralBrainProps) {
   // Get state and handlers from contexts
   const brain = useBrainContext();
@@ -143,9 +158,8 @@ function CentralBrainComponent({
     <div className="flex-1 relative group flex flex-col w-full min-w-0">
       {/* Animated border gradient */}
       <div
-        className={`absolute -inset-[2px] bg-gradient-to-r from-cyan-500/30 via-purple-500/30 to-amber-500/30 radius-lg blur-md opacity-60 group-hover:opacity-100 transition-opacity duration-1000 ${
-          simulator.isGenerating ? 'animate-pulse' : ''
-        }`}
+        className={`absolute -inset-[2px] bg-gradient-to-r from-cyan-500/30 via-purple-500/30 to-amber-500/30 radius-lg blur-md opacity-60 group-hover:opacity-100 transition-opacity duration-1000 ${simulator.isGenerating ? 'animate-pulse' : ''
+          }`}
       />
       {/* Outer glow shadow */}
       <div className="absolute -inset-4 bg-gradient-to-r from-cyan-500/10 via-purple-500/10 to-amber-500/10 radius-lg blur-xl opacity-40 pointer-events-none" />
@@ -194,14 +208,13 @@ function CentralBrainComponent({
                 <button
                   onClick={onTogglePosterOverlay}
                   data-testid="poster-toggle-btn"
-                  className={`px-6 py-1.5 text-md font-mono radius-sm transition-colors flex items-center gap-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/50 focus-visible:ring-offset-1 focus-visible:ring-offset-slate-900 min-w-[160px] justify-center ${
-                    showPosterOverlay
+                  className={`px-6 py-1.5 text-md font-mono radius-sm transition-colors flex items-center gap-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/50 focus-visible:ring-offset-1 focus-visible:ring-offset-slate-900 min-w-[160px] justify-center ${showPosterOverlay
                       ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
                       : 'text-slate-400 hover:text-slate-200 border border-slate-700 hover:border-slate-600'
-                  }`}
+                    }`}
                 >
                   <Film size={14} />
-                  {showPosterOverlay ? 'SHOW INPUTS' : 'VIEW POSTER'}
+                  {showPosterOverlay ? 'INPUTS' : 'POSTER'}
                 </button>
               )}
             </div>
@@ -226,7 +239,16 @@ function CentralBrainComponent({
                 transition={motionTransitions.normal}
                 className="h-full min-h-[300px]"
               >
-                <PosterOverlay poster={projectPoster || null} isGenerating={isGeneratingPoster} />
+                <PosterOverlay
+                  poster={projectPoster || null}
+                  posterGenerations={posterGenerations}
+                  selectedIndex={selectedPosterIndex}
+                  isGenerating={isGeneratingPoster}
+                  isSaving={isSavingPoster}
+                  onSelect={onSelectPoster || (() => {})}
+                  onSave={onSavePoster || (() => {})}
+                  onCancel={onCancelPosterGeneration || (() => {})}
+                />
               </motion.div>
             ) : (
               <motion.div
@@ -298,9 +320,14 @@ function arePropsEqual(
   if (prevProps.isGeneratingImages !== nextProps.isGeneratingImages) return false;
   if (prevProps.isGeneratingPoster !== nextProps.isGeneratingPoster) return false;
   if (prevProps.showPosterOverlay !== nextProps.showPosterOverlay) return false;
+  if (prevProps.isSavingPoster !== nextProps.isSavingPoster) return false;
 
   // Compare poster by reference
   if (prevProps.projectPoster !== nextProps.projectPoster) return false;
+
+  // Compare poster generations by reference
+  if (prevProps.posterGenerations !== nextProps.posterGenerations) return false;
+  if (prevProps.selectedPosterIndex !== nextProps.selectedPosterIndex) return false;
 
   return true;
 }

@@ -1,8 +1,9 @@
 /**
- * PosterOverlay - Displays the project poster in the Source Analysis section
- * Design: Clean Manuscript style with rose accent
+ * PosterOverlay - Displays poster generation grid or saved poster
  *
- * Now covers full available space with responsive poster sizing
+ * Shows:
+ * - 2x2 PosterGrid during generation (with selection)
+ * - Saved poster when no generation in progress
  */
 
 'use client';
@@ -12,15 +13,42 @@ import Image from 'next/image';
 import { motion } from 'framer-motion';
 import { Film, Loader2 } from 'lucide-react';
 import { ProjectPoster } from '../../types';
+import { PosterGeneration } from '../../hooks/usePoster';
+import { PosterGrid } from './PosterGrid';
 
 interface PosterOverlayProps {
+  // Saved poster
   poster: ProjectPoster | null;
-  isGenerating?: boolean;
+
+  // Generation state
+  posterGenerations: PosterGeneration[];
+  selectedIndex: number | null;
+  isGenerating: boolean;
+  isSaving?: boolean;
+
+  // Actions
+  onSelect: (index: number) => void;
+  onSave: () => void;
+  onCancel: () => void;
 }
 
-export function PosterOverlay({ poster, isGenerating = false }: PosterOverlayProps) {
+export function PosterOverlay({
+  poster,
+  posterGenerations,
+  selectedIndex,
+  isGenerating,
+  isSaving = false,
+  onSelect,
+  onSave,
+  onCancel,
+}: PosterOverlayProps) {
+  // Show grid if we have generations (in progress or complete)
+  const showGrid = posterGenerations.length > 0;
 
-  if (isGenerating) {
+  // Show loading state only when generating but no generations started yet
+  const showInitialLoading = isGenerating && posterGenerations.length === 0;
+
+  if (showInitialLoading) {
     return (
       <motion.div
         initial={{ opacity: 0, y: 10 }}
@@ -35,9 +63,34 @@ export function PosterOverlay({ poster, isGenerating = false }: PosterOverlayPro
           <div className="absolute -inset-3 bg-rose-500/10 rounded-full animate-pulse" />
         </div>
         <div className="text-center">
-          <p className="text-lg font-medium text-slate-300">Generating Poster</p>
-          <p className="text-sm text-slate-500 mt-2 font-mono">Creating unique key art from your dimensions...</p>
+          <p className="text-lg font-medium text-slate-300">Generating 4 Posters</p>
+          <p className="text-sm text-slate-500 mt-2 font-mono">Creating unique variations from your dimensions...</p>
         </div>
+      </motion.div>
+    );
+  }
+
+  if (showGrid) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: -10 }}
+        className="flex flex-col items-center justify-center h-full min-h-[400px] py-4"
+      >
+        <div className="mb-4">
+          <p className="text-sm font-medium text-slate-400 uppercase tracking-wider text-center">
+            Select Your Poster
+          </p>
+        </div>
+        <PosterGrid
+          generations={posterGenerations}
+          selectedIndex={selectedIndex}
+          isSaving={isSaving}
+          onSelect={onSelect}
+          onSave={onSave}
+          onCancel={onCancel}
+        />
       </motion.div>
     );
   }
@@ -63,6 +116,7 @@ export function PosterOverlay({ poster, isGenerating = false }: PosterOverlayPro
     );
   }
 
+  // Show saved poster
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
@@ -70,7 +124,7 @@ export function PosterOverlay({ poster, isGenerating = false }: PosterOverlayPro
       exit={{ opacity: 0, y: -10 }}
       className="flex flex-col items-center justify-center h-full min-h-[400px] gap-6 py-4"
     >
-      {/* Poster Image - larger and responsive */}
+      {/* Poster Image */}
       <div className="relative flex-1 flex items-center justify-center w-full max-w-md">
         <div
           className="relative rounded-lg overflow-hidden border-2 border-rose-500/30 shadow-elevated shadow-rose-900/30 w-full"

@@ -10,7 +10,6 @@ import {
   Image as ImageIcon,
   Gamepad2,
   MousePointer2,
-  Film,
 } from 'lucide-react';
 import { InteractiveMode } from '../types';
 
@@ -41,8 +40,6 @@ export function getModeIcon(mode: InteractiveMode, size: number = 14): React.Rea
       return React.createElement(Gamepad2, { size });
     case 'clickable':
       return React.createElement(MousePointer2, { size });
-    case 'trailer':
-      return React.createElement(Film, { size });
     default:
       return React.createElement(ImageIcon, { size });
   }
@@ -74,13 +71,6 @@ export function getModeColors(mode: InteractiveMode): ModeColors {
         border: 'border-purple-500/30',
         text: 'text-purple-400',
         activeBg: 'bg-purple-500/20',
-      };
-    case 'trailer':
-      return {
-        bg: 'bg-rose-500/10',
-        border: 'border-rose-500/30',
-        text: 'text-rose-400',
-        activeBg: 'bg-rose-500/20',
       };
     default:
       return {
