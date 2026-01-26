@@ -17,13 +17,14 @@
 
 'use client';
 
-import React, { useState, useCallback, memo } from 'react';
+import React, { useCallback, memo } from 'react';
 import Image from 'next/image';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Copy, Check, Lock, Eye, Image as ImageIcon, Sparkles, Loader2, CheckCircle, Gamepad2, MousePointer2 } from 'lucide-react';
 import { GeneratedPrompt, PromptElement, GeneratedImage, InteractiveMode, InteractivePrototype } from '../../types';
 import { semanticColors } from '../../lib/semanticColors';
 import { scaleIn, useReducedMotion, getReducedMotionStaggeredTransition } from '../../lib/motion';
+import { useCopyFeedback } from '../../hooks/useCopyFeedback';
 
 /**
  * SkeletonPromptCard - Loading placeholder for prompt cards during generation
@@ -146,7 +147,10 @@ function PromptCardComponent({
   interactivePrototype,
   onInteractiveClick,
 }: PromptCardProps) {
-  const [justCopied, setJustCopied] = useState(false);
+  // Copy feedback hook with 2-second auto-reset
+  const { isCopied: justCopied, triggerCopy } = useCopyFeedback({
+    resetDelay: 2000,
+  });
 
   // Reduced motion support for accessibility (WCAG 2.1 Level AAA)
   const prefersReducedMotion = useReducedMotion();
@@ -156,18 +160,17 @@ function PromptCardComponent({
   const isComplete = generatedImage?.status === 'complete' && generatedImage?.url;
   const isFailed = generatedImage?.status === 'failed';
 
-  // Memoized copy handler to prevent recreating on each render
+  // Memoized copy handler using the useCopyFeedback hook
   const handleCopy = useCallback(async (e: React.MouseEvent) => {
     e.stopPropagation();
     try {
       await navigator.clipboard.writeText(prompt.prompt);
-      setJustCopied(true);
+      triggerCopy();
       onCopy(prompt.id);
-      setTimeout(() => setJustCopied(false), 2000);
     } catch (err) {
       console.error('Failed to copy:', err);
     }
-  }, [prompt.prompt, prompt.id, onCopy]);
+  }, [prompt.prompt, prompt.id, onCopy, triggerCopy]);
 
   // Memoized lock handler - also saves image to panel when locking (if image exists and not already saved)
   const handleLockWithSave = useCallback((e: React.MouseEvent) => {
@@ -182,9 +185,10 @@ function PromptCardComponent({
   const lockedElementCount = prompt.elements.filter((e) => e.locked).length;
 
   // Determine ring style based on state
-  // - cyan: Primary/generating state
+  // - cyan: Primary/generating state, copy success
   // - green: Locked/saved state
   const getRingClass = () => {
+    if (justCopied) return 'ring-2 ring-cyan-400/50 ring-offset-1 ring-offset-surface-primary';
     if (isGenerating) return 'ring-2 ring-accent-primary/30 ring-offset-1 ring-offset-surface-primary animate-pulse';
     if (isSavedToPanel) return 'ring-2 ring-accent-success/30 ring-offset-1 ring-offset-surface-primary';
     if (prompt.locked) return 'ring-2 ring-accent-success/30 ring-offset-1 ring-offset-surface-primary';
@@ -354,6 +358,31 @@ function PromptCardComponent({
           </span>
         </div>
       )}
+
+      {/* Copy success feedback - "Copied!" text with animation */}
+      <AnimatePresence>
+        {justCopied && (
+          <motion.div
+            initial={{ opacity: 0, y: 10, scale: 0.9 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -5, scale: 0.95 }}
+            transition={{ duration: 0.2, ease: 'easeOut' }}
+            className="absolute inset-0 flex items-center justify-center pointer-events-none z-10"
+          >
+            <motion.div
+              initial={{ boxShadow: '0 0 0 0 rgba(34, 211, 238, 0)' }}
+              animate={{ boxShadow: '0 0 20px 4px rgba(34, 211, 238, 0.3)' }}
+              transition={{ duration: 0.3 }}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-cyan-500/90 rounded-lg"
+            >
+              <Check size={14} className="text-white" />
+              <span className="font-mono text-sm font-medium text-white">
+                Copied!
+              </span>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Interactive mode indicator */}
       {interactiveMode !== 'static' && isComplete && (
