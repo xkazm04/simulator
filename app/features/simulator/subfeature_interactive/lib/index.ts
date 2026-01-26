@@ -44,6 +44,24 @@ export type {
   CinematicKeyframe,
 } from './cameraController';
 
+// Camera presets
+export {
+  CAMERA_PRESETS,
+  DEFAULT_AUTOPLAY_CONFIG,
+  getPreset,
+  normalizedToWorld,
+  applyPresetToCamera,
+  lerpPosition,
+  easingFunctions,
+  applyEasing,
+  CameraAutoPlayer,
+} from './cameraPresets';
+export type {
+  CameraPresetId,
+  CameraPreset,
+  AutoPlayConfig,
+} from './cameraPresets';
+
 // Demo exporter
 export {
   exportDemo,

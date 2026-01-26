@@ -16,6 +16,7 @@ export { MechanicsSelector } from './components/MechanicsSelector';
 export { ExportButton } from './components/ExportButton';
 export { PhysicsWebGLDemo } from './components/PhysicsWebGLDemo';
 export { HotspotEditor } from './components/HotspotEditor';
+export { CameraPresetBar } from './components/CameraPresetBar';
 
 // Library exports
 export * from './lib';

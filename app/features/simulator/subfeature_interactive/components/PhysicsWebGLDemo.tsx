@@ -30,8 +30,10 @@ import { semanticColors } from '../../lib/semanticColors';
 import { fadeIn, transitions } from '../../lib/motion';
 import { GameEngine, GameMechanicsType, GameState } from '../lib/mechanicsTemplates';
 import { CameraController, createCameraForGameType } from '../lib/cameraController';
+import { CameraPresetId } from '../lib/cameraPresets';
 import { MechanicsSelector } from './MechanicsSelector';
 import { ExportButton } from './ExportButton';
+import { CameraPresetBar } from './CameraPresetBar';
 
 interface PhysicsWebGLDemoProps {
   prototype: InteractivePrototype;
@@ -46,6 +48,8 @@ interface PhysicsWebGLDemoProps {
   showExport?: boolean;
   /** Title for export */
   exportTitle?: string;
+  /** Show camera preset controls */
+  showCameraPresets?: boolean;
 }
 
 export function PhysicsWebGLDemo({
@@ -57,6 +61,7 @@ export function PhysicsWebGLDemo({
   showMechanicsSelector = true,
   showExport = true,
   exportTitle = 'Interactive Demo',
+  showCameraPresets = true,
 }: PhysicsWebGLDemoProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -72,6 +77,8 @@ export function PhysicsWebGLDemo({
   const [showSettings, setShowSettings] = useState(false);
   const [showControls, setShowControls] = useState(true);
   const [debugMode, setDebugMode] = useState(false);
+  const [activePreset, setActivePreset] = useState<CameraPresetId>('default');
+  const [worldBounds, setWorldBounds] = useState({ width: 1600, height: 1200 });
 
   const animationRef = useRef<number | null>(null);
   const lastTimeRef = useRef(0);
@@ -99,10 +106,12 @@ export function PhysicsWebGLDemo({
     });
 
     // Create camera
-    const camera = createCameraForGameType(mechanics, { width, height }, { width: width * 2, height: height * 2 });
+    const cameraBounds = { width: width * 2, height: height * 2 };
+    const camera = createCameraForGameType(mechanics, { width, height }, cameraBounds);
 
     engineRef.current = engine;
     cameraRef.current = camera;
+    setWorldBounds(cameraBounds);
 
     // Attach input to canvas
     engine.attach(canvas);
@@ -529,6 +538,19 @@ export function PhysicsWebGLDemo({
               />
             )}
 
+            {/* Camera Presets */}
+            {showCameraPresets && (
+              <div className="mt-4 pt-4 border-t border-slate-700/50">
+                <CameraPresetBar
+                  camera={cameraRef.current}
+                  worldBounds={worldBounds}
+                  activePreset={activePreset}
+                  onPresetChange={setActivePreset}
+                  showAutoPlay={true}
+                />
+              </div>
+            )}
+
             <div className="mt-4 pt-4 border-t border-slate-700/50">
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
@@ -592,14 +614,27 @@ export function PhysicsWebGLDemo({
             </button>
           </div>
 
-          {/* Center - Mode indicator */}
-          <div className="flex items-center gap-2">
+          {/* Center - Mode indicator and Camera presets */}
+          <div className="flex items-center gap-3">
             <MechanicsSelector
               selected={mechanics}
               onSelect={handleMechanicsChange}
               compact
               disabled={!showMechanicsSelector}
             />
+            {showCameraPresets && (
+              <>
+                <div className="w-px h-6 bg-slate-600" />
+                <CameraPresetBar
+                  camera={cameraRef.current}
+                  worldBounds={worldBounds}
+                  activePreset={activePreset}
+                  onPresetChange={setActivePreset}
+                  showAutoPlay={true}
+                  compact
+                />
+              </>
+            )}
           </div>
 
           {/* Right controls */}
