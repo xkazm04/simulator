@@ -15,6 +15,16 @@ export { useDimensions } from './hooks/useDimensions';
 // Lib
 export { DEFAULT_DIMENSIONS, EXTRA_DIMENSIONS, getDimensionPreset, getAllDimensionPresets, EXAMPLE_SIMULATIONS } from './lib/defaultDimensions';
 export { applyConceptToDimensions, applyElementToDimensionById, createDimensionFromElement } from './lib/concept';
+export {
+  persistDimensions,
+  loadPersistedDimensions,
+  clearPersistedDimensions,
+  getStorageKey,
+  getLastPersistedTimestamp,
+  createDebouncedPersist,
+  createPersistenceManager,
+} from './lib/dimensionPersistence';
+export type { PersistedDimension, PersistedDimensionsData, DimensionPersistenceManager } from './lib/dimensionPersistence';
 
 // Components
 export { DimensionColumn } from './components/DimensionColumn';
