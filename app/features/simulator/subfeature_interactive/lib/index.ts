@@ -52,3 +52,27 @@ export {
   estimateExportSize,
 } from './demoExporter';
 export type { ExportOptions, ExportResult } from './demoExporter';
+
+// Hotspot types and utilities
+export {
+  createHotspot,
+  calculateBoundsFromDraw,
+  isValidBounds,
+  applyActionToHotspot,
+  screenToNormalized,
+  isPointInHotspot,
+  getResizeHandleAtPoint,
+  applyResize,
+} from './hotspotTypes';
+export type {
+  Hotspot,
+  HotspotBounds,
+  DrawState,
+  ResizeHandle,
+  ResizeState,
+  DragState,
+  HotspotEditorMode,
+  HotspotEditorState,
+  HotspotActionConfig,
+  HotspotActionType,
+} from './hotspotTypes';

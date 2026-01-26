@@ -15,6 +15,7 @@ export { InteractivePreviewModal } from './components/InteractivePreviewModal';
 export { MechanicsSelector } from './components/MechanicsSelector';
 export { ExportButton } from './components/ExportButton';
 export { PhysicsWebGLDemo } from './components/PhysicsWebGLDemo';
+export { HotspotEditor } from './components/HotspotEditor';
 
 // Library exports
 export * from './lib';

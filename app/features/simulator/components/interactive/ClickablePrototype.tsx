@@ -8,12 +8,12 @@
  * - Clickable regions with hover/active states
  * - Visual feedback animations (pulse, glow, scale)
  * - Region labels on hover
- * - Edit mode for adjusting regions
+ * - Edit mode for drawing and configuring hotspots
  */
 
 'use client';
 
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useRef } from 'react';
 import Image from 'next/image';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -23,16 +23,23 @@ import {
   EyeOff,
   Maximize2,
   Info,
+  Pencil,
 } from 'lucide-react';
 import { InteractivePrototype, InteractiveRegion } from '../../types';
 import { semanticColors } from '../../lib/semanticColors';
 import { fadeIn, scaleIn, transitions } from '../../lib/motion';
+import { HotspotEditor } from '../../subfeature_interactive/components/HotspotEditor';
+import { Hotspot } from '../../subfeature_interactive/lib/hotspotTypes';
 
 interface ClickablePrototypeProps {
   prototype: InteractivePrototype;
   imageUrl?: string;
   isFullscreen?: boolean;
   onToggleFullscreen?: () => void;
+  /** Custom hotspots created in edit mode */
+  customHotspots?: Hotspot[];
+  /** Callback when custom hotspots change */
+  onHotspotsChange?: (hotspots: Hotspot[]) => void;
 }
 
 /**
@@ -121,16 +128,29 @@ export function ClickablePrototype({
   imageUrl,
   isFullscreen = false,
   onToggleFullscreen,
+  customHotspots = [],
+  onHotspotsChange,
 }: ClickablePrototypeProps) {
   const [hoveredRegion, setHoveredRegion] = useState<string | null>(null);
   const [activeRegion, setActiveRegion] = useState<string | null>(null);
   const [showRegions, setShowRegions] = useState(true);
   const [showLabels, setShowLabels] = useState(true);
   const [interactionLog, setInteractionLog] = useState<string[]>([]);
+  const [isEditMode, setIsEditMode] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
 
+  // Combine prototype regions with custom hotspots
   const regions = useMemo(() => {
-    return prototype.assets?.regions || [];
-  }, [prototype.assets?.regions]);
+    const prototypeRegions = prototype.assets?.regions || [];
+    // Custom hotspots take precedence (user-created)
+    const allRegions = [...prototypeRegions, ...customHotspots];
+    return allRegions;
+  }, [prototype.assets?.regions, customHotspots]);
+
+  // Handle hotspot changes from the editor
+  const handleHotspotsChange = useCallback((hotspots: Hotspot[]) => {
+    onHotspotsChange?.(hotspots);
+  }, [onHotspotsChange]);
 
   const handleRegionClick = useCallback((region: InteractiveRegion) => {
     setActiveRegion(region.id);
@@ -174,6 +194,7 @@ export function ClickablePrototype({
 
   return (
     <motion.div
+      ref={containerRef}
       variants={fadeIn}
       initial="initial"
       animate="animate"
@@ -194,9 +215,20 @@ export function ClickablePrototype({
         <div className="absolute inset-0 bg-gradient-to-br from-slate-800 to-slate-900" />
       )}
 
-      {/* Interactive Regions Overlay */}
+      {/* Hotspot Editor (when in edit mode) */}
+      {onHotspotsChange && (
+        <HotspotEditor
+          hotspots={customHotspots}
+          onHotspotsChange={handleHotspotsChange}
+          isEditMode={isEditMode}
+          onExitEditMode={() => setIsEditMode(false)}
+          containerRef={containerRef as React.RefObject<HTMLDivElement>}
+        />
+      )}
+
+      {/* Interactive Regions Overlay (hidden in edit mode) */}
       <AnimatePresence>
-        {showRegions && regions.map((region) => {
+        {showRegions && !isEditMode && regions.map((region) => {
           const isHovered = hoveredRegion === region.id;
           const isActive = activeRegion === region.id;
           const colors = getRegionTypeColor(region.type);
@@ -316,6 +348,21 @@ export function ClickablePrototype({
 
           {/* Right controls */}
           <div className="flex items-center gap-2">
+            {/* Edit Mode Toggle */}
+            {onHotspotsChange && (
+              <button
+                onClick={() => setIsEditMode(!isEditMode)}
+                className={`p-2 radius-sm transition-colors border ${
+                  isEditMode
+                    ? 'bg-cyan-500/30 border-cyan-500/50 text-cyan-400'
+                    : 'bg-slate-800/80 border-slate-700 text-slate-300 hover:bg-slate-700'
+                }`}
+                data-testid="clickable-prototype-edit-btn"
+                title={isEditMode ? 'Exit edit mode' : 'Edit hotspots'}
+              >
+                <Pencil size={14} />
+              </button>
+            )}
             {onToggleFullscreen && (
               <button
                 onClick={onToggleFullscreen}
@@ -350,19 +397,21 @@ export function ClickablePrototype({
         )}
       </AnimatePresence>
 
-      {/* Interactive hint */}
-      <motion.div
-        variants={fadeIn}
-        initial="initial"
-        animate="animate"
-        transition={{ delay: 0.5, ...transitions.normal }}
-        className="absolute top-3 left-3 px-2 py-1 bg-black/60 radius-sm border border-slate-700/50 opacity-60 group-hover:opacity-0 transition-opacity pointer-events-none"
-      >
-        <span className="font-mono type-label text-slate-400 flex items-center gap-1.5">
-          <MousePointer2 size={10} />
-          Click to interact • Hover for labels
-        </span>
-      </motion.div>
+      {/* Interactive hint (hidden in edit mode) */}
+      {!isEditMode && (
+        <motion.div
+          variants={fadeIn}
+          initial="initial"
+          animate="animate"
+          transition={{ delay: 0.5, ...transitions.normal }}
+          className="absolute top-3 left-3 px-2 py-1 bg-black/60 radius-sm border border-slate-700/50 opacity-60 group-hover:opacity-0 transition-opacity pointer-events-none"
+        >
+          <span className="font-mono type-label text-slate-400 flex items-center gap-1.5">
+            <MousePointer2 size={10} />
+            Click to interact • Hover for labels{onHotspotsChange && ' • Edit to add hotspots'}
+          </span>
+        </motion.div>
+      )}
     </motion.div>
   );
 }
