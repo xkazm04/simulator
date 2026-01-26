@@ -27,6 +27,7 @@ import { Dimension, DimensionFilterMode, DimensionTransformMode, PromptElement }
 import { semanticColors, stateClasses } from '../../lib/semanticColors';
 import { IconButton } from '@/app/components/ui';
 import { scaleInSubtle, expandCollapse, getReducedMotionStaggeredTransition, useReducedMotion, getReducedMotionTransitions } from '../../lib/motion';
+import { WeightIndicator, WeightBadge } from './WeightIndicator';
 
 /** Labels for filter modes */
 const FILTER_MODE_LABELS: Record<DimensionFilterMode, { label: string; description: string }> = {
@@ -221,11 +222,12 @@ function DimensionCardComponent({
                 className="w-1.5 h-1.5 rounded-full bg-cyan-400"
               />
             )}
-            {/* Weight indicator - show when not 100% */}
+            {/* Weight badge - show when not 100%, click to toggle lens controls */}
             {weight < 100 && (
-              <span className="font-mono type-label text-cyan-400/70 bg-cyan-500/10 px-1 py-0.5 radius-sm">
-                {weight}%
-              </span>
+              <WeightBadge
+                weight={weight}
+                onClick={() => setShowLensControls(!showLensControls)}
+              />
             )}
           </div>
 
@@ -285,16 +287,19 @@ function DimensionCardComponent({
               data-testid={`dimension-lens-controls-${dimension.id}`}
             >
               <div className="p-sm space-y-sm bg-slate-800/20">
-                {/* Weight Slider */}
-                <div className="space-y-1">
-                  <div className="flex items-center justify-between">
-                    <span className="font-mono type-label uppercase tracking-wide text-slate-500">
-                      intensity
-                    </span>
-                    <span className="font-mono type-label text-cyan-400">
-                      {weight}%
-                    </span>
-                  </div>
+                {/* Weight Indicator with Presets */}
+                <div className="space-y-2">
+                  <span className="font-mono type-label uppercase tracking-wide text-slate-500">
+                    intensity
+                  </span>
+                  {/* Visual weight bar with presets */}
+                  <WeightIndicator
+                    weight={weight}
+                    onChange={(newWeight) => onWeightChange?.(dimension.id, newWeight)}
+                    showPresets={true}
+                    showTooltip={true}
+                  />
+                  {/* Fine-tune slider */}
                   <input
                     type="range"
                     min="0"

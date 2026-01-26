@@ -30,3 +30,5 @@ export type { PersistedDimension, PersistedDimensionsData, DimensionPersistenceM
 export { DimensionColumn } from './components/DimensionColumn';
 export { DimensionCard } from './components/DimensionCard';
 export { DimensionGrid } from './components/DimensionGrid';
+export { WeightIndicator, WeightBadge, WEIGHT_PRESETS, getWeightDescription, getWeightColorClasses } from './components/WeightIndicator';
+export type { WeightPresetId } from './components/WeightIndicator';
