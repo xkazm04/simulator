@@ -35,6 +35,10 @@ export interface PromptSectionProps {
   onOpenComparison?: () => void;
   /** Starting slot number for placeholders (1 for top, 3 for bottom) */
   startSlotNumber: number;
+  /** Controlled expand state (optional - uses internal state if not provided) */
+  isExpanded?: boolean;
+  /** Callback when expand state changes (required if isExpanded is provided) */
+  onToggleExpand?: () => void;
 }
 
 export function PromptSection({
@@ -46,13 +50,19 @@ export function PromptSection({
   savedPromptIds,
   onOpenComparison,
   startSlotNumber,
+  isExpanded: controlledExpanded,
+  onToggleExpand: controlledToggle,
 }: PromptSectionProps) {
   // Get handlers from context
   const promptsCtx = usePromptsContext();
   const simulatorCtx = useSimulatorContext();
 
-  // Local expand state
-  const [isExpanded, setIsExpanded] = useState(true);
+  // Local expand state (used if not controlled)
+  const [internalExpanded, setInternalExpanded] = useState(true);
+
+  // Use controlled state if provided, otherwise use internal state
+  const isControlled = controlledExpanded !== undefined;
+  const isExpanded = isControlled ? controlledExpanded : internalExpanded;
 
   // Reduced motion support for accessibility
   const prefersReducedMotion = useReducedMotion();
@@ -63,7 +73,13 @@ export function PromptSection({
   const collapsedLabel = position === 'top' ? 'Generated Images (1-2)' : 'Generated Images (3-4)';
   const testIdPrefix = position === 'top' ? 'top-prompts' : 'bottom-prompts';
 
-  const onToggleExpand = () => setIsExpanded(!isExpanded);
+  const onToggleExpand = () => {
+    if (isControlled && controlledToggle) {
+      controlledToggle();
+    } else {
+      setInternalExpanded(!internalExpanded);
+    }
+  };
 
   // Copy handler with toast notification (passed up to OnionLayout for toast)
   const handleCopy = (id: string) => {

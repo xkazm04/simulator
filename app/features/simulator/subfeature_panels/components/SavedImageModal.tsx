@@ -1,19 +1,29 @@
 /**
  * SavedImageModal - Modal for viewing and regenerating saved panel images
- * Features: View image, copy prompt, Gemini regeneration with before/after comparison
+ * Features: View image, copy prompt, Gemini regeneration with before/after comparison,
+ * and video generation with Leonardo Seedance
  */
 
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, ImageIcon, Trash2, RotateCcw, Check } from 'lucide-react';
+import { X, ImageIcon, Trash2, RotateCcw, Check, Video } from 'lucide-react';
 import { SavedPanelImage } from '../../types';
 import { IconButton } from '@/app/components/ui';
 import { fadeIn, modalContent, transitions } from '../../lib/motion';
-import { regenerateImage, type RegenerationMode } from '../lib';
+import {
+  regenerateImage,
+  generateVideo,
+  checkVideoStatus,
+  type RegenerationMode,
+  type VideoDuration,
+} from '../lib';
 import { SavedImageComparison } from './SavedImageComparison';
 import { SavedImageRegeneration } from './SavedImageRegeneration';
+import { VideoCreation } from './VideoCreation';
+
+type ModalTab = 'image' | 'video';
 
 interface SavedImageModalProps {
   image: SavedPanelImage | null;
@@ -21,6 +31,7 @@ interface SavedImageModalProps {
   onClose: () => void;
   onRemove?: (imageId: string) => void;
   onUpdateImage?: (imageId: string, newUrl: string) => void;
+  onUpdateImageVideo?: (imageId: string, videoUrl: string) => void;
   gameUIDimension?: string;
   onCopy?: () => void;
 }
@@ -31,15 +42,101 @@ export function SavedImageModal({
   onClose,
   onRemove,
   onUpdateImage,
+  onUpdateImageVideo,
   gameUIDimension,
   onCopy,
 }: SavedImageModalProps) {
+  // Tab state
+  const [activeTab, setActiveTab] = useState<ModalTab>('image');
+
+  // Image regeneration state
   const [regeneratePrompt, setRegeneratePrompt] = useState('');
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [regeneratedUrl, setRegeneratedUrl] = useState<string | null>(null);
   const [regenerateError, setRegenerateError] = useState<string | null>(null);
   const [expandedImage, setExpandedImage] = useState<'original' | 'regenerated' | null>(null);
   const [hudEnabled, setHudEnabled] = useState(false);
+
+  // Video generation state
+  const [videoPrompt, setVideoPrompt] = useState('');
+  const [videoDuration, setVideoDuration] = useState<VideoDuration>(8);
+  const [isGeneratingVideo, setIsGeneratingVideo] = useState(false);
+  const [videoGenerationId, setVideoGenerationId] = useState<string | null>(null);
+  const [generatedVideoUrl, setGeneratedVideoUrl] = useState<string | null>(null);
+  const [videoError, setVideoError] = useState<string | null>(null);
+  const [videoProgress, setVideoProgress] = useState<string | undefined>();
+
+  // Poll for video completion
+  const pollVideoStatus = useCallback(async (generationId: string) => {
+    const maxAttempts = 120; // ~4 minutes
+    const intervalMs = 2000;
+
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const result = await checkVideoStatus(generationId);
+
+      if (result.status === 'complete' && result.videoUrl) {
+        setGeneratedVideoUrl(result.videoUrl);
+        setIsGeneratingVideo(false);
+        setVideoProgress(undefined);
+        setVideoGenerationId(null);
+
+        // Auto-save video URL if callback provided
+        if (onUpdateImageVideo && image) {
+          onUpdateImageVideo(image.id, result.videoUrl);
+        }
+        return;
+      }
+
+      if (result.status === 'failed' || result.error) {
+        setVideoError(result.error || 'Video generation failed');
+        setIsGeneratingVideo(false);
+        setVideoProgress(undefined);
+        setVideoGenerationId(null);
+        return;
+      }
+
+      // Update progress
+      const progress = Math.round((attempt / maxAttempts) * 100);
+      setVideoProgress(`Generating video... ${progress}%`);
+
+      // Wait before next poll
+      await new Promise(resolve => setTimeout(resolve, intervalMs));
+    }
+
+    setVideoError('Video generation timed out');
+    setIsGeneratingVideo(false);
+    setVideoProgress(undefined);
+    setVideoGenerationId(null);
+  }, [image, onUpdateImageVideo]);
+
+  // Resume polling on mount if there's a pending generation
+  useEffect(() => {
+    if (videoGenerationId && isGeneratingVideo) {
+      pollVideoStatus(videoGenerationId);
+    }
+  }, []);
+
+  // Reset state when modal closes or image changes
+  useEffect(() => {
+    if (!isOpen) {
+      setRegeneratePrompt('');
+      setRegeneratedUrl(null);
+      setRegenerateError(null);
+      setVideoPrompt('');
+      setVideoError(null);
+      setGeneratedVideoUrl(null);
+      setVideoProgress(undefined);
+    }
+  }, [isOpen]);
+
+  // Set existing video URL from image data
+  useEffect(() => {
+    if (image?.videoUrl) {
+      setGeneratedVideoUrl(image.videoUrl);
+    } else {
+      setGeneratedVideoUrl(null);
+    }
+  }, [image?.videoUrl]);
 
   if (!isOpen || !image) return null;
 
@@ -91,6 +188,31 @@ export function SavedImageModal({
     setRegenerateError(null);
   };
 
+  const handleGenerateVideo = async () => {
+    if (!videoPrompt.trim() || isGeneratingVideo) return;
+
+    setIsGeneratingVideo(true);
+    setVideoError(null);
+    setGeneratedVideoUrl(null);
+    setVideoProgress('Starting video generation...');
+
+    const result = await generateVideo({
+      sourceImageUrl: image.url,
+      prompt: videoPrompt.trim(),
+      duration: videoDuration,
+    });
+
+    if (result.success && result.generationId) {
+      setVideoGenerationId(result.generationId);
+      // Start polling
+      pollVideoStatus(result.generationId);
+    } else {
+      setVideoError(result.error || 'Failed to start video generation');
+      setIsGeneratingVideo(false);
+      setVideoProgress(undefined);
+    }
+  };
+
   const slotLabel = `${image.side === 'left' ? 'L' : 'R'}${image.slotIndex + 1}`;
 
   return (
@@ -116,53 +238,99 @@ export function SavedImageModal({
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header */}
-          <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800 bg-slate-900/50">
-            <div className="flex items-center gap-3">
-              <div className="p-1.5 bg-amber-500/10 radius-sm border border-amber-500/20">
-                <ImageIcon size={14} className="text-amber-400" />
+          <div className="border-b border-slate-800 bg-slate-900/50">
+            <div className="flex items-center justify-between px-4 py-3">
+              <div className="flex items-center gap-3">
+                <div className="p-1.5 bg-amber-500/10 radius-sm border border-amber-500/20">
+                  <ImageIcon size={14} className="text-amber-400" />
+                </div>
+                <div>
+                  <h3 className="type-body font-medium text-slate-200">Saved Image</h3>
+                  <p className="type-label font-mono text-amber-400">Panel Slot {slotLabel}</p>
+                </div>
               </div>
-              <div>
-                <h3 className="type-body font-medium text-slate-200">Saved Image</h3>
-                <p className="type-label font-mono text-amber-400">Panel Slot {slotLabel}</p>
-              </div>
+              <IconButton
+                size="md"
+                variant="subtle"
+                colorScheme="default"
+                onClick={onClose}
+                data-testid="saved-image-close-btn"
+                label="Close"
+              >
+                <X size={16} />
+              </IconButton>
             </div>
-            <IconButton
-              size="md"
-              variant="subtle"
-              colorScheme="default"
-              onClick={onClose}
-              data-testid="saved-image-close-btn"
-              label="Close"
-            >
-              <X size={16} />
-            </IconButton>
+
+            {/* Tab Switcher */}
+            <div className="flex px-4 gap-2 pb-0">
+              <button
+                onClick={() => setActiveTab('image')}
+                className={`flex items-center gap-1.5 px-4 py-2.5 font-mono text-sm font-medium transition-all rounded-t-md ${
+                  activeTab === 'image'
+                    ? 'bg-purple-500/20 text-purple-300 border border-purple-500/50 border-b-0 relative after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-surface-primary'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 border border-transparent'
+                }`}
+              >
+                <ImageIcon size={14} />
+                Re-generate Image
+              </button>
+              <button
+                onClick={() => setActiveTab('video')}
+                className={`flex items-center gap-1.5 px-4 py-2.5 font-mono text-sm font-medium transition-all rounded-t-md ${
+                  activeTab === 'video'
+                    ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/50 border-b-0 relative after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-surface-primary'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 border border-transparent'
+                }`}
+              >
+                <Video size={14} />
+                Create Video
+              </button>
+            </div>
           </div>
 
           {/* Body */}
           <div className="flex-1 overflow-y-auto custom-scrollbar" data-testid="saved-image-modal-body">
             <div className="p-md space-y-md">
-              {/* Image Comparison */}
-              <SavedImageComparison
-                originalUrl={image.url}
-                regeneratedUrl={regeneratedUrl}
-                isRegenerating={isRegenerating}
-                slotLabel={slotLabel}
-                expandedImage={expandedImage}
-                onExpandImage={setExpandedImage}
-              />
+              {activeTab === 'image' ? (
+                <>
+                  {/* Image Comparison */}
+                  <SavedImageComparison
+                    originalUrl={image.url}
+                    regeneratedUrl={regeneratedUrl}
+                    isRegenerating={isRegenerating}
+                    slotLabel={slotLabel}
+                    expandedImage={expandedImage}
+                    onExpandImage={setExpandedImage}
+                  />
 
-              {/* Regeneration Input & Original Prompt */}
-              <SavedImageRegeneration
-                prompt={image.prompt}
-                regeneratePrompt={regeneratePrompt}
-                isRegenerating={isRegenerating}
-                regenerateError={regenerateError}
-                hudEnabled={hudEnabled}
-                onHudToggle={setHudEnabled}
-                onPromptChange={setRegeneratePrompt}
-                onGenerate={handleRegenerate}
-                onCopy={onCopy}
-              />
+                  {/* Regeneration Input & Original Prompt */}
+                  <SavedImageRegeneration
+                    prompt={image.prompt}
+                    regeneratePrompt={regeneratePrompt}
+                    isRegenerating={isRegenerating}
+                    regenerateError={regenerateError}
+                    hudEnabled={hudEnabled}
+                    onHudToggle={setHudEnabled}
+                    onPromptChange={setRegeneratePrompt}
+                    onGenerate={handleRegenerate}
+                    onCopy={onCopy}
+                  />
+                </>
+              ) : (
+                /* Video Creation Tab */
+                <VideoCreation
+                  sourceImageUrl={image.url}
+                  existingVideoUrl={generatedVideoUrl || undefined}
+                  videoPrompt={videoPrompt}
+                  duration={videoDuration}
+                  isGenerating={isGeneratingVideo}
+                  generationProgress={videoProgress}
+                  generateError={videoError}
+                  onPromptChange={setVideoPrompt}
+                  onDurationChange={setVideoDuration}
+                  onGenerate={handleGenerateVideo}
+                />
+              )}
 
               {/* Timestamp */}
               <div className="type-label font-mono text-slate-600">

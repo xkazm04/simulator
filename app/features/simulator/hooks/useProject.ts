@@ -111,12 +111,14 @@ function parseProjectWithState(projectWithState: Record<string, unknown>): Proje
     side: string;
     slot_index: number;
     image_url: string;
+    video_url: string | null;
     prompt: string | null;
     created_at: string;
   }>;
   const panelImages: SavedPanelImage[] = rawPanelImages.map((img) => ({
     id: img.id,
     url: img.image_url,
+    videoUrl: img.video_url || undefined,
     prompt: img.prompt || '',
     side: img.side as 'left' | 'right',
     slotIndex: img.slot_index,

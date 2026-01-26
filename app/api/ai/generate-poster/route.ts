@@ -17,6 +17,12 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getLeonardoProvider, isLeonardoAvailable, AIError } from '@/app/lib/ai';
+import {
+  buildPosterPrompts,
+  POSTER_SYSTEM_PROMPT,
+  POSTER_VARIANTS,
+  type PosterPromptContext,
+} from './prompts';
 
 interface Dimension {
   type: string;
@@ -25,6 +31,7 @@ interface Dimension {
 
 interface GeneratePosterRequest {
   projectId: string;
+  projectName: string;
   dimensions: Dimension[];
   basePrompt: string;
 }
@@ -32,127 +39,99 @@ interface GeneratePosterRequest {
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 const USE_REAL_API = process.env.NEXT_PUBLIC_USE_REAL_SIMULATOR_AI === 'true';
 
+// Leonardo AI has a 1500 character limit for prompts
+const LEONARDO_MAX_PROMPT_LENGTH = 1500;
+
+/**
+ * Truncate prompt to Leonardo's max length, preserving word boundaries
+ */
+function truncatePrompt(prompt: string): string {
+  if (prompt.length <= LEONARDO_MAX_PROMPT_LENGTH) return prompt;
+  const truncated = prompt.slice(0, LEONARDO_MAX_PROMPT_LENGTH - 3);
+  const lastSpace = truncated.lastIndexOf(' ');
+  // Preserve word boundary if we're past 80% of the limit
+  if (lastSpace > LEONARDO_MAX_PROMPT_LENGTH * 0.8) {
+    return truncated.slice(0, lastSpace) + '...';
+  }
+  return truncated + '...';
+}
+
 // ============================================================================
 // POSTER PROMPT GENERATION - 4 UNIQUE VARIATIONS
 // ============================================================================
-
-const POSTER_SYSTEM_PROMPT = `You are a creative director designing video game poster/key art variations.
-Given the game's dimensions (characters, environment, mood, style), create EXACTLY 4 unique poster prompts.
-
-Each poster should be DISTINCTLY DIFFERENT in terms of:
-1. CAMERA ANGLE: Wide establishing shot, close-up portrait, dramatic low angle, bird's eye view, etc.
-2. ART STYLE: Painterly, photorealistic, stylized, minimalist, graphic novel, etc.
-3. COMPOSITION: Action scene, contemplative moment, character portrait, landscape, symbolic, etc.
-4. LIGHTING: Golden hour, dramatic backlighting, neon-lit, moody shadows, etc.
-
-Your posters should:
-- Capture the essence of the game's identity
-- Use dramatic composition typical of AAA game covers
-- Feature key visual elements in artistic, iconic ways
-- Include stylistic elements like dramatic lighting, cinematic depth
-- Feel epic, memorable, and marketable
-
-DO NOT:
-- Include any text, titles, or logos
-- Mention UI elements or HUD
-- Make similar prompts - each MUST be visually distinct
-- Use vague or generic descriptions
-
-OUTPUT: Return EXACTLY 4 prompts separated by "---" on its own line. Each prompt should be detailed but focused.`;
 
 interface PosterPrompts {
   prompts: string[];
 }
 
+/**
+ * Generate poster prompts using Claude to enhance the base templates
+ * Claude adds specific creative details while maintaining the core composition
+ */
 async function generatePosterPromptsWithClaude(
-  dimensions: Dimension[],
-  basePrompt: string
+  context: PosterPromptContext
 ): Promise<PosterPrompts> {
   if (!ANTHROPIC_API_KEY) {
     throw new Error('ANTHROPIC_API_KEY not configured');
   }
 
-  const dimensionsList = dimensions
-    .filter(d => d.reference && d.reference.trim())
-    .map(d => `- ${d.type}: ${d.reference}`)
-    .join('\n');
+  // Build base prompts from templates
+  const basePrompts = buildPosterPrompts(context);
 
-  const userPrompt = `Create 4 unique poster prompts for a game with these elements:
+  // Enhance each prompt with Claude
+  const enhancedPrompts: string[] = [];
 
-BASE CONCEPT:
-${basePrompt || 'No base concept provided'}
+  for (let i = 0; i < basePrompts.length; i++) {
+    const variant = POSTER_VARIANTS[i];
+    const basePrompt = basePrompts[i];
 
-DIMENSIONS:
-${dimensionsList || 'No specific dimensions provided'}
+    const userPrompt = `Enhance this ${variant.name} poster prompt for the game "${context.projectName}":
 
-Generate 4 detailed, evocative prompts for vertical posters (2:3 aspect ratio) that capture the essence of this game.
-Each poster MUST be visually distinct - different angle, different style, different composition.
-Separate each prompt with "---" on its own line.`;
+BASE PROMPT:
+${basePrompt}
 
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': ANTHROPIC_API_KEY,
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify({
-      model: 'claude-3-5-sonnet-20241022',
-      max_tokens: 2000,
-      system: POSTER_SYSTEM_PROMPT,
-      messages: [
-        {
-          role: 'user',
-          content: userPrompt,
+GAME CONCEPT:
+${context.basePrompt || 'No additional concept provided'}
+
+Enhance the prompt with specific creative details that match this game's unique identity. Keep the same structure and style, but add vivid, specific details. Return only the enhanced prompt, no explanations.`;
+
+    try {
+      const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': ANTHROPIC_API_KEY,
+          'anthropic-version': '2023-06-01',
         },
-      ],
-    }),
-  });
+        body: JSON.stringify({
+          model: 'claude-3-5-sonnet-20241022',
+          max_tokens: 1500,
+          system: POSTER_SYSTEM_PROMPT,
+          messages: [{ role: 'user', content: userPrompt }],
+        }),
+      });
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Anthropic API error: ${response.status} - ${errorText}`);
+      if (response.ok) {
+        const data = await response.json();
+        enhancedPrompts.push(data.content[0].text.trim());
+      } else {
+        // Fall back to base prompt if enhancement fails
+        enhancedPrompts.push(basePrompt);
+      }
+    } catch {
+      // Fall back to base prompt if enhancement fails
+      enhancedPrompts.push(basePrompt);
+    }
   }
 
-  const data = await response.json();
-  const fullText = data.content[0].text.trim();
-
-  // Split by --- separator
-  const prompts = fullText
-    .split(/---+/)
-    .map((p: string) => p.trim())
-    .filter((p: string) => p.length > 0)
-    .slice(0, 4);
-
-  // Ensure we have exactly 4 prompts
-  while (prompts.length < 4) {
-    prompts.push(prompts[0] || 'Epic game poster with dramatic lighting');
-  }
-
-  return { prompts: prompts.slice(0, 4) };
+  return { prompts: enhancedPrompts };
 }
 
-function generateMockPosterPrompts(
-  dimensions: Dimension[],
-  basePrompt: string
-): PosterPrompts {
-  const environment = dimensions.find(d => d.type === 'environment')?.reference || 'fantasy world';
-  const characters = dimensions.find(d => d.type === 'characters')?.reference || 'heroic figure';
-  const mood = dimensions.find(d => d.type === 'mood')?.reference || 'epic and dramatic';
-  const style = dimensions.find(d => d.type === 'artStyle')?.reference || 'cinematic digital art';
-
-  const prompts = [
-    // Wide establishing shot
-    `Epic wide establishing shot, ${style} style. A vast ${environment} stretches across the frame, ${characters} as small silhouettes against the massive landscape. ${mood} atmosphere with volumetric lighting, god rays breaking through clouds. Cinematic composition, professional game cover quality, AAA production values.`,
-    // Close-up portrait
-    `Intimate close-up portrait, ${style} style. Detailed face of ${characters}, eyes reflecting ${environment}. ${mood} expression, dramatic side lighting casting deep shadows. Painterly brushstrokes, emotional depth, character-focused key art.`,
-    // Dramatic low angle
-    `Dramatic low-angle hero shot, ${style} style. ${characters} towers against a ${environment} sky, cape or elements flowing in the wind. ${mood} backlighting creates a powerful silhouette. Bold composition, action movie poster style, dynamic energy.`,
-    // Minimalist symbolic
-    `Minimalist symbolic poster, ${style} style. Abstract representation of ${environment} with ${characters} as a central icon. ${mood} color palette, negative space design. Modern graphic design approach, clean lines, striking visual identity.`,
-  ];
-
-  return { prompts };
+/**
+ * Generate poster prompts without Claude enhancement (uses templates directly)
+ */
+function generateMockPosterPrompts(context: PosterPromptContext): PosterPrompts {
+  return { prompts: buildPosterPrompts(context) };
 }
 
 // ============================================================================
@@ -165,7 +144,7 @@ function generateMockPosterPrompts(
 export async function POST(request: NextRequest) {
   try {
     const body: GeneratePosterRequest = await request.json();
-    const { projectId, dimensions, basePrompt } = body;
+    const { projectId, projectName, dimensions, basePrompt } = body;
 
     if (!projectId) {
       return NextResponse.json(
@@ -181,22 +160,30 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Step 1: Generate 4 unique poster prompts using LLM
+    // Build context for poster generation
+    const context: PosterPromptContext = {
+      projectName: projectName || 'Untitled',
+      basePrompt: basePrompt || '',
+      dimensions: dimensions || [],
+    };
+
+    // Step 1: Generate 4 unique poster prompts using templates (optionally enhanced by LLM)
     let posterPrompts: PosterPrompts;
     if (USE_REAL_API && ANTHROPIC_API_KEY) {
       try {
-        posterPrompts = await generatePosterPromptsWithClaude(dimensions, basePrompt);
+        posterPrompts = await generatePosterPromptsWithClaude(context);
       } catch (error) {
-        console.error('Claude API error, falling back to mock:', error);
-        posterPrompts = generateMockPosterPrompts(dimensions, basePrompt);
+        console.error('Claude API error, falling back to templates:', error);
+        posterPrompts = generateMockPosterPrompts(context);
       }
     } else {
-      posterPrompts = generateMockPosterPrompts(dimensions, basePrompt);
+      posterPrompts = generateMockPosterPrompts(context);
     }
 
-    // Step 2: Start all 4 generations in parallel
+    // Step 2: Truncate prompts to Leonardo's limit and start all 4 generations in parallel
     const leonardo = getLeonardoProvider();
-    const generationPromises = posterPrompts.prompts.map(async (prompt, index) => {
+    const generationPromises = posterPrompts.prompts.map(async (rawPrompt, index) => {
+      const prompt = truncatePrompt(rawPrompt);
       try {
         const result = await leonardo.startGeneration({
           type: 'image-generation',

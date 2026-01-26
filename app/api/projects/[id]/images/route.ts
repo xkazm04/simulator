@@ -2,6 +2,7 @@
  * Panel Images API
  *
  * POST /api/projects/[id]/images - Save image to panel slot
+ * PATCH /api/projects/[id]/images - Update image video URL
  * DELETE /api/projects/[id]/images - Remove image from slot
  */
 
@@ -17,7 +18,14 @@ interface SaveImageBody {
   side: 'left' | 'right';
   slotIndex: number;
   imageUrl: string;
+  videoUrl?: string;
   prompt?: string;
+}
+
+interface UpdateImageBody {
+  imageId: string;
+  videoUrl?: string;
+  imageUrl?: string;
 }
 
 interface DeleteImageBody {
@@ -31,7 +39,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
   try {
     const { id: projectId } = await params;
     const body: SaveImageBody = await request.json();
-    const { side, slotIndex, imageUrl, prompt } = body;
+    const { side, slotIndex, imageUrl, videoUrl, prompt } = body;
 
     // Validate input
     if (!side || !['left', 'right'].includes(side)) {
@@ -76,9 +84,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     // Insert new image
     db.prepare(`
-      INSERT INTO panel_images (id, project_id, side, slot_index, image_url, prompt, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(imageId, projectId, side, slotIndex, imageUrl, prompt || null, now);
+      INSERT INTO panel_images (id, project_id, side, slot_index, image_url, video_url, prompt, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(imageId, projectId, side, slotIndex, imageUrl, videoUrl || null, prompt || null, now);
 
     // Update project timestamp
     db.prepare('UPDATE projects SET updated_at = ? WHERE id = ?')
@@ -90,6 +98,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       side,
       slot_index: slotIndex,
       image_url: imageUrl,
+      video_url: videoUrl || null,
       prompt: prompt || null,
       created_at: now,
     };
@@ -102,6 +111,82 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     console.error('Save panel image error:', error);
     return NextResponse.json(
       { success: false, error: 'Failed to save image' },
+      { status: 500 }
+    );
+  }
+}
+
+/**
+ * PATCH - Update image video URL
+ */
+export async function PATCH(request: NextRequest, { params }: RouteParams) {
+  try {
+    const { id: projectId } = await params;
+    const body: UpdateImageBody = await request.json();
+    const { imageId, videoUrl, imageUrl } = body;
+
+    if (!imageId) {
+      return NextResponse.json(
+        { success: false, error: 'Image ID is required' },
+        { status: 400 }
+      );
+    }
+
+    if (!videoUrl && !imageUrl) {
+      return NextResponse.json(
+        { success: false, error: 'Either videoUrl or imageUrl is required' },
+        { status: 400 }
+      );
+    }
+
+    const db = getDb();
+    const now = new Date().toISOString();
+
+    // Build update query dynamically based on provided fields
+    const updates: string[] = [];
+    const values: (string | null)[] = [];
+
+    if (videoUrl !== undefined) {
+      updates.push('video_url = ?');
+      values.push(videoUrl || null);
+    }
+    if (imageUrl !== undefined) {
+      updates.push('image_url = ?');
+      values.push(imageUrl);
+    }
+
+    values.push(imageId, projectId);
+
+    const result = db.prepare(`
+      UPDATE panel_images
+      SET ${updates.join(', ')}
+      WHERE id = ? AND project_id = ?
+    `).run(...values);
+
+    if (result.changes === 0) {
+      return NextResponse.json(
+        { success: false, error: 'Image not found' },
+        { status: 404 }
+      );
+    }
+
+    // Update project timestamp
+    db.prepare('UPDATE projects SET updated_at = ? WHERE id = ?')
+      .run(now, projectId);
+
+    // Fetch updated image
+    const updatedImage = db.prepare(`
+      SELECT * FROM panel_images WHERE id = ?
+    `).get(imageId) as DbPanelImage;
+
+    return NextResponse.json({
+      success: true,
+      image: updatedImage,
+    });
+  } catch (error) {
+    console.error('Update panel image error:', error);
+    return NextResponse.json(
+      { success: false, error: 'Failed to update image' },
       { status: 500 }
     );
   }

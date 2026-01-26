@@ -150,10 +150,17 @@ export function DirectorControl({
 
   /**
    * Handle generation with optional feedback refinement
-   * If "Change" input has content, first refine base prompt and dimensions via LLM
+   * If "Change" input has content AND not in poster mode, first refine base prompt and dimensions via LLM
    * Then pass the refined data directly to handleGenerate (don't rely on state update)
+   * Poster mode skips refinement since it uses dimensions directly
    */
   const handleGenerateWithRefinement = useCallback(async () => {
+    // Poster mode: skip refinement, go directly to poster generation
+    if (brain.outputMode === 'poster' && onGeneratePoster) {
+      await onGeneratePoster();
+      return;
+    }
+
     const changeFeedback = brain.feedback.negative?.trim();
 
     // Track refined values to pass directly to generation
@@ -165,6 +172,7 @@ export function DirectorControl({
         reference: d.reference,
       }));
 
+    // Only call refineFeedback if there's feedback to apply
     if (changeFeedback) {
       setIsRefining(true);
       try {
@@ -216,18 +224,12 @@ export function DirectorControl({
       }
     }
 
-    // Proceed with generation based on output mode
-    if (brain.outputMode === 'poster' && onGeneratePoster) {
-      // Poster mode uses separate generation flow
-      await onGeneratePoster();
-    } else {
-      // Regular generation, passing refined data directly
-      // This ensures we use the NEW values even if React state hasn't updated yet
-      simulator.handleGenerate({
-        baseImage: refinedBaseImage,
-        dimensions: refinedDimensionsForApi,
-      });
-    }
+    // Regular generation, passing refined data directly
+    // This ensures we use the NEW values even if React state hasn't updated yet
+    simulator.handleGenerate({
+      baseImage: refinedBaseImage,
+      dimensions: refinedDimensionsForApi,
+    });
   }, [brain, dimensions, simulator, onGeneratePoster]);
 
   return (

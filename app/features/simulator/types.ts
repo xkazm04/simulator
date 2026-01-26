@@ -424,6 +424,7 @@ export const DIMENSION_NEGATIVE_SUGGESTIONS: Partial<Record<DimensionType, Negat
 export interface SavedPanelImage {
   id: string;
   url: string;
+  videoUrl?: string;  // Generated video URL from Seedance
   prompt: string;
   promptId?: string;  // Reference to the original generated prompt
   side: 'left' | 'right';

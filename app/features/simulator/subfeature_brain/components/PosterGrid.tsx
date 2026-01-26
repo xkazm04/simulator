@@ -6,6 +6,7 @@
  * - Click to select a poster
  * - Save button in center when poster is selected
  * - Animation: fade out unselected, expand selected on save
+ * - Uses maximum available space from parent
  */
 
 'use client';
@@ -55,11 +56,11 @@ export function PosterGrid({
   };
 
   return (
-    <div className="relative w-full max-w-lg mx-auto">
-      {/* 2x2 Grid */}
-      <div className="grid grid-cols-2 gap-3">
-        {generations.map((gen, index) => {
-          const isSelected = selectedIndex === index;
+    <div className="relative w-full h-full flex flex-col">
+      {/* 2x2 Grid - fills available space */}
+      <div className="flex-1 min-h-0 grid grid-cols-2 gap-3 auto-rows-fr">
+        {generations.map((gen) => {
+          const isSelected = selectedIndex === gen.index;
           const isOther = selectedIndex !== null && !isSelected;
           const shouldFadeOut = showSaveAnimation && isOther;
           const shouldExpand = showSaveAnimation && isSelected;
@@ -79,7 +80,7 @@ export function PosterGrid({
                 duration: 0.4,
                 ease: 'easeInOut',
               }}
-              className={`relative aspect-[2/3] rounded-lg overflow-hidden border-2 transition-all duration-300 ${
+              className={`relative rounded-lg overflow-hidden border-2 transition-all duration-300 ${
                 gen.status === 'complete'
                   ? isSelected
                     ? 'border-rose-500 shadow-lg shadow-rose-500/30 cursor-pointer'
@@ -104,9 +105,9 @@ export function PosterGrid({
 
               {/* Failed state */}
               {gen.status === 'failed' && (
-                <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900/80">
+                <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900/80 p-4">
                   <X className="w-8 h-8 text-red-400 mb-2" />
-                  <span className="font-mono text-xs text-red-400 px-2 text-center">
+                  <span className="font-mono text-xs text-red-400 text-center line-clamp-3">
                     {gen.error || 'Failed'}
                   </span>
                 </div>
@@ -197,7 +198,7 @@ export function PosterGrid({
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          className="absolute -bottom-8 left-0 right-0 text-center"
+          className="mt-3 text-center shrink-0"
         >
           <p className="font-mono text-xs text-slate-500">
             Click a poster to select it for saving

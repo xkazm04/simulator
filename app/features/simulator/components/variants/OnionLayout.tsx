@@ -12,6 +12,7 @@
 'use client';
 
 import React, { useEffect, useCallback, useMemo, memo } from 'react';
+import { AnimatePresence } from 'framer-motion';
 import {
   GeneratedPrompt,
   GeneratedImage,
@@ -23,10 +24,12 @@ import {
 import { PosterGeneration } from '../../hooks/usePoster';
 import { SidePanel } from '../../subfeature_panels';
 import { Toast, useToast } from '@/app/components/ui';
+import { useResponsivePanels } from '../../lib/useResponsivePanels';
 
 // Context-aware components from subfeatures
 import { DimensionColumn } from '../../subfeature_dimensions/components/DimensionColumn';
 import { CentralBrain } from '../../subfeature_brain/components/CentralBrain';
+import { PosterFullOverlay } from '../../subfeature_brain/components/PosterFullOverlay';
 import { PromptSection } from '../../subfeature_prompts/components/PromptSection';
 
 // Contexts
@@ -116,8 +119,18 @@ function OnionLayoutComponent({
   const prompts = usePromptsContext();
   const simulator = useSimulatorContext();
 
+  // Responsive panel management
+  const panels = useResponsivePanels();
+
   // Toast for copy confirmation
   const { showToast, toastProps } = useToast();
+
+  // Auto-expand prompt bars when images are generated
+  useEffect(() => {
+    if (generatedImages.length > 0 && !isGeneratingImages) {
+      panels.expandPromptBars();
+    }
+  }, [generatedImages.length, isGeneratingImages, panels.expandPromptBars]);
 
   // Keyboard shortcut (Ctrl+Enter)
   useEffect(() => {
@@ -197,10 +210,12 @@ function OnionLayoutComponent({
           savedPromptIds={savedPromptIds}
           onOpenComparison={onOpenComparison}
           startSlotNumber={1}
+          isExpanded={panels.topBarExpanded}
+          onToggleExpand={panels.toggleTopBar}
         />
 
         {/* Middle Layer: Dimensions - Center Brain - Dimensions */}
-        <div className="flex-1 flex gap-lg min-h-0 items-stretch">
+        <div className="flex-1 flex gap-lg min-h-0 items-stretch relative">
           {/* Left Dimensions Column */}
           <DimensionColumn
             side="left"
@@ -208,6 +223,8 @@ function OnionLayoutComponent({
             collapsedLabel="PARAMS A"
             dimensions={leftDimensions}
             onReorder={handleLeftReorder}
+            isExpanded={panels.sidebarsExpanded}
+            onToggleExpand={panels.toggleSidebars}
           />
 
           {/* Center Core: Brain (Breakdown + Feedback) */}
@@ -239,7 +256,28 @@ function OnionLayoutComponent({
             collapsedLabel="PARAMS B"
             dimensions={rightDimensions}
             onReorder={handleRightReorder}
+            isExpanded={panels.sidebarsExpanded}
+            onToggleExpand={panels.toggleSidebars}
           />
+
+          {/* Poster Overlay - covers center when active */}
+          <AnimatePresence>
+            {showPosterOverlay && (
+              <PosterFullOverlay
+                isOpen={showPosterOverlay}
+                onClose={onTogglePosterOverlay}
+                poster={projectPoster || null}
+                posterGenerations={posterGenerations}
+                selectedIndex={selectedPosterIndex}
+                isGenerating={isGeneratingPoster}
+                isSaving={isSavingPoster}
+                onSelect={onSelectPoster || (() => {})}
+                onSave={onSavePoster || (() => {})}
+                onCancel={onCancelPosterGeneration || (() => {})}
+                onUpload={onUploadPoster}
+              />
+            )}
+          </AnimatePresence>
         </div>
 
         {/* Bottom Generated Prompts */}
@@ -252,6 +290,8 @@ function OnionLayoutComponent({
           savedPromptIds={savedPromptIds}
           onOpenComparison={onOpenComparison}
           startSlotNumber={3}
+          isExpanded={panels.bottomBarExpanded}
+          onToggleExpand={panels.toggleBottomBar}
         />
       </div>
 

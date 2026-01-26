@@ -25,9 +25,25 @@ import { withRetry } from '../retry';
 const LUCIDE_ORIGIN_MODEL_ID = '7b592283-e8a7-4c5a-9ba6-d18c31f258b9';
 const LUCIDE_ORIGIN_STYLE_ID = '111dc692-d470-4eec-b791-3475abac4c46';
 const BASE_URL = 'https://cloud.leonardo.ai/api/rest/v1';
+const BASE_URL_V2 = 'https://cloud.leonardo.ai/api/rest/v2';
+const SEEDANCE_MODEL_ID = 'seedance-1.0-pro-fast';
 const DEFAULT_TIMEOUT_MS = 120000; // 2 minutes for image generation
 const MAX_POLL_ATTEMPTS = 60;
+const MAX_VIDEO_POLL_ATTEMPTS = 120; // Videos take longer - up to 4 minutes
 const POLL_INTERVAL_MS = 2000;
+
+// Video generation types
+export interface VideoGenerationRequest {
+  initImageId: string;
+  prompt: string;
+  duration?: 4 | 6 | 8;
+}
+
+export interface VideoGenerationResult {
+  status: 'pending' | 'complete' | 'failed';
+  videoUrl?: string;
+  error?: string;
+}
 
 export interface LeonardoConfig {
   apiKey?: string;
@@ -285,6 +301,348 @@ export class LeonardoProvider implements AIProvider {
     }
   }
 
+  // ============================================================================
+  // VIDEO GENERATION (Seedance 1.0)
+  // ============================================================================
+
+  /**
+   * Upload an image to Leonardo for use as init/start frame
+   * Returns the init image ID for use in video generation
+   */
+  async uploadInitImage(imageBuffer: Buffer, extension: string = 'jpg'): Promise<string> {
+    if (!this.isAvailable()) {
+      throw new AIError(
+        'Leonardo API key not configured',
+        'PROVIDER_UNAVAILABLE',
+        'leonardo'
+      );
+    }
+
+    // Step 1: Get presigned URL
+    const initResponse = await fetch(`${BASE_URL}/init-image`, {
+      method: 'POST',
+      headers: this.headers,
+      body: JSON.stringify({ extension }),
+    });
+
+    if (!initResponse.ok) {
+      const errorData = await initResponse.json().catch(() => ({}));
+      throw new AIError(
+        errorData.error || `Failed to get upload URL: ${initResponse.statusText}`,
+        this.mapHttpErrorCode(initResponse.status),
+        'leonardo',
+        initResponse.status
+      );
+    }
+
+    const initData = await initResponse.json();
+    const { uploadInitImage } = initData;
+
+    console.log('[Leonardo] Init image response:', JSON.stringify(uploadInitImage, null, 2).substring(0, 500));
+
+    if (!uploadInitImage?.id || !uploadInitImage?.url || !uploadInitImage?.fields) {
+      throw new AIError(
+        `Invalid response from init-image endpoint: ${JSON.stringify(initData)}`,
+        'GENERATION_FAILED',
+        'leonardo'
+      );
+    }
+
+    const { id: imageId, url: presignedUrl, fields: fieldsRaw, key } = uploadInitImage;
+    console.log('[Leonardo] Got presigned URL for image ID:', imageId);
+    console.log('[Leonardo] S3 key:', key);
+    console.log('[Leonardo] Fields type:', typeof fieldsRaw);
+    console.log('[Leonardo] Presigned URL:', presignedUrl);
+
+    // Parse fields - it comes as a JSON string from the API
+    let fields: Record<string, string>;
+    try {
+      fields = typeof fieldsRaw === 'string' ? JSON.parse(fieldsRaw) : fieldsRaw;
+      console.log('[Leonardo] Parsed fields:', JSON.stringify(fields, null, 2));
+    } catch (e) {
+      console.error('[Leonardo] Failed to parse fields:', fieldsRaw);
+      throw new AIError(
+        'Failed to parse upload fields from Leonardo API',
+        'GENERATION_FAILED',
+        'leonardo'
+      );
+    }
+
+    // Step 2: Upload image to S3 presigned URL using multipart form data
+    // S3 presigned POST requires specific field ordering - all policy fields first, then file last
+
+    // Build multipart form data manually for more control
+    const boundary = `----FormBoundary${Date.now()}`;
+    const parts: Buffer[] = [];
+
+    // Add all presigned fields (these must come before the file)
+    for (const [fieldKey, value] of Object.entries(fields)) {
+      parts.push(Buffer.from(
+        `--${boundary}\r\n` +
+        `Content-Disposition: form-data; name="${fieldKey}"\r\n\r\n` +
+        `${value}\r\n`
+      ));
+      console.log('[Leonardo] Added form field:', fieldKey, '=', value.substring(0, 50) + (value.length > 50 ? '...' : ''));
+    }
+
+    // Add the file last (must be named 'file' for S3 presigned uploads)
+    const mimeType = extension === 'png' ? 'image/png' : extension === 'webp' ? 'image/webp' : 'image/jpeg';
+    parts.push(Buffer.from(
+      `--${boundary}\r\n` +
+      `Content-Disposition: form-data; name="file"; filename="image.${extension}"\r\n` +
+      `Content-Type: ${mimeType}\r\n\r\n`
+    ));
+    parts.push(imageBuffer);
+    parts.push(Buffer.from(`\r\n--${boundary}--\r\n`));
+
+    const bodyBuffer = Buffer.concat(parts);
+    console.log('[Leonardo] Form data size:', bodyBuffer.length, 'bytes');
+    console.log('[Leonardo] Uploading to presigned URL:', presignedUrl);
+
+    const uploadResponse = await fetch(presignedUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': `multipart/form-data; boundary=${boundary}`,
+        'Content-Length': String(bodyBuffer.length),
+      },
+      body: bodyBuffer,
+    });
+
+    console.log('[Leonardo] Upload response status:', uploadResponse.status, uploadResponse.statusText);
+
+    // S3 returns 204 on success, but some presigned URLs return 200
+    if (!uploadResponse.ok && uploadResponse.status !== 204) {
+      const errorText = await uploadResponse.text().catch(() => 'Unknown error');
+      console.error('[Leonardo] S3 upload error response:', errorText);
+      throw new AIError(
+        `Failed to upload image to S3: ${uploadResponse.statusText} - ${errorText}`,
+        'GENERATION_FAILED',
+        'leonardo',
+        uploadResponse.status
+      );
+    }
+
+    console.log('[Leonardo] Image uploaded successfully, ID:', imageId);
+
+    return imageId;
+  }
+
+  /**
+   * Start video generation using Seedance 1.0 model
+   * Uses a previously uploaded init image as the start frame
+   */
+  async startVideoGeneration(request: VideoGenerationRequest): Promise<{ generationId: string }> {
+    const rateLimiter = getRateLimiter();
+
+    if (!this.isAvailable()) {
+      throw new AIError(
+        'Leonardo API key not configured',
+        'PROVIDER_UNAVAILABLE',
+        'leonardo'
+      );
+    }
+
+    // Check rate limit
+    if (!rateLimiter.tryAcquire('leonardo')) {
+      const status = rateLimiter.getStatus('leonardo');
+      throw new AIError(
+        'Rate limit exceeded for Leonardo API',
+        'RATE_LIMITED',
+        'leonardo',
+        429,
+        true,
+        status.resetAt - Date.now()
+      );
+    }
+
+    const { initImageId, prompt, duration = 8 } = request;
+
+    // Seedance 1.0 video generation payload
+    // Based on API docs: https://docs.leonardo.ai/docs/generate-with-seedance-1-0
+    // Supported 16:9 dimensions for seedance-1.0-pro-fast:
+    //   480p: 864×480
+    //   1080p: 1920×1088
+    // Note: 854x480 is NOT valid - must use 864x480 for 480p 16:9
+    const payload = {
+      model: SEEDANCE_MODEL_ID,
+      public: false,
+      parameters: {
+        prompt: prompt.slice(0, 1500), // Max 1500 chars
+        guidances: {
+          start_frame: [
+            {
+              image: {
+                id: initImageId,
+                type: 'UPLOADED',
+              },
+            },
+          ],
+        },
+        duration,
+        mode: 'RESOLUTION_480',
+        prompt_enhance: 'OFF',
+        width: 864,
+        height: 480,
+      },
+    };
+
+    console.log('[Leonardo] Video generation payload:', JSON.stringify(payload, null, 2));
+
+    const response = await fetch(`${BASE_URL_V2}/generations`, {
+      method: 'POST',
+      headers: this.headers,
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      console.error('[Leonardo] Video generation error response:', JSON.stringify(errorData, null, 2));
+      throw new AIError(
+        errorData.error || errorData.message || `Video generation failed: ${response.statusText}`,
+        this.mapHttpErrorCode(response.status),
+        'leonardo',
+        response.status,
+        response.status === 429 || response.status >= 500
+      );
+    }
+
+    const data = await response.json();
+    console.log('[Leonardo] Video generation response:', JSON.stringify(data, null, 2));
+
+    // V2 API response structure - try different paths
+    // Actual response format: { "generate": { "apiCreditCost": 50, "generationId": "uuid" } }
+    const generationId = data.generate?.generationId ||
+      data.generation?.id ||
+      data.sdGenerationJob?.generationId ||
+      data.motionVideoGenerationJob?.generationId ||
+      data.id;
+
+    if (!generationId) {
+      console.error('[Leonardo] Could not extract generationId from response:', data);
+      throw new AIError(
+        `Failed to get generation ID from video API. Response: ${JSON.stringify(data)}`,
+        'GENERATION_FAILED',
+        'leonardo'
+      );
+    }
+
+    console.log('[Leonardo] Video generation started, ID:', generationId);
+    return { generationId };
+  }
+
+  /**
+   * Check video generation status
+   * Returns video URL when complete
+   */
+  async checkVideoGeneration(generationId: string): Promise<VideoGenerationResult> {
+    try {
+      // Try V2 endpoint first, fall back to V1 if needed
+      const response = await fetch(`${BASE_URL_V2}/generations/${generationId}`, {
+        method: 'GET',
+        headers: this.headers,
+      });
+
+      if (!response.ok) {
+        // Fall back to V1 endpoint
+        const v1Response = await fetch(`${BASE_URL}/generations/${generationId}`, {
+          method: 'GET',
+          headers: this.headers,
+        });
+
+        if (!v1Response.ok) {
+          return { status: 'failed', error: `API error: ${response.statusText}` };
+        }
+
+        const v1Data = await v1Response.json();
+        return this.parseVideoGenerationResponse(v1Data);
+      }
+
+      const data = await response.json();
+      return this.parseVideoGenerationResponse(data);
+    } catch (error) {
+      return {
+        status: 'failed',
+        error: error instanceof Error ? error.message : 'Unknown error',
+      };
+    }
+  }
+
+  /**
+   * Parse video generation response from either V1 or V2 API
+   */
+  private parseVideoGenerationResponse(data: Record<string, unknown>): VideoGenerationResult {
+    // V2 response structure
+    const generation = data.generation as Record<string, unknown> | undefined;
+    // V1 response structure
+    const generationsByPk = data.generations_by_pk as Record<string, unknown> | undefined;
+
+    const genData = generation || generationsByPk || {};
+    const status = genData.status as string | undefined;
+
+    if (status === 'FAILED') {
+      return { status: 'failed', error: 'Video generation failed' };
+    }
+
+    // Check for video assets
+    const assets = (genData.assets as Array<Record<string, unknown>>) || [];
+    const generatedImages = (genData.generated_images as Array<Record<string, unknown>>) || [];
+
+    // Video URL might be in assets (V2) or generated_images (V1)
+    const videoAsset = assets.find(a => a.type === 'VIDEO' || a.url?.toString().includes('.mp4'));
+    const videoFromImages = generatedImages.find(img =>
+      img.url?.toString().includes('.mp4') ||
+      img.motionMP4URL ||
+      img.video_url
+    );
+
+    const videoUrl = videoAsset?.url ||
+      videoFromImages?.motionMP4URL ||
+      videoFromImages?.video_url ||
+      videoFromImages?.url;
+
+    if (videoUrl && typeof videoUrl === 'string') {
+      return { status: 'complete', videoUrl };
+    }
+
+    // Check if generation is complete but video URL not yet available
+    if (status === 'COMPLETE' || status === 'COMPLETED') {
+      // Sometimes the video URL takes a moment to propagate
+      return { status: 'pending' };
+    }
+
+    return { status: 'pending' };
+  }
+
+  /**
+   * Poll for video generation completion
+   */
+  async pollVideoGeneration(generationId: string): Promise<string> {
+    for (let attempt = 0; attempt < MAX_VIDEO_POLL_ATTEMPTS; attempt++) {
+      const result = await this.checkVideoGeneration(generationId);
+
+      if (result.status === 'complete' && result.videoUrl) {
+        return result.videoUrl;
+      }
+
+      if (result.status === 'failed') {
+        throw new AIError(
+          result.error || 'Video generation failed',
+          'GENERATION_FAILED',
+          'leonardo'
+        );
+      }
+
+      // Wait before next poll
+      await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL_MS));
+    }
+
+    throw new AIError(
+      `Video generation timed out after ${MAX_VIDEO_POLL_ATTEMPTS * POLL_INTERVAL_MS / 1000} seconds`,
+      'TIMEOUT',
+      'leonardo'
+    );
+  }
+
   /**
    * Normalize dimensions to Leonardo requirements
    */
@@ -452,4 +810,36 @@ export async function startImageGenerationWithLeonardo(
     ...options,
   });
   return response.generationId;
+}
+
+/**
+ * Convenience function to upload an image for video generation
+ */
+export async function uploadImageForVideo(
+  imageBuffer: Buffer,
+  extension?: string
+): Promise<string> {
+  const provider = getLeonardoProvider();
+  return provider.uploadInitImage(imageBuffer, extension);
+}
+
+/**
+ * Convenience function to start video generation
+ */
+export async function startVideoGenerationWithLeonardo(
+  request: VideoGenerationRequest
+): Promise<string> {
+  const provider = getLeonardoProvider();
+  const response = await provider.startVideoGeneration(request);
+  return response.generationId;
+}
+
+/**
+ * Convenience function to check video generation status
+ */
+export async function checkVideoGenerationStatus(
+  generationId: string
+): Promise<VideoGenerationResult> {
+  const provider = getLeonardoProvider();
+  return provider.checkVideoGeneration(generationId);
 }

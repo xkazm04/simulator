@@ -78,8 +78,10 @@ Object.assign(navigator, {
   },
 });
 
-// Mock fetch globally
-global.fetch = vi.fn();
+// Mock fetch globally (unless running integration tests)
+if (process.env.INTEGRATION_TEST !== 'true') {
+  global.fetch = vi.fn();
+}
 
 // Mock IndexedDB for preference storage
 const mockIndexedDB = {

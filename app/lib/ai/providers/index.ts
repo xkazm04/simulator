@@ -10,5 +10,13 @@ export type { ClaudeConfig } from './claude';
 export { GeminiProvider, getGeminiProvider, generateTextWithGemini, analyzeImageWithGemini } from './gemini';
 export type { GeminiConfig } from './gemini';
 
-export { LeonardoProvider, getLeonardoProvider, generateImagesWithLeonardo, startImageGenerationWithLeonardo } from './leonardo';
-export type { LeonardoConfig } from './leonardo';
+export {
+  LeonardoProvider,
+  getLeonardoProvider,
+  generateImagesWithLeonardo,
+  startImageGenerationWithLeonardo,
+  uploadImageForVideo,
+  startVideoGenerationWithLeonardo,
+  checkVideoGenerationStatus,
+} from './leonardo';
+export type { LeonardoConfig, VideoGenerationRequest, VideoGenerationResult } from './leonardo';

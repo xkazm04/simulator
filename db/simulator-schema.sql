@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS panel_images (
   side TEXT CHECK(side IN ('left', 'right')),
   slot_index INTEGER CHECK(slot_index >= 0 AND slot_index < 5),
   image_url TEXT NOT NULL,
+  video_url TEXT,  -- Generated video URL from Seedance
   prompt TEXT,
   created_at TEXT DEFAULT (datetime('now')),
   UNIQUE(project_id, side, slot_index)

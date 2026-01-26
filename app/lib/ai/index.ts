@@ -57,17 +57,23 @@ export {
   getGeminiProvider,
   generateTextWithGemini,
   analyzeImageWithGemini,
-  // Leonardo
+  // Leonardo - Images
   LeonardoProvider,
   getLeonardoProvider,
   generateImagesWithLeonardo,
   startImageGenerationWithLeonardo,
+  // Leonardo - Videos (Seedance)
+  uploadImageForVideo,
+  startVideoGenerationWithLeonardo,
+  checkVideoGenerationStatus,
 } from './providers';
 
 export type {
   ClaudeConfig,
   GeminiConfig,
   LeonardoConfig,
+  VideoGenerationRequest,
+  VideoGenerationResult,
 } from './providers';
 
 // ============================================================================

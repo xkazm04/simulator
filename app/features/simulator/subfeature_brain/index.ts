@@ -25,3 +25,4 @@ export { SmartBreakdown } from './components/SmartBreakdown';
 export { BaseImageInput } from './components/BaseImageInput';
 export { FeedbackPanel } from './components/FeedbackPanel';
 export { PosterOverlay } from './components/PosterOverlay';
+export { PosterFullOverlay } from './components/PosterFullOverlay';

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Settings, X, Check, Loader2, AlertCircle, Server, Key, User } from 'lucide-react';
 import type { StudioSettings, Developer } from '../types';
 import { getSettings, saveSettings, clearSettings, validateCredentials } from '../lib/api';
@@ -9,7 +10,7 @@ interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSettingsChange: (settings: StudioSettings | null) => void;
-  forceOpen?: boolean; // Prevents closing if true (first-time setup)
+  forceOpen?: boolean;
 }
 
 export function SettingsModal({
@@ -23,9 +24,16 @@ export function SettingsModal({
   const [isValidating, setIsValidating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [developer, setDeveloper] = useState<Developer | null>(null);
+  const [mounted, setMounted] = useState(false);
 
-  // Load existing settings on mount
+  // Track client-side mount for portal
   useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // Load existing settings when modal opens
+  useEffect(() => {
+    if (!isOpen) return;
     const settings = getSettings();
     if (settings) {
       setCoordinatorUrl(settings.coordinatorUrl);
@@ -51,9 +59,8 @@ export function SettingsModal({
     setIsValidating(true);
     setError(null);
 
-    // Temporarily save settings for validation
     const tempSettings: StudioSettings = {
-      coordinatorUrl: coordinatorUrl.replace(/\/$/, ''), // Remove trailing slash
+      coordinatorUrl: coordinatorUrl.replace(/\/$/, ''),
       apiKey,
     };
     saveSettings(tempSettings);
@@ -62,7 +69,6 @@ export function SettingsModal({
       const dev = await validateCredentials();
       setDeveloper(dev);
 
-      // Save complete settings
       const completeSettings: StudioSettings = {
         ...tempSettings,
         developerName: dev.name,
@@ -71,7 +77,6 @@ export function SettingsModal({
       saveSettings(completeSettings);
       onSettingsChange(completeSettings);
 
-      // Auto-close after successful validation (if not forced open)
       if (!forceOpen) {
         setTimeout(() => onClose(), 1000);
       }
@@ -99,9 +104,7 @@ export function SettingsModal({
     onClose();
   };
 
-  // Allow force bypass for development
   const handleBypass = () => {
-    // Save minimal mock settings to allow access
     const mockSettings: StudioSettings = {
       coordinatorUrl: 'http://localhost:8000',
       apiKey: 'demo-mode',
@@ -113,22 +116,36 @@ export function SettingsModal({
     onClose();
   };
 
-  // Don't render if not open
-  if (!isOpen) return null;
+  if (!isOpen || !mounted) return null;
 
-  return (
-    <>
+  const modalContent = (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 9999 }}>
       {/* Backdrop */}
       <div
         onClick={handleClose}
-        className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50"
+        style={{
+          position: 'absolute',
+          inset: 0,
+          background: 'rgba(0, 0, 0, 0.7)',
+          backdropFilter: 'blur(4px)',
+        }}
       />
 
       {/* Modal */}
       <div
-        className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50
-                   w-full max-w-md bg-[#12121a] border border-white/10 rounded-xl
-                   shadow-2xl overflow-hidden"
+        style={{
+          position: 'absolute',
+          left: '50%',
+          top: '50%',
+          transform: 'translate(-50%, -50%)',
+          width: '100%',
+          maxWidth: '28rem',
+          background: '#12121a',
+          border: '1px solid rgba(255, 255, 255, 0.1)',
+          borderRadius: '0.75rem',
+          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
+          overflow: 'hidden',
+        }}
       >
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-white/10">
@@ -196,10 +213,8 @@ export function SettingsModal({
 
           {/* Error Message */}
           {error && (
-            <div
-              className="flex items-center gap-2 px-4 py-3 bg-red-500/10 border
-                       border-red-500/30 rounded-lg text-sm text-red-400"
-            >
+            <div className="flex items-center gap-2 px-4 py-3 bg-red-500/10 border
+                          border-red-500/30 rounded-lg text-sm text-red-400">
               <AlertCircle size={16} />
               {error}
             </div>
@@ -207,10 +222,8 @@ export function SettingsModal({
 
           {/* Connected Developer */}
           {developer && (
-            <div
-              className="flex items-center gap-3 px-4 py-3 bg-green-500/10 border
-                       border-green-500/30 rounded-lg"
-            >
+            <div className="flex items-center gap-3 px-4 py-3 bg-green-500/10 border
+                          border-green-500/30 rounded-lg">
               <div className="p-2 rounded-full bg-green-500/20">
                 <User size={16} className="text-green-400" />
               </div>
@@ -280,6 +293,8 @@ export function SettingsModal({
           )}
         </div>
       </div>
-    </>
+    </div>
   );
+
+  return createPortal(modalContent, document.body);
 }

@@ -43,7 +43,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     // Get panel images
     const panelImages = db.prepare(`
-      SELECT id, project_id, side, slot_index, image_url, prompt, created_at
+      SELECT id, project_id, side, slot_index, image_url, video_url, prompt, created_at
       FROM panel_images WHERE project_id = ?
       ORDER BY side, slot_index
     `).all(id) as DbPanelImage[];

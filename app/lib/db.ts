@@ -122,6 +122,16 @@ function initializeSchema(database: Database.Database): void {
         CREATE INDEX IF NOT EXISTS idx_generated_prompts_project ON generated_prompts(project_id);
       `);
     }
+
+    // Check if video_url column exists in panel_images (added for video generation)
+    const panelImagesColumns = database.prepare(
+      "PRAGMA table_info(panel_images)"
+    ).all() as Array<{ name: string }>;
+
+    const hasVideoUrl = panelImagesColumns.some(col => col.name === 'video_url');
+    if (!hasVideoUrl) {
+      database.exec(`ALTER TABLE panel_images ADD COLUMN video_url TEXT;`);
+    }
   }
 }
 
@@ -160,6 +170,7 @@ export interface DbPanelImage {
   side: 'left' | 'right';
   slot_index: number;
   image_url: string;
+  video_url: string | null;
   prompt: string | null;
   created_at: string;
 }

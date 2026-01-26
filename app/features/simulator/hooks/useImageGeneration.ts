@@ -58,6 +58,7 @@ interface UseImageGenerationReturn {
   saveImageToPanel: (promptId: string, promptText: string) => void;
   removePanelImage: (imageId: string) => void;
   updatePanelImage: (imageId: string, newUrl: string) => void;
+  updatePanelImageVideo: (imageId: string, videoUrl: string) => void;
   clearGeneratedImages: () => void;
   deleteAllGenerations: () => Promise<void>;
   clearPanelSlots: () => void;
@@ -434,6 +435,24 @@ export function useImageGeneration(options: UseImageGenerationOptions): UseImage
   }, [panelStorage]);
 
   /**
+   * Update an image's video URL (for Seedance video generation)
+   */
+  const updatePanelImageVideo = useCallback((imageId: string, videoUrl: string) => {
+    panelStorage.setData((prev) => ({
+      leftSlots: prev.leftSlots.map((slot) =>
+        slot.image?.id === imageId
+          ? { ...slot, image: { ...slot.image, videoUrl } }
+          : slot
+      ),
+      rightSlots: prev.rightSlots.map((slot) =>
+        slot.image?.id === imageId
+          ? { ...slot, image: { ...slot.image, videoUrl } }
+          : slot
+      ),
+    }));
+  }, [panelStorage]);
+
+  /**
    * Clear all generated images
    */
   const clearGeneratedImages = useCallback(() => {
@@ -509,6 +528,7 @@ export function useImageGeneration(options: UseImageGenerationOptions): UseImage
     saveImageToPanel,
     removePanelImage,
     updatePanelImage,
+    updatePanelImageVideo,
     clearGeneratedImages,
     deleteAllGenerations,
     clearPanelSlots,

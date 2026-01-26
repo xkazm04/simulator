@@ -32,7 +32,7 @@ interface UsePosterReturn {
   selectedIndex: number | null;
 
   // Actions
-  generatePosters: (projectId: string, dimensions: Dimension[], basePrompt: string) => Promise<void>;
+  generatePosters: (projectId: string, projectName: string, dimensions: Dimension[], basePrompt: string) => Promise<void>;
   selectPoster: (index: number) => void;
   savePoster: (projectId: string) => Promise<ProjectPoster | null>;
   cancelGeneration: () => Promise<void>;
@@ -169,7 +169,7 @@ export function usePoster(): UsePosterReturn {
    * Generate 4 poster variations
    */
   const generatePosters = useCallback(
-    async (projectId: string, dimensions: Dimension[], basePrompt: string): Promise<void> => {
+    async (projectId: string, projectName: string, dimensions: Dimension[], basePrompt: string): Promise<void> => {
       setIsGenerating(true);
       setError(null);
       setSelectedIndex(null);
@@ -189,6 +189,7 @@ export function usePoster(): UsePosterReturn {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             projectId,
+            projectName,
             dimensions: dimensions.map((d) => ({
               type: d.type,
               reference: d.reference,

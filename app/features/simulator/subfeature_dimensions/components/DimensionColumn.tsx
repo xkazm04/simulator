@@ -29,6 +29,10 @@ export interface DimensionColumnProps {
   dimensions: Dimension[];
   /** Handler for reordering within this column's dimensions */
   onReorder: (reorderedDimensions: Dimension[]) => void;
+  /** Controlled expand state (optional - uses internal state if not provided) */
+  isExpanded?: boolean;
+  /** Callback when expand state changes (required if isExpanded is provided) */
+  onToggleExpand?: () => void;
 }
 
 export function DimensionColumn({
@@ -37,13 +41,19 @@ export function DimensionColumn({
   collapsedLabel,
   dimensions,
   onReorder,
+  isExpanded: controlledExpanded,
+  onToggleExpand: controlledToggle,
 }: DimensionColumnProps) {
   // Get dimension handlers from context
   const dimensionsCtx = useDimensionsContext();
   const simulatorCtx = useSimulatorContext();
 
-  // Local collapse state
-  const [isExpanded, setIsExpanded] = useState(true);
+  // Local collapse state (used if not controlled)
+  const [internalExpanded, setInternalExpanded] = useState(true);
+
+  // Use controlled state if provided, otherwise use internal state
+  const isControlled = controlledExpanded !== undefined;
+  const isExpanded = isControlled ? controlledExpanded : internalExpanded;
 
   // Reduced motion support for accessibility
   const prefersReducedMotion = useReducedMotion();
@@ -57,7 +67,13 @@ export function DimensionColumn({
     ? { writingMode: 'vertical-rl' as const, transform: 'rotate(180deg)' }
     : { writingMode: 'vertical-rl' as const };
 
-  const onToggleExpand = () => setIsExpanded(!isExpanded);
+  const onToggleExpand = () => {
+    if (isControlled && controlledToggle) {
+      controlledToggle();
+    } else {
+      setInternalExpanded(!internalExpanded);
+    }
+  };
 
   return (
     <motion.div
