@@ -1139,3 +1139,100 @@ export interface FeedbackLearningConfig {
   /** Whether to auto-suggest negative prompts */
   autoSuggestNegatives: boolean;
 }
+
+// ============================================
+// Autoplay Types
+// ============================================
+
+/**
+ * AutoplayStatus - Current state of the autoplay state machine
+ */
+export type AutoplayStatus =
+  | 'idle'           // Not running
+  | 'generating'     // Waiting for image generation
+  | 'evaluating'     // Sending image to Gemini for evaluation
+  | 'refining'       // Applying feedback, preparing next iteration
+  | 'complete'       // Target met or max iterations reached
+  | 'error';         // Failed state
+
+/**
+ * AutoplayConfig - Configuration for an autoplay session
+ */
+export interface AutoplayConfig {
+  /** Target number of approved images to save (1-4) */
+  targetSavedCount: number;
+  /** Maximum iterations before stopping (hard cap: 3) */
+  maxIterations: number;
+}
+
+/**
+ * AutoplayIteration - Tracks a single iteration's results
+ */
+export interface AutoplayIteration {
+  iterationNumber: number;
+  /** Prompt IDs generated in this iteration */
+  promptIds: string[];
+  /** Evaluation results per prompt */
+  evaluations: Array<{
+    promptId: string;
+    approved: boolean;
+    feedback?: string;
+    score?: number;
+  }>;
+  /** Count of images saved this iteration */
+  savedCount: number;
+  /** Timestamp when iteration started */
+  startedAt: string;
+  /** Timestamp when iteration completed */
+  completedAt?: string;
+}
+
+/**
+ * AutoplayState - Complete state for autoplay state machine
+ */
+export interface AutoplayState {
+  status: AutoplayStatus;
+  config: AutoplayConfig;
+  /** Current iteration number (1-indexed) */
+  currentIteration: number;
+  /** History of all iterations */
+  iterations: AutoplayIteration[];
+  /** Total images saved across all iterations */
+  totalSaved: number;
+  /** Error message if status is 'error' */
+  error?: string;
+  /** Whether abort was requested */
+  abortRequested: boolean;
+}
+
+/**
+ * AutoplayAction - Actions for autoplay reducer
+ */
+export type AutoplayAction =
+  | { type: 'START'; config: AutoplayConfig }
+  | { type: 'GENERATION_COMPLETE'; promptIds: string[] }
+  | { type: 'EVALUATION_COMPLETE'; evaluations: AutoplayIteration['evaluations'] }
+  | { type: 'IMAGES_SAVED'; count: number }
+  | { type: 'REFINE_COMPLETE' }
+  | { type: 'ITERATION_COMPLETE' }
+  | { type: 'COMPLETE'; reason: 'target_met' | 'max_iterations' | 'aborted' }
+  | { type: 'ERROR'; error: string }
+  | { type: 'ABORT' }
+  | { type: 'RESET' };
+
+/**
+ * ImageEvaluation - Result from Gemini evaluation of a generated image
+ */
+export interface ImageEvaluation {
+  promptId: string;
+  /** Whether the image meets quality/goal standards */
+  approved: boolean;
+  /** Score from 0-100 indicating quality */
+  score: number;
+  /** Feedback for refinement if not approved */
+  feedback?: string;
+  /** Specific aspects that need improvement */
+  improvements?: string[];
+  /** What worked well (for preserving in next iteration) */
+  strengths?: string[];
+}
