@@ -11,7 +11,7 @@
 
 'use client';
 
-import React, { useEffect, useCallback, useMemo, memo } from 'react';
+import React, { useEffect, useCallback, useMemo, memo, useState } from 'react';
 import { AnimatePresence } from 'framer-motion';
 import {
   GeneratedPrompt,
@@ -22,7 +22,7 @@ import {
   SavedPanelImage,
 } from '../../types';
 import { PosterGeneration } from '../../hooks/usePoster';
-import { SidePanel } from '../../subfeature_panels';
+import { SidePanel, UploadImageModal } from '../../subfeature_panels';
 import { Toast, useToast } from '@/app/components/ui';
 import { useResponsivePanels } from '../../lib/useResponsivePanels';
 
@@ -48,6 +48,7 @@ export interface OnionLayoutProps {
   generatedImages?: GeneratedImage[];
   isGeneratingImages?: boolean;
   onStartImage?: (promptId: string) => void;
+  onDeleteImage?: (promptId: string) => void;
   savedPromptIds?: Set<string>;
   onDeleteGenerations?: () => void;
 
@@ -77,6 +78,25 @@ export interface OnionLayoutProps {
 
   // Modal handlers
   onViewPrompt: (prompt: GeneratedPrompt) => void;
+
+  // Upload image to panel
+  onUploadImageToPanel?: (side: 'left' | 'right', slotIndex: number, imageUrl: string, prompt?: string) => void;
+
+  // Autoplay orchestrator props
+  autoplay?: {
+    isRunning: boolean;
+    canStart: boolean;
+    status: string;
+    currentIteration: number;
+    maxIterations: number;
+    totalSaved: number;
+    targetSaved: number;
+    completionReason: string | null;
+    error: string | undefined;
+    onStart: (config: { targetSavedCount: number; maxIterations: number }) => void;
+    onStop: () => void;
+    onReset: () => void;
+  };
 }
 
 function OnionLayoutComponent({
@@ -89,6 +109,7 @@ function OnionLayoutComponent({
   generatedImages = [],
   isGeneratingImages = false,
   onStartImage,
+  onDeleteImage,
   savedPromptIds = new Set(),
   onDeleteGenerations,
   // Poster props
@@ -113,6 +134,10 @@ function OnionLayoutComponent({
   onOpenComparison,
   // Modal handlers
   onViewPrompt,
+  // Upload image to panel
+  onUploadImageToPanel,
+  // Autoplay props
+  autoplay,
 }: OnionLayoutProps) {
   // Get state from contexts
   const dimensions = useDimensionsContext();
@@ -124,6 +149,35 @@ function OnionLayoutComponent({
 
   // Toast for copy confirmation
   const { showToast, toastProps } = useToast();
+
+  // Upload modal state
+  const [uploadModalState, setUploadModalState] = useState<{
+    isOpen: boolean;
+    side: 'left' | 'right';
+    slotIndex: number;
+  }>({ isOpen: false, side: 'left', slotIndex: 0 });
+
+  // Handle empty slot click - opens upload modal
+  const handleEmptySlotClick = useCallback((side: 'left' | 'right', slotIndex: number) => {
+    setUploadModalState({ isOpen: true, side, slotIndex });
+  }, []);
+
+  // Handle upload from modal
+  const handleUploadImage = useCallback((imageUrl: string) => {
+    if (onUploadImageToPanel) {
+      onUploadImageToPanel(
+        uploadModalState.side,
+        uploadModalState.slotIndex,
+        imageUrl,
+        'Uploaded image'
+      );
+    }
+  }, [onUploadImageToPanel, uploadModalState.side, uploadModalState.slotIndex]);
+
+  // Close upload modal
+  const closeUploadModal = useCallback(() => {
+    setUploadModalState(prev => ({ ...prev, isOpen: false }));
+  }, []);
 
   // Auto-expand prompt bars when images are generated
   useEffect(() => {
@@ -183,6 +237,13 @@ function OnionLayoutComponent({
     bottomPrompts: prompts.generatedPrompts.slice(2),
   }), [prompts.generatedPrompts]);
 
+  // Compute if all panel slots are full (for disabling lock when no room)
+  const allSlotsFull = useMemo(() => {
+    const allSlots = [...leftPanelSlots, ...rightPanelSlots];
+    // Use !! to handle both null and undefined cases
+    return allSlots.length > 0 && allSlots.every(slot => !!slot.image);
+  }, [leftPanelSlots, rightPanelSlots]);
+
   return (
     <div className="h-full w-full bg-surface-primary text-slate-200 flex overflow-hidden p-lg gap-lg font-sans selection:bg-amber-900/50 selection:text-amber-100 relative">
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-slate-900/20 via-surface-primary to-surface-primary pointer-events-none" />
@@ -196,6 +257,7 @@ function OnionLayoutComponent({
         slots={leftPanelSlots}
         onRemoveImage={onRemovePanelImage}
         onViewImage={onViewPanelImage}
+        onEmptySlotClick={handleEmptySlotClick}
       />
 
       {/* Main Layout */}
@@ -207,7 +269,9 @@ function OnionLayoutComponent({
           onViewPrompt={onViewPrompt}
           generatedImages={generatedImages}
           onStartImage={onStartImage}
+          onDeleteImage={onDeleteImage}
           savedPromptIds={savedPromptIds}
+          allSlotsFull={allSlotsFull}
           onOpenComparison={onOpenComparison}
           startSlotNumber={1}
           isExpanded={panels.topBarExpanded}
@@ -247,6 +311,7 @@ function OnionLayoutComponent({
             onSelectPoster={onSelectPoster}
             onSavePoster={onSavePoster}
             onCancelPosterGeneration={onCancelPosterGeneration}
+            autoplay={autoplay}
           />
 
           {/* Right Dimensions Column */}
@@ -287,7 +352,9 @@ function OnionLayoutComponent({
           onViewPrompt={onViewPrompt}
           generatedImages={generatedImages}
           onStartImage={onStartImage}
+          onDeleteImage={onDeleteImage}
           savedPromptIds={savedPromptIds}
+          allSlotsFull={allSlotsFull}
           onOpenComparison={onOpenComparison}
           startSlotNumber={3}
           isExpanded={panels.bottomBarExpanded}
@@ -301,6 +368,16 @@ function OnionLayoutComponent({
         slots={rightPanelSlots}
         onRemoveImage={onRemovePanelImage}
         onViewImage={onViewPanelImage}
+        onEmptySlotClick={handleEmptySlotClick}
+      />
+
+      {/* Upload Image Modal */}
+      <UploadImageModal
+        isOpen={uploadModalState.isOpen}
+        onClose={closeUploadModal}
+        onUpload={handleUploadImage}
+        side={uploadModalState.side}
+        slotIndex={uploadModalState.slotIndex}
       />
     </div>
   );
@@ -337,6 +414,9 @@ function arePropsEqual(
 
   // Compare available modes array by reference
   if (prevProps.availableInteractiveModes !== nextProps.availableInteractiveModes) return false;
+
+  // Compare autoplay by reference
+  if (prevProps.autoplay !== nextProps.autoplay) return false;
 
   return true;
 }

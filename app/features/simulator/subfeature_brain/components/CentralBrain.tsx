@@ -53,6 +53,22 @@ export interface CentralBrainProps {
   onSelectPoster?: (index: number) => void;
   onSavePoster?: () => void;
   onCancelPosterGeneration?: () => void;
+
+  // Autoplay orchestrator props
+  autoplay?: {
+    isRunning: boolean;
+    canStart: boolean;
+    status: string;
+    currentIteration: number;
+    maxIterations: number;
+    totalSaved: number;
+    targetSaved: number;
+    completionReason: string | null;
+    error: string | undefined;
+    onStart: (config: { targetSavedCount: number; maxIterations: number }) => void;
+    onStop: () => void;
+    onReset: () => void;
+  };
 }
 
 function CentralBrainComponent({
@@ -66,6 +82,7 @@ function CentralBrainComponent({
   onTogglePosterOverlay,
   isGeneratingPoster,
   onGeneratePoster,
+  autoplay,
 }: CentralBrainProps) {
   // Get state and handlers from contexts
   const brain = useBrainContext();
@@ -87,10 +104,16 @@ function CentralBrainComponent({
         const updated = updater(dimensions.dimensions);
         dimensions.setDimensions(updated);
       };
-      brain.handleImageParse(imageDataUrl, onDimensionsUpdate);
+      // Pass current dimensions for snapshot before parsing
+      brain.handleImageParse(imageDataUrl, dimensions.dimensions, onDimensionsUpdate);
     },
     [brain.handleImageParse, dimensions.dimensions, dimensions.setDimensions]
   );
+
+  // Undo parse handler - restores previous state
+  const handleUndoParse = useCallback(() => {
+    brain.undoImageParse(dimensions.setDimensions);
+  }, [brain.undoImageParse, dimensions.setDimensions]);
 
   return (
     <div className="flex-1 relative group flex flex-col w-full min-w-0">
@@ -148,6 +171,8 @@ function CentralBrainComponent({
               onImageParse={handleImageParse}
               isParsingImage={brain.isParsingImage}
               parseError={brain.imageParseError}
+              canUndoParse={brain.canUndoParse}
+              onUndoParse={handleUndoParse}
             />
           </div>
         </div>
@@ -165,6 +190,7 @@ function CentralBrainComponent({
           onDeleteGenerations={onDeleteGenerations}
           isGeneratingPoster={isGeneratingPoster}
           onGeneratePoster={onGeneratePoster}
+          autoplay={autoplay}
         />
       </div>
     </div>
@@ -200,6 +226,9 @@ function arePropsEqual(
   // Compare poster generations by reference
   if (prevProps.posterGenerations !== nextProps.posterGenerations) return false;
   if (prevProps.selectedPosterIndex !== nextProps.selectedPosterIndex) return false;
+
+  // Compare autoplay by reference
+  if (prevProps.autoplay !== nextProps.autoplay) return false;
 
   return true;
 }

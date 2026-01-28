@@ -14,6 +14,7 @@ import { useProjectManager } from './hooks/useProjectManager';
 import { usePosterHandlers } from './hooks/usePosterHandlers';
 import { useImageEffects } from './hooks/useImageEffects';
 import { useAutosave } from './hooks/useAutosave';
+import { useAutoplayOrchestrator } from './hooks/useAutoplayOrchestrator';
 import { OnionLayout } from './components/variants/OnionLayout';
 import { ModalLoadingFallback } from './components/ModalLoadingFallback';
 import { Toast, useToast } from '@/app/components/ui';
@@ -38,14 +39,75 @@ function SimulatorContent() {
   const brain = useBrainContext();
   const prompts = usePromptsContext();
   const simulator = useSimulatorContext();
-  const imageGen = useImageGeneration({ projectId: null });
   const interactive = useInteractivePrototype();
   const { showToast, toastProps } = useToast();
 
-  const pm = useProjectManager({ imageGen });
-  const ph = usePosterHandlers({ setShowPosterOverlay: pm.setShowPosterOverlay, poster: pm.poster });
+  // Track current project for image generation (will be set by projectManager)
+  const [currentProjectId, setCurrentProjectId] = React.useState<string | null>(null);
+
+  // Callback to sync saved images to database
+  const handleImageSaved = useCallback(async (info: { side: 'left' | 'right'; slotIndex: number; imageUrl: string; prompt: string }) => {
+    if (!currentProjectId) return;
+
+    try {
+      await fetch(`/api/projects/${currentProjectId}/images`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          side: info.side,
+          slotIndex: info.slotIndex,
+          imageUrl: info.imageUrl,
+          prompt: info.prompt,
+        }),
+      });
+    } catch (error) {
+      console.error('Failed to sync image to database:', error);
+    }
+  }, [currentProjectId]);
+
+  const imageGen = useImageGeneration({
+    projectId: currentProjectId,
+    onImageSaved: handleImageSaved,
+  });
+
+  const pm = useProjectManager({ imageGen, onProjectChange: setCurrentProjectId });
+  const ph = usePosterHandlers({
+    setShowPosterOverlay: pm.setShowPosterOverlay,
+    poster: pm.poster,
+    currentProject: pm.project.currentProject,
+  });
   const ie = useImageEffects({ imageGen, submittedForGenerationRef: pm.submittedForGenerationRef, setSavedPromptIds: pm.setSavedPromptIds });
   useAutosave();
+
+  // Autoplay orchestrator - wires together state machine with image generation
+  const autoplayOrchestrator = useAutoplayOrchestrator({
+    generatedImages: imageGen.generatedImages,
+    isGeneratingImages: imageGen.isGeneratingImages,
+    generateImagesFromPrompts: imageGen.generateImagesFromPrompts,
+    saveImageToPanel: imageGen.saveImageToPanel,
+    setFeedback: brain.setFeedback,
+    generatedPrompts: prompts.generatedPrompts,
+    outputMode: brain.outputMode,
+    dimensions: dimensions.dimensions,
+    baseImage: brain.baseImage,
+    onRegeneratePrompts: simulator.handleGenerate,
+  });
+
+  // Create autoplay props object to pass down through layouts
+  const autoplayProps = {
+    isRunning: autoplayOrchestrator.isRunning,
+    canStart: autoplayOrchestrator.canStart,
+    status: autoplayOrchestrator.status,
+    currentIteration: autoplayOrchestrator.currentIteration,
+    maxIterations: autoplayOrchestrator.maxIterations,
+    totalSaved: autoplayOrchestrator.totalSaved,
+    targetSaved: autoplayOrchestrator.targetSaved,
+    completionReason: autoplayOrchestrator.completionReason,
+    error: autoplayOrchestrator.error,
+    onStart: autoplayOrchestrator.startAutoplay,
+    onStop: autoplayOrchestrator.abortAutoplay,
+    onReset: autoplayOrchestrator.resetAutoplay,
+  };
 
   const selectedPromptImage = selectedPrompt ? imageGen.generatedImages.find(img => img.promptId === selectedPrompt.id) : undefined;
 
@@ -100,6 +162,7 @@ function SimulatorContent() {
           generatedImages={imageGen.generatedImages}
           isGeneratingImages={imageGen.isGeneratingImages}
           onStartImage={ie.handleStartImage}
+          onDeleteImage={imageGen.deleteGeneration}
           savedPromptIds={pm.savedPromptIds}
           onDeleteGenerations={imageGen.deleteAllGenerations}
           projectPoster={ph.poster.poster}
@@ -119,6 +182,8 @@ function SimulatorContent() {
           onInteractiveModeChange={interactive.setInteractiveMode}
           onOpenComparison={() => setShowComparisonModal(true)}
           onViewPrompt={setSelectedPrompt}
+          onUploadImageToPanel={imageGen.uploadImageToPanel}
+          autoplay={autoplayProps}
         />
 
         {selectedPrompt && (
