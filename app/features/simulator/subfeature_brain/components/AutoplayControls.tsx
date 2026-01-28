@@ -21,6 +21,7 @@ import {
   ChevronDown,
   Target,
   CheckCircle2,
+  AlertTriangle,
 } from 'lucide-react';
 import { scaleIn, transitions } from '../../lib/motion';
 import { semanticColors } from '../../lib/semanticColors';
@@ -256,10 +257,21 @@ export function AutoplayControls({
 
   // Render completion state (summary with auto-reset)
   if (isComplete || isError) {
+    // Determine if this is a full success (target met) or partial success
+    const isTargetMet = totalSaved >= targetSaved;
+    const isPartialSuccess = !isError && totalSaved > 0 && !isTargetMet;
+
+    // Select colors based on state: error > partial > success
+    const completionColors = isError
+      ? { bg: semanticColors.error.bg, border: semanticColors.error.border, text: semanticColors.error.text }
+      : isPartialSuccess
+      ? { bg: semanticColors.warning.bg, border: semanticColors.warning.border, text: semanticColors.warning.text }
+      : { bg: semanticColors.success.bg, border: semanticColors.success.border, text: semanticColors.success.text };
+
     return (
       <div
         className={`flex items-center gap-2 px-2 py-1 radius-sm border cursor-pointer transition-colors
-                   ${isError ? `${semanticColors.error.bg} ${semanticColors.error.border}` : `${semanticColors.success.bg} ${semanticColors.success.border}`}
+                   ${completionColors.bg} ${completionColors.border}
                    hover:brightness-110`}
         onClick={handleInteraction}
         role="status"
@@ -268,21 +280,28 @@ export function AutoplayControls({
       >
         {isError ? (
           <>
-            <span className={`font-mono type-label ${semanticColors.error.text}`}>
+            <span className={`font-mono type-label ${completionColors.text}`}>
               Error: {error || 'Unknown error'}
             </span>
           </>
-        ) : (
+        ) : isPartialSuccess ? (
           <>
-            <CheckCircle2 size={12} className={semanticColors.success.text} />
-            <span className={`font-mono type-label ${semanticColors.success.text}`}>
-              Saved {totalSaved}/{targetSaved}
+            <AlertTriangle size={12} className={completionColors.text} />
+            <span className={`font-mono type-label ${completionColors.text}`}>
+              Partial: {totalSaved}/{targetSaved} saved
             </span>
-            {completionReason && (
+            {completionReason === 'max_iterations' && (
               <span className="font-mono type-label text-slate-500">
-                ({completionReason})
+                (max iterations reached)
               </span>
             )}
+          </>
+        ) : (
+          <>
+            <CheckCircle2 size={12} className={completionColors.text} />
+            <span className={`font-mono type-label ${completionColors.text}`}>
+              Target met: {totalSaved}/{targetSaved}
+            </span>
           </>
         )}
       </div>
