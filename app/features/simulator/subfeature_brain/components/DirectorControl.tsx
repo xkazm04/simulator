@@ -47,6 +47,8 @@ import { useSimulatorContext } from '../../SimulatorContext';
 import { expandCollapse, transitions } from '../../lib/motion';
 import { semanticColors } from '../../lib/semanticColors';
 import { refineFeedback } from '../lib/simulatorAI';
+import { PresetSelector } from './PresetSelector';
+import { AutoplayControls } from './AutoplayControls';
 
 export interface DirectorControlProps {
   // Interactive mode props
@@ -62,6 +64,22 @@ export interface DirectorControlProps {
   // Poster generation
   isGeneratingPoster: boolean;
   onGeneratePoster?: () => Promise<void>;
+
+  // Autoplay orchestrator props
+  autoplay?: {
+    isRunning: boolean;
+    canStart: boolean;
+    status: string;
+    currentIteration: number;
+    maxIterations: number;
+    totalSaved: number;
+    targetSaved: number;
+    completionReason: string | null;
+    error: string | undefined;
+    onStart: (config: { targetSavedCount: number; maxIterations: number }) => void;
+    onStop: () => void;
+    onReset: () => void;
+  };
 }
 
 export function DirectorControl({
@@ -73,6 +91,7 @@ export function DirectorControl({
   onDeleteGenerations,
   isGeneratingPoster,
   onGeneratePoster,
+  autoplay,
 }: DirectorControlProps) {
   // Get state and handlers from contexts
   const brain = useBrainContext();
@@ -85,7 +104,10 @@ export function DirectorControl({
   const [isRefining, setIsRefining] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(true);
 
-  const isAnyGenerating = simulator.isGenerating || isGeneratingPoster || isRefining;
+  // Derive autoplay lock state
+  const isAutoplayLocked = autoplay?.isRunning ?? false;
+
+  const isAnyGenerating = simulator.isGenerating || isGeneratingPoster || isRefining || isAutoplayLocked;
 
   // Smart suggestion handlers
   const handleAcceptDimensionSuggestion = useCallback((dimensionType: DimensionType, weight?: number) => {
@@ -128,6 +150,20 @@ export function DirectorControl({
     brain.setOutputMode(mode);
   }, [brain]);
 
+  // Preset application handler
+  const handleApplyPreset = useCallback((
+    presetDimensions: Dimension[],
+    outputMode: OutputMode,
+    negativePrompts: NegativePromptItem[]
+  ) => {
+    // Apply dimensions
+    dimensions.setDimensions(presetDimensions);
+    // Apply output mode
+    brain.setOutputMode(outputMode);
+    // Apply negative prompts (merge with existing)
+    prompts.setNegativePrompts([...prompts.negativePrompts, ...negativePrompts]);
+  }, [dimensions, brain, prompts]);
+
   // Auto-expand when generating
   useEffect(() => {
     if (simulator.isGenerating || isGeneratingPoster) {
@@ -156,8 +192,13 @@ export function DirectorControl({
    */
   const handleGenerateWithRefinement = useCallback(async () => {
     // Poster mode: skip refinement, go directly to poster generation
-    if (brain.outputMode === 'poster' && onGeneratePoster) {
-      await onGeneratePoster();
+    if (brain.outputMode === 'poster') {
+      console.log('[DirectorControl] Poster mode detected, calling onGeneratePoster');
+      if (onGeneratePoster) {
+        await onGeneratePoster();
+      } else {
+        console.warn('[DirectorControl] onGeneratePoster callback not provided');
+      }
       return;
     }
 
@@ -339,6 +380,13 @@ export function DirectorControl({
       <div className="space-y-2">
         {/* Row 1: Mode selection */}
         <div className="flex gap-2 items-center">
+          {/* Preset Selector */}
+          <PresetSelector
+            currentDimensions={dimensions.dimensions}
+            onApplyPreset={handleApplyPreset}
+            disabled={isAnyGenerating}
+          />
+
           {/* Interactive Mode Toggle */}
           {onInteractiveModeChange && availableInteractiveModes.length > 1 && (
             <InteractiveModeToggle
@@ -390,8 +438,27 @@ export function DirectorControl({
           </div>
         </div>
 
-        {/* Row 2: Generate button + History */}
+        {/* Row 2: Autoplay + Generate button + History */}
         <div className="flex gap-2 items-center">
+          {/* Autoplay Controls - only show if not poster mode */}
+          {brain.outputMode !== 'poster' && autoplay && (
+            <AutoplayControls
+              isRunning={autoplay.isRunning}
+              canStart={autoplay.canStart}
+              status={autoplay.status}
+              currentIteration={autoplay.currentIteration}
+              maxIterations={autoplay.maxIterations}
+              totalSaved={autoplay.totalSaved}
+              targetSaved={autoplay.targetSaved}
+              completionReason={autoplay.completionReason}
+              error={autoplay.error}
+              onStart={autoplay.onStart}
+              onStop={autoplay.onStop}
+              onReset={autoplay.onReset}
+              disabled={isAnyGenerating && !isAutoplayLocked}
+            />
+          )}
+
           {/* Generate Button - takes most space */}
           <button
             onClick={handleGenerateWithRefinement}
