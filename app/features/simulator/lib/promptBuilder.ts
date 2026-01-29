@@ -275,6 +275,40 @@ function buildFilterHints(filledDimensions: Dimension[]): string[] {
 }
 
 /**
+ * Build mode-specific phrases for prompt differentiation
+ * Gameplay mode: HUD, UI overlays, in-game feel
+ * Concept mode: Artistic interpretation, no UI, painterly
+ */
+function buildModeSection(outputMode: OutputMode, gameUIDim?: Dimension): string[] {
+  if (outputMode === 'gameplay') {
+    const phrases = [
+      'authentic gameplay screenshot',
+      'visible game HUD elements',
+      'in-game UI overlays',
+    ];
+    if (gameUIDim?.reference) {
+      const clause = buildWeightedClause(gameUIDim, 50);
+      if (clause) phrases.push(clause);
+    } else {
+      phrases.push('health bars and status indicators');
+    }
+    return phrases;
+  }
+
+  if (outputMode === 'concept') {
+    return [
+      'concept art visualization',
+      'artistic interpretation',
+      'no game UI or HUD',
+      'painterly composition',
+    ];
+  }
+
+  // Poster mode or other modes - no mode section
+  return [];
+}
+
+/**
  * Build negative prompt string from negative prompt items
  * Combines global negatives with any prompt-specific negatives
  */
