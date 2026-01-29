@@ -33,6 +33,7 @@ export interface AutoplayControlsProps {
   // State from orchestrator
   isRunning: boolean;
   canStart: boolean;
+  canStartReason: string | null; // Why autoplay can't start (for tooltip feedback)
   status: string; // 'idle' | 'generating' | 'evaluating' | 'refining' | 'complete' | 'error'
   currentIteration: number;
   maxIterations: number;
@@ -70,6 +71,7 @@ const TARGET_OPTIONS = [1, 2, 3, 4] as const;
 export function AutoplayControls({
   isRunning,
   canStart,
+  canStartReason,
   status,
   currentIteration,
   maxIterations,
@@ -199,6 +201,7 @@ export function AutoplayControls({
         <button
           onClick={handleStart}
           disabled={!canStart || disabled}
+          title={!canStart && canStartReason ? canStartReason : undefined}
           className={`flex items-center gap-1.5 px-3 py-1 radius-sm border transition-colors
                      ${!canStart || disabled
                        ? 'bg-slate-900/50 border-slate-700 text-slate-600 cursor-not-allowed opacity-50'
