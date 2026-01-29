@@ -70,6 +70,23 @@ export function buildEvaluationPrompt(criteria: EvaluationCriteria): string {
     ? `Expected aspects: ${criteria.expectedAspects.join(', ')}`
     : 'Evaluate based on general quality and coherence.';
 
+  // Build breakdown context section (only if breakdown is available)
+  const breakdownSection = criteria.breakdown
+    ? `
+CREATIVE VISION CONTEXT:
+The user's vision was analyzed as "${criteria.breakdown.format}" format.
+${criteria.breakdown.keyElements.length > 0
+  ? `Key elements to preserve:
+${criteria.breakdown.keyElements.slice(0, 5).map(el => `- ${el}`).join('\n')}${criteria.breakdown.keyElements.length > 5 ? `\n- (and ${criteria.breakdown.keyElements.length - 5} more...)` : ''}`
+  : ''}
+
+When scoring GOAL FIT, consider:
+- Does the image feel authentic to the "${criteria.breakdown.format}" format?
+- Are the key elements visibly incorporated?
+- Images that clearly preserve the creative vision should score higher.
+`
+    : '';
+
   return `You are an expert image quality evaluator for AI-generated game visuals.
 
 Evaluate this generated image against the following criteria:
@@ -81,10 +98,10 @@ MODE CONTEXT:
 ${modeContext}
 
 ${aspectsList}
-
+${breakdownSection}
 EVALUATION CRITERIA:
 1. TECHNICAL QUALITY (0-100): Check for artifacts, blur, deformations, anatomical issues, rendering problems
-2. GOAL FIT (0-100): How well does the image match the prompt and expected aspects?
+2. GOAL FIT (0-100): How well does the image match the prompt and expected aspects?${criteria.breakdown ? ' Consider format and key elements.' : ''}
 3. AESTHETIC APPEAL (0-100): Composition, lighting, color harmony, visual interest
 4. MODE COMPLIANCE: Does it correctly include/exclude UI elements based on the mode?
 
