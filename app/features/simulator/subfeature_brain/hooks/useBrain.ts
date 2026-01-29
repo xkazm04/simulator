@@ -16,32 +16,64 @@ import {
   Dimension,
   DimensionType,
   OutputMode,
+  SmartBreakdownPersisted,
   createDimensionWithDefaults,
 } from '../../types';
 import { describeImage, ImageDescriptionResult } from '../lib/simulatorAI';
 import { DEFAULT_DIMENSIONS } from '../../subfeature_dimensions/lib/defaultDimensions';
 
+/**
+ * Snapshot of state before image parse - used for undo
+ */
+export interface PreParseSnapshot {
+  baseImage: string;
+  visionSentence: string | null;
+  outputMode: OutputMode;
+  /** Dimensions are stored externally, so we capture them separately */
+  dimensions: Dimension[];
+}
+
 export interface BrainState {
   baseImage: string;
   baseImageFile: string | null;
+  /** The original vision sentence (e.g., "Baldur's Gate in Star Wars") - core project identity */
+  visionSentence: string | null;
+  /** Persisted Smart Breakdown result (format, keyElements, reasoning) */
+  breakdown: SmartBreakdownPersisted | null;
   feedback: { positive: string; negative: string };
   outputMode: OutputMode;
   isParsingImage: boolean;
   imageParseError: string | null;
   parsedImageDescription: ImageDescriptionResult['description'] | null;
+  /** Snapshot of state before last parse - enables undo */
+  preParseSnapshot: PreParseSnapshot | null;
+  /** Whether undo is available */
+  canUndoParse: boolean;
 }
 
 export interface BrainActions {
   setBaseImage: (value: string) => void;
   setBaseImageFile: (value: string | null) => void;
+  setVisionSentence: (value: string | null) => void;
+  setBreakdown: (value: SmartBreakdownPersisted | null) => void;
   setFeedback: (value: { positive: string; negative: string }) => void;
   setOutputMode: (value: OutputMode) => void;
-  handleImageParse: (imageDataUrl: string, onDimensionsUpdate?: (updater: (prev: Dimension[]) => Dimension[]) => void) => Promise<void>;
+  handleImageParse: (
+    imageDataUrl: string,
+    currentDimensions: Dimension[],
+    onDimensionsUpdate?: (updater: (prev: Dimension[]) => Dimension[]) => void
+  ) => Promise<void>;
+  /** Undo the last image parse, restoring previous state */
+  undoImageParse: (onDimensionsRestore: (dimensions: Dimension[]) => void) => void;
+  /** Clear the undo snapshot (e.g., after user makes manual changes) */
+  clearUndoSnapshot: () => void;
   handleSmartBreakdownApply: (
+    visionSentence: string,
     baseImage: string,
     dimensions: Dimension[],
     outputMode: OutputMode,
-    onDimensionsSet: (dimensions: Dimension[]) => void
+    onDimensionsSet: (dimensions: Dimension[]) => void,
+    breakdownResult: { baseImage: { format: string; keyElements: string[] }; reasoning: string }
   ) => void;
   resetBrain: () => void;
   clearFeedback: () => void;
@@ -50,11 +82,16 @@ export interface BrainActions {
 export function useBrain(): BrainState & BrainActions {
   const [baseImage, setBaseImageState] = useState('');
   const [baseImageFile, setBaseImageFileState] = useState<string | null>(null);
+  const [visionSentence, setVisionSentenceState] = useState<string | null>(null);
+  const [breakdown, setBreakdownState] = useState<SmartBreakdownPersisted | null>(null);
   const [feedback, setFeedbackState] = useState({ positive: '', negative: '' });
   const [outputMode, setOutputModeState] = useState<OutputMode>('gameplay');
   const [isParsingImage, setIsParsingImage] = useState(false);
   const [imageParseError, setImageParseError] = useState<string | null>(null);
   const [parsedImageDescription, setParsedImageDescription] = useState<ImageDescriptionResult['description'] | null>(null);
+  const [preParseSnapshot, setPreParseSnapshot] = useState<PreParseSnapshot | null>(null);
+
+  const canUndoParse = preParseSnapshot !== null;
 
   const setBaseImage = useCallback((value: string) => {
     setBaseImageState(value);
@@ -62,6 +99,14 @@ export function useBrain(): BrainState & BrainActions {
 
   const setBaseImageFile = useCallback((value: string | null) => {
     setBaseImageFileState(value);
+  }, []);
+
+  const setVisionSentence = useCallback((value: string | null) => {
+    setVisionSentenceState(value);
+  }, []);
+
+  const setBreakdown = useCallback((value: SmartBreakdownPersisted | null) => {
+    setBreakdownState(value);
   }, []);
 
   const setFeedback = useCallback((value: { positive: string; negative: string }) => {
@@ -79,9 +124,18 @@ export function useBrain(): BrainState & BrainActions {
   // Image parsing with AI vision
   const handleImageParse = useCallback(async (
     imageDataUrl: string,
+    currentDimensions: Dimension[],
     onDimensionsUpdate?: (updater: (prev: Dimension[]) => Dimension[]) => void
   ) => {
     if (isParsingImage) return;
+
+    // Snapshot current state before parsing (for undo)
+    setPreParseSnapshot({
+      baseImage: baseImage,
+      visionSentence: visionSentence,
+      outputMode: outputMode,
+      dimensions: [...currentDimensions],
+    });
 
     setIsParsingImage(true);
     setParsedImageDescription(null);
@@ -127,24 +181,50 @@ export function useBrain(): BrainState & BrainActions {
           });
         }
       } else {
-        // API returned error
+        // API returned error - clear snapshot since parse failed
+        setPreParseSnapshot(null);
         setImageParseError(result.error || 'Failed to analyze image');
       }
     } catch (err) {
       console.error('Failed to parse image:', err);
+      // Clear snapshot since parse failed
+      setPreParseSnapshot(null);
       setImageParseError(err instanceof Error ? err.message : 'Failed to analyze image');
     } finally {
       setIsParsingImage(false);
     }
-  }, [isParsingImage]);
+  }, [isParsingImage, baseImage, visionSentence, outputMode]);
 
-  // Smart breakdown apply - sets base image and triggers dimension update
+  // Undo the last image parse
+  const undoImageParse = useCallback((onDimensionsRestore: (dimensions: Dimension[]) => void) => {
+    if (!preParseSnapshot) return;
+
+    // Restore previous state
+    setBaseImageState(preParseSnapshot.baseImage);
+    setVisionSentenceState(preParseSnapshot.visionSentence);
+    setOutputModeState(preParseSnapshot.outputMode);
+    onDimensionsRestore(preParseSnapshot.dimensions);
+
+    // Clear the snapshot
+    setPreParseSnapshot(null);
+    setParsedImageDescription(null);
+  }, [preParseSnapshot]);
+
+  // Clear the undo snapshot manually
+  const clearUndoSnapshot = useCallback(() => {
+    setPreParseSnapshot(null);
+  }, []);
+
+  // Smart breakdown apply - sets vision sentence, base image and triggers dimension update
   const handleSmartBreakdownApply = useCallback((
+    newVisionSentence: string,
     newBaseImage: string,
     newDimensions: Dimension[],
     newOutputMode: OutputMode,
-    onDimensionsSet: (dimensions: Dimension[]) => void
+    onDimensionsSet: (dimensions: Dimension[]) => void,
+    breakdownResult: { baseImage: { format: string; keyElements: string[] }; reasoning: string }
   ) => {
+    setVisionSentenceState(newVisionSentence);
     setBaseImageState(newBaseImage);
     setBaseImageFileState(null);
 
@@ -169,31 +249,51 @@ export function useBrain(): BrainState & BrainActions {
     onDimensionsSet(mergedDimensions);
     setOutputModeState(newOutputMode);
     setFeedbackState({ positive: '', negative: '' });
+
+    // Persist breakdown result
+    setBreakdownState({
+      baseImage: {
+        format: breakdownResult.baseImage.format,
+        keyElements: breakdownResult.baseImage.keyElements,
+      },
+      reasoning: breakdownResult.reasoning,
+    });
   }, []);
 
   const resetBrain = useCallback(() => {
     setBaseImageState('');
     setBaseImageFileState(null);
+    setVisionSentenceState(null);
+    setBreakdownState(null);
     setFeedbackState({ positive: '', negative: '' });
     setParsedImageDescription(null);
     setImageParseError(null);
+    setPreParseSnapshot(null);
   }, []);
 
   return {
     // State
     baseImage,
     baseImageFile,
+    visionSentence,
+    breakdown,
     feedback,
     outputMode,
     isParsingImage,
     imageParseError,
     parsedImageDescription,
+    preParseSnapshot,
+    canUndoParse,
     // Actions
     setBaseImage,
     setBaseImageFile,
+    setVisionSentence,
+    setBreakdown,
     setFeedback,
     setOutputMode,
     handleImageParse,
+    undoImageParse,
+    clearUndoSnapshot,
     handleSmartBreakdownApply,
     resetBrain,
     clearFeedback,
