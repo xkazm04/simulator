@@ -25,6 +25,13 @@ export interface EvaluationCriteria {
   outputMode: 'gameplay' | 'concept';
   /** Minimum score threshold for approval (0-100) */
   approvalThreshold?: number;
+  /** Smart Breakdown context for richer evaluation (optional for backward compat) */
+  breakdown?: {
+    /** The analyzed format (e.g., "screenshot", "concept art", "key art") */
+    format: string;
+    /** Elements identified as essential to preserve */
+    keyElements: string[];
+  };
 }
 
 /**
