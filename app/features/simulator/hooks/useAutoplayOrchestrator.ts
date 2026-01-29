@@ -33,6 +33,7 @@ import {
   OutputMode,
   Dimension,
   ImageEvaluation,
+  SmartBreakdownPersisted,
 } from '../types';
 import {
   evaluateImages,
@@ -55,6 +56,10 @@ export interface AutoplayOrchestratorDeps {
   outputMode: OutputMode;
   dimensions: Dimension[];
   baseImage: string;
+  /** Vision sentence (core project identity) - used for evaluation if available */
+  visionSentence: string | null;
+  /** Smart Breakdown result for richer evaluation context */
+  breakdown: SmartBreakdownPersisted | null;
 
   /**
    * Callback to trigger regeneration (re-runs the generate flow with current state)
@@ -64,14 +69,17 @@ export interface AutoplayOrchestratorDeps {
    * 2. Call generateImagesFromPrompts with the new prompts
    *
    * The orchestrator will detect generation completion via isGeneratingImages flag.
+   *
+   * @param overrides - Optional overrides for feedback to avoid React state timing issues
    */
-  onRegeneratePrompts: () => void;
+  onRegeneratePrompts: (overrides?: { feedback?: { positive: string; negative: string } }) => void;
 }
 
 export interface UseAutoplayOrchestratorReturn {
   // State from useAutoplay
   isRunning: boolean;
   canStart: boolean;
+  canStartReason: string | null; // Why autoplay can't start (null if canStart is true)
   status: string;
   currentIteration: number;
   maxIterations: number;
@@ -99,6 +107,8 @@ export function useAutoplayOrchestrator(
     outputMode,
     dimensions,
     baseImage,
+    visionSentence,
+    breakdown,
     onRegeneratePrompts,
   } = deps;
 
@@ -108,6 +118,14 @@ export function useAutoplayOrchestrator(
   // Track if we've already triggered actions for current state (prevent double-firing)
   const processedStateRef = useRef<string>('');
   const currentIterationRef = useRef<number>(0);
+
+  // Store feedback from refining phase to pass to next iteration
+  // This avoids React state timing issues where setFeedback hasn't propagated yet
+  const pendingFeedbackRef = useRef<{ positive: string; negative: string } | null>(null);
+
+  // Track current prompts via ref to avoid stale closure issues
+  const generatedPromptsRef = useRef(generatedPrompts);
+  generatedPromptsRef.current = generatedPrompts;
 
   // Create state key for deduplication
   const stateKey = `${autoplay.state.status}-${autoplay.state.currentIteration}-${autoplay.state.totalSaved}`;
@@ -138,9 +156,13 @@ export function useAutoplayOrchestrator(
             currentIterationRef.current = autoplay.state.currentIteration;
 
             // For iteration > 1, we need to regenerate prompts
-            // For iteration 1, prompts should already exist from user's Generate action
-            if (autoplay.state.currentIteration > 1) {
-              onRegeneratePrompts();
+            // For iteration 1, prompts might already exist from user's Generate action,
+            // OR we need to generate them if user started autoplay from base image directly
+            if (autoplay.state.currentIteration > 1 || generatedPrompts.length === 0) {
+              // Pass pending feedback directly to avoid React state timing issues
+              const feedbackOverride = pendingFeedbackRef.current;
+              pendingFeedbackRef.current = null; // Clear after using
+              onRegeneratePrompts(feedbackOverride ? { feedback: feedbackOverride } : undefined);
             }
           }
           break;
@@ -159,13 +181,19 @@ export function useAutoplayOrchestrator(
           }
 
           // Build evaluation criteria from current state
+          // Use vision sentence as the core project identity for evaluation, falling back to baseImage
           const criteria: EvaluationCriteria = {
-            originalPrompt: baseImage,
+            originalPrompt: visionSentence || baseImage,
             expectedAspects: dimensions
               .filter(d => d.reference.trim())
               .map(d => `${d.label}: ${d.reference}`),
             outputMode: outputMode as 'gameplay' | 'concept',
             approvalThreshold: 70,
+            // Include breakdown context if available (from Smart Breakdown)
+            breakdown: breakdown ? {
+              format: breakdown.baseImage.format,
+              keyElements: breakdown.baseImage.keyElements,
+            } : undefined,
           };
 
           // Evaluate all completed images with error handling
@@ -194,12 +222,15 @@ export function useAutoplayOrchestrator(
           }
 
           // Signal evaluation complete (even if all failed, we continue the loop)
+          // Pass full evaluation data including improvements/strengths for feedback extraction
           autoplay.onEvaluationComplete(
             evaluations.map(e => ({
               promptId: e.promptId,
               approved: e.approved,
               feedback: e.feedback,
               score: e.score,
+              improvements: e.improvements,
+              strengths: e.strengths,
             }))
           );
           break;
@@ -216,9 +247,12 @@ export function useAutoplayOrchestrator(
           const approvedEvals = evaluations.filter(e => e.approved);
           let savedCount = 0;
 
+          // Use ref to get current prompts (avoids stale closure issues)
+          const currentPrompts = generatedPromptsRef.current;
+
           for (const eval_ of approvedEvals) {
             // Find the prompt text for this promptId
-            const prompt = generatedPrompts.find(p => p.id === eval_.promptId);
+            const prompt = currentPrompts.find(p => p.id === eval_.promptId);
             if (prompt) {
               saveImageToPanel(eval_.promptId, prompt.prompt);
               savedCount++;
@@ -231,19 +265,22 @@ export function useAutoplayOrchestrator(
           }
 
           // Extract and apply refinement feedback from rejected images
+          // Use stored improvements/strengths from evaluation phase
           const fullEvaluations: ImageEvaluation[] = evaluations.map(e => ({
             promptId: e.promptId,
             approved: e.approved,
             score: e.score ?? 0,
-            feedback: e.feedback,
-            improvements: [], // Not stored in iteration
-            strengths: [],
+            feedback: e.feedback ?? '',
+            improvements: e.improvements ?? [],
+            strengths: e.strengths ?? [],
           }));
 
           const refinementFeedback = extractRefinementFeedback(fullEvaluations);
 
-          // Apply feedback to brain for next iteration
+          // Store feedback in ref for next iteration (avoids React state timing issues)
+          // Also apply to state for UI display, but the ref is what we'll actually use
           if (refinementFeedback.positive || refinementFeedback.negative) {
+            pendingFeedbackRef.current = refinementFeedback;
             setFeedback(refinementFeedback);
           }
 
@@ -267,12 +304,44 @@ export function useAutoplayOrchestrator(
     generatedImages,
     generatedPrompts,
     baseImage,
+    visionSentence,
+    breakdown,
     dimensions,
     outputMode,
     saveImageToPanel,
     setFeedback,
     onRegeneratePrompts,
   ]);
+
+  /**
+   * Effect: Trigger image generation when prompts are ready during autoplay
+   * Since useImageEffects is disabled during autoplay, the orchestrator must trigger generation
+   * NOTE: generatedPrompts is in deps to re-run when fallback prompts are set after API error
+   */
+  useEffect(() => {
+    if (autoplay.state.status !== 'generating') return;
+    if (isGeneratingImages) return; // Already generating
+
+    // Use ref to get current prompts (fresh, not from closure)
+    const currentPrompts = generatedPromptsRef.current;
+    if (currentPrompts.length === 0) return; // No prompts yet
+
+    // Check if we have images for these prompts already (don't re-trigger)
+    const promptIds = new Set(currentPrompts.map(p => p.id));
+    const hasImagesForPrompts = generatedImages.some(img => promptIds.has(img.promptId));
+    if (hasImagesForPrompts) return; // Already have images for these prompts
+
+    console.log('[Autoplay] Triggering image generation for', currentPrompts.length, 'prompts');
+
+    // Trigger image generation
+    generateImagesFromPrompts(
+      currentPrompts.map(p => ({
+        id: p.id,
+        prompt: p.prompt,
+        negativePrompt: p.negativePrompt,
+      }))
+    );
+  }, [autoplay.state.status, isGeneratingImages, generatedImages, generateImagesFromPrompts, generatedPrompts]);
 
   /**
    * Effect: Watch for generation completion
@@ -296,28 +365,66 @@ export function useAutoplayOrchestrator(
   }, [autoplay, isGeneratingImages, generatedImages]);
 
   /**
+   * Effect: Timeout safety net - abort if stuck in generating for too long
+   */
+  useEffect(() => {
+    if (autoplay.state.status !== 'generating') return;
+
+    const TIMEOUT_MS = 60000; // 60 seconds
+    const timeoutId = setTimeout(() => {
+      console.error('[Autoplay] Timeout: stuck in generating state for', TIMEOUT_MS / 1000, 'seconds');
+      autoplay.setError('Generation timed out - please try again');
+    }, TIMEOUT_MS);
+
+    return () => clearTimeout(timeoutId);
+  }, [autoplay, autoplay.state.status, autoplay.state.currentIteration]);
+
+  /**
    * Start autoplay - validates prerequisites and kicks off the loop
+   *
+   * Prerequisites:
+   * - Either generated prompts exist OR base image exists (prompts will be generated)
+   * - Output mode is not 'poster' (poster mode not supported)
    */
   const startAutoplay = useCallback((config: AutoplayConfig) => {
-    // Validate we have prompts to work with
-    if (generatedPrompts.length === 0) {
-      console.error('Cannot start autoplay: no generated prompts');
-      return;
-    }
-
     // Validate output mode (poster not supported)
     if (outputMode === 'poster') {
       console.error('Cannot start autoplay: poster mode not supported');
       return;
     }
 
+    // Validate we have something to work with (base image for prompt generation)
+    if (!baseImage && generatedPrompts.length === 0) {
+      console.error('Cannot start autoplay: no base image or generated prompts');
+      return;
+    }
+
     autoplay.start(config);
-  }, [autoplay, generatedPrompts, outputMode]);
+  }, [autoplay, generatedPrompts, outputMode, baseImage]);
+
+  // Compute why autoplay can't start (for UI feedback)
+  const canStartReason = (() => {
+    if (!autoplay.canStart) {
+      // State machine says no (currently running or in a non-startable state)
+      return 'Autoplay is currently running';
+    }
+    if (outputMode === 'poster') {
+      return 'Autoplay not available in Poster mode';
+    }
+    if (!baseImage && generatedPrompts.length === 0) {
+      return 'Add a base image to start autoplay';
+    }
+    return null; // Can start
+  })();
+
+  // Combine state machine canStart with orchestrator-level checks
+  const effectiveCanStart = autoplay.canStart && outputMode !== 'poster' && (!!baseImage || generatedPrompts.length > 0);
 
   return {
     // State
     isRunning: autoplay.isRunning,
-    canStart: autoplay.canStart,
+    canStart: effectiveCanStart,
+    canStartReason,
     status: autoplay.state.status,
     currentIteration: autoplay.state.currentIteration,
     maxIterations: autoplay.state.config.maxIterations,
