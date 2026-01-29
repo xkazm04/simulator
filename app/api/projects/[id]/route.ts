@@ -37,7 +37,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     // Get state
     const state = db.prepare(`
-      SELECT project_id, base_prompt, base_image_file, output_mode, dimensions_json, feedback_json, updated_at
+      SELECT project_id, base_prompt, base_image_file, vision_sentence, breakdown_json, output_mode, dimensions_json, feedback_json, updated_at
       FROM project_state WHERE project_id = ?
     `).get(id) as DbProjectState | undefined;
 
@@ -139,6 +139,10 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       updateFields.push('base_image_file = ?');
       updateValues.push(body.baseImageFile);
     }
+    if (body.visionSentence !== undefined) {
+      updateFields.push('vision_sentence = ?');
+      updateValues.push(body.visionSentence);
+    }
     if (body.outputMode !== undefined) {
       updateFields.push('output_mode = ?');
       updateValues.push(body.outputMode);
@@ -150,6 +154,10 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     if (body.feedback !== undefined) {
       updateFields.push('feedback_json = ?');
       updateValues.push(JSON.stringify(body.feedback));
+    }
+    if (body.breakdown !== undefined) {
+      updateFields.push('breakdown_json = ?');
+      updateValues.push(body.breakdown ? JSON.stringify(body.breakdown) : null);
     }
 
     if (updateFields.length > 0) {
