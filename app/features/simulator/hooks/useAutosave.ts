@@ -41,6 +41,8 @@ export function useAutosave() {
         dimensions?: typeof dimensions.dimensions;
         basePrompt?: string;
         baseImageFile?: string | null;
+        visionSentence?: string | null;
+        breakdown?: typeof brain.breakdown;
         outputMode?: typeof brain.outputMode;
         feedback?: typeof brain.feedback;
       } = {};
@@ -48,10 +50,13 @@ export function useAutosave() {
       if (dimensions.dimensions.length > 0) {
         stateToSave.dimensions = dimensions.dimensions;
       }
-      if (brain.baseImage) {
-        stateToSave.basePrompt = brain.baseImage;
-      }
+      // Always save basePrompt, even if empty (to allow clearing)
+      stateToSave.basePrompt = brain.baseImage;
       stateToSave.baseImageFile = brain.baseImageFile;
+      // Save visionSentence (core project identity from smart breakdown)
+      stateToSave.visionSentence = brain.visionSentence;
+      // Save breakdown (AI-analyzed structure from smart breakdown)
+      stateToSave.breakdown = brain.breakdown;
       stateToSave.outputMode = brain.outputMode;
       if (brain.feedback.positive || brain.feedback.negative) {
         stateToSave.feedback = brain.feedback;
@@ -69,6 +74,8 @@ export function useAutosave() {
     dimensions.dimensions,
     brain.baseImage,
     brain.baseImageFile,
+    brain.visionSentence,
+    brain.breakdown,
     brain.outputMode,
     brain.feedback.positive,
     brain.feedback.negative,

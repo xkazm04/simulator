@@ -20,9 +20,14 @@ import { useDimensionsContext } from '../subfeature_dimensions';
 import { useBrainContext } from '../subfeature_brain';
 import { useSimulatorContext } from '../SimulatorContext';
 
+// LocalStorage key for persisting last selected project
+const LAST_PROJECT_KEY = 'simulator:lastProjectId';
+
 interface ProjectState {
   basePrompt: string;
   baseImageFile: string | null;
+  visionSentence: string | null;
+  breakdown: { baseImage: { format: string; keyElements: string[] }; reasoning: string } | null;
   outputMode: OutputMode;
   dimensions: Dimension[];
   feedback: { positive: string; negative: string };
@@ -30,9 +35,11 @@ interface ProjectState {
 
 interface UseProjectManagerOptions {
   imageGen: ReturnType<typeof useImageGeneration>;
+  /** Callback when project changes (for updating project-scoped state) */
+  onProjectChange?: (projectId: string | null) => void;
 }
 
-export function useProjectManager({ imageGen }: UseProjectManagerOptions) {
+export function useProjectManager({ imageGen, onProjectChange }: UseProjectManagerOptions) {
   const project = useProject();
   const poster = usePoster();
   const dimensions = useDimensionsContext();
@@ -55,6 +62,11 @@ export function useProjectManager({ imageGen }: UseProjectManagerOptions) {
     if (state.baseImageFile) {
       brain.setBaseImageFile(state.baseImageFile);
     }
+    if (state.visionSentence) {
+      brain.setVisionSentence(state.visionSentence);
+    }
+    // Restore breakdown (null for old projects is fine)
+    brain.setBreakdown(state.breakdown || null);
     if (state.outputMode) {
       brain.setOutputMode(state.outputMode);
     }
@@ -85,22 +97,58 @@ export function useProjectManager({ imageGen }: UseProjectManagerOptions) {
     createDefaultProject();
   }, [isInitialized, project.projects.length, project.isLoading, project.createProject]);
 
-  // Auto-select first project
+  // Auto-select project - prefer last selected from localStorage, fall back to first
   useEffect(() => {
-    const selectFirstProject = async () => {
+    const selectProject = async () => {
       if (isInitialized && project.projects.length > 0 && !project.currentProject && !project.isLoading) {
-        const projectWithState = await project.selectProject(project.projects[0].id);
+        // Check localStorage for last selected project
+        let targetProjectId: string | null = null;
+        try {
+          const lastProjectId = localStorage.getItem(LAST_PROJECT_KEY);
+          if (lastProjectId && project.projects.some(p => p.id === lastProjectId)) {
+            targetProjectId = lastProjectId;
+          }
+        } catch {
+          // localStorage not available (SSR or private browsing)
+        }
+
+        // Fall back to first project if no valid last selection
+        if (!targetProjectId) {
+          targetProjectId = project.projects[0].id;
+        }
+
+        const projectWithState = await project.selectProject(targetProjectId);
         if (projectWithState?.state) {
           restoreProjectState(projectWithState.state);
         }
         poster.setPoster(projectWithState?.poster || null);
+
+        // Persist selection to localStorage
+        try {
+          localStorage.setItem(LAST_PROJECT_KEY, targetProjectId);
+        } catch {
+          // localStorage not available
+        }
+
+        // Notify parent of project change
+        onProjectChange?.(targetProjectId);
       }
     };
-    selectFirstProject();
-  }, [isInitialized, project.projects.length, project.currentProject?.id, project.isLoading, project.selectProject, restoreProjectState, poster]);
+    selectProject();
+  }, [isInitialized, project.projects.length, project.currentProject?.id, project.isLoading, project.selectProject, restoreProjectState, poster, onProjectChange]);
 
   // Handle project selection
   const handleProjectSelect = useCallback(async (projectId: string) => {
+    // Persist selection to localStorage for next session
+    try {
+      localStorage.setItem(LAST_PROJECT_KEY, projectId);
+    } catch {
+      // localStorage not available (SSR or private browsing)
+    }
+
+    // Notify parent of project change first (so imageGen updates storage key)
+    onProjectChange?.(projectId);
+
     const projectWithState = await project.selectProject(projectId);
     if (projectWithState?.state) {
       restoreProjectState(projectWithState.state);
@@ -112,12 +160,22 @@ export function useProjectManager({ imageGen }: UseProjectManagerOptions) {
     submittedForGenerationRef.current.clear();
     poster.setPoster(projectWithState?.poster || null);
     setShowPosterOverlay(false);
-  }, [project, simulator, restoreProjectState, imageGen, poster]);
+  }, [project, simulator, restoreProjectState, imageGen, poster, onProjectChange]);
 
   // Handle project creation
   const handleProjectCreate = useCallback(async (name: string) => {
     const newProject = await project.createProject(name);
     if (newProject) {
+      // Persist selection to localStorage for next session
+      try {
+        localStorage.setItem(LAST_PROJECT_KEY, newProject.id);
+      } catch {
+        // localStorage not available
+      }
+
+      // Notify parent of project change
+      onProjectChange?.(newProject.id);
+
       simulator.handleReset();
       imageGen.clearGeneratedImages();
       setSavedPromptIds(new Set());
@@ -125,7 +183,7 @@ export function useProjectManager({ imageGen }: UseProjectManagerOptions) {
       poster.setPoster(null);
       setShowPosterOverlay(false);
     }
-  }, [project, simulator, imageGen, poster]);
+  }, [project, simulator, imageGen, poster, onProjectChange]);
 
   // Handle project reset
   const handleResetProject = useCallback(async () => {
@@ -140,6 +198,8 @@ export function useProjectManager({ imageGen }: UseProjectManagerOptions) {
       project.saveState({
         basePrompt: '',
         baseImageFile: null,
+        visionSentence: null,
+        breakdown: null,
         outputMode: 'gameplay',
         dimensions: [],
         feedback: { positive: '', negative: '' },

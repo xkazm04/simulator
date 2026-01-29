@@ -959,7 +959,13 @@ export interface SimulatorLayoutProps {
   canGenerate: boolean;
   outputMode: OutputMode;
   setOutputMode: (mode: OutputMode) => void;
-  handleSmartBreakdownApply: (baseImage: string, dimensions: Dimension[], outputMode: OutputMode) => void;
+  handleSmartBreakdownApply: (
+    visionSentence: string,
+    baseImage: string,
+    dimensions: Dimension[],
+    outputMode: OutputMode,
+    breakdown: { baseImage: { format: string; keyElements: string[] }; reasoning: string }
+  ) => void;
   pendingDimensionChange: any;
   handleUndoDimensionChange: () => void;
   onConvertElementsToDimensions: (dimensions: Dimension[]) => void;

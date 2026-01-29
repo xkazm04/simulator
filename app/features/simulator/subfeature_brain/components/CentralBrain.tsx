@@ -91,8 +91,14 @@ function CentralBrainComponent({
 
   // Smart breakdown handler - bridges brain to dimensions (memoized)
   const handleSmartBreakdownApply = useCallback(
-    (baseImage: string, newDimensions: typeof dimensions.dimensions, outputMode: typeof brain.outputMode) => {
-      brain.handleSmartBreakdownApply(baseImage, newDimensions, outputMode, dimensions.setDimensions);
+    (
+      visionSentence: string,
+      baseImage: string,
+      newDimensions: typeof dimensions.dimensions,
+      outputMode: typeof brain.outputMode,
+      breakdown: { baseImage: { format: string; keyElements: string[] }; reasoning: string }
+    ) => {
+      brain.handleSmartBreakdownApply(visionSentence, baseImage, newDimensions, outputMode, dimensions.setDimensions, breakdown);
     },
     [brain.handleSmartBreakdownApply, dimensions.setDimensions]
   );
@@ -159,6 +165,7 @@ function CentralBrainComponent({
           {/* Source Analysis Content - always visible */}
           <SmartBreakdown
             onApply={handleSmartBreakdownApply}
+            initialVisionSentence={brain.visionSentence}
             isDisabled={simulator.isGenerating}
           />
 

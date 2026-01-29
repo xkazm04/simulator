@@ -13,31 +13,57 @@
 
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Wand2, Loader2, Sparkles, ChevronDown, ChevronUp } from 'lucide-react';
+import { Wand2, Loader2, Sparkles, ChevronDown, ChevronUp, Shuffle } from 'lucide-react';
 import { smartBreakdown, SmartBreakdownResult } from '../lib/simulatorAI';
 import { Dimension, DimensionType, OutputMode, createDimensionWithDefaults } from '../../types';
 import { getDimensionPreset } from '../../subfeature_dimensions/lib/defaultDimensions';
 import { v4 as uuidv4 } from 'uuid';
 import { semanticColors } from '../../lib/semanticColors';
 import { expandCollapse, slideDown, transitions } from '../../lib/motion';
+import { getDiverseExamples, VisionExample } from '../lib/visionExamples';
 
 interface SmartBreakdownProps {
   onApply: (
+    visionSentence: string,
     baseImage: string,
     dimensions: Dimension[],
-    outputMode: OutputMode
+    outputMode: OutputMode,
+    breakdown: { baseImage: { format: string; keyElements: string[] }; reasoning: string }
   ) => void;
+  /** Restore vision sentence from saved project state */
+  initialVisionSentence?: string | null;
   isDisabled?: boolean;
 }
 
-export function SmartBreakdown({ onApply, isDisabled }: SmartBreakdownProps) {
-  const [input, setInput] = useState('');
+export function SmartBreakdown({ onApply, initialVisionSentence, isDisabled }: SmartBreakdownProps) {
+  const [input, setInput] = useState(initialVisionSentence || '');
   const [isProcessing, setIsProcessing] = useState(false);
   const [result, setResult] = useState<SmartBreakdownResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isExpanded, setIsExpanded] = useState(false);
+  const [examples, setExamples] = useState<VisionExample[]>([]);
+
+  // Initialize examples on mount (client-side only to avoid hydration mismatch)
+  useEffect(() => {
+    setExamples(getDiverseExamples(3));
+  }, []);
+
+  // Sync input with saved vision sentence when project loads
+  useEffect(() => {
+    if (initialVisionSentence !== undefined && initialVisionSentence !== null) {
+      setInput(initialVisionSentence);
+    }
+  }, [initialVisionSentence]);
+
+  const handleShuffleExamples = useCallback(() => {
+    setExamples(getDiverseExamples(3));
+  }, []);
+
+  const handleExampleClick = useCallback((exampleText: string) => {
+    setInput(exampleText);
+  }, []);
 
   const handleBreakdown = async () => {
     if (!input.trim() || isProcessing) return;
@@ -72,9 +98,22 @@ export function SmartBreakdown({ onApply, isDisabled }: SmartBreakdownProps) {
       });
     });
 
-    onApply(result.baseImage.description, dimensions, result.suggestedOutputMode);
+    // Pass vision sentence as first argument for persistence, breakdown result last
+    onApply(
+      input,
+      result.baseImage.description,
+      dimensions,
+      result.suggestedOutputMode,
+      {
+        baseImage: {
+          format: result.baseImage.format,
+          keyElements: result.baseImage.keyElements,
+        },
+        reasoning: result.reasoning,
+      }
+    );
     setResult(null);
-    setInput('');
+    // Do NOT clear input - keep it for persistence as the project's core identity
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -156,6 +195,41 @@ export function SmartBreakdown({ onApply, isDisabled }: SmartBreakdownProps) {
                 )}
               </button>
             </div>
+
+            {/* Example Sentences */}
+            {examples.length > 0 && (
+              <div className="mt-2 flex items-start gap-2">
+                <span className="font-mono type-label text-slate-600 shrink-0 pt-1">
+                  try:
+                </span>
+                <div className="flex flex-wrap gap-1.5 flex-1">
+                  {examples.map((example, idx) => (
+                    <button
+                      key={`${example.text}-${idx}`}
+                      onClick={() => handleExampleClick(example.text)}
+                      disabled={isProcessing || isDisabled}
+                      className="px-2.5 py-1 bg-slate-800/40 border border-slate-700/40
+                                rounded-md font-mono type-label text-slate-400
+                                hover:bg-purple-500/10 hover:border-purple-500/30 hover:text-purple-300
+                                transition-colors disabled:opacity-50 disabled:cursor-not-allowed
+                                text-left"
+                      title={`Click to use: "${example.text}"`}
+                    >
+                      {example.text}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  onClick={handleShuffleExamples}
+                  disabled={isProcessing || isDisabled}
+                  className="p-1.5 text-slate-500 hover:text-purple-400 hover:bg-purple-500/10
+                            rounded transition-colors disabled:opacity-50 shrink-0"
+                  title="Shuffle examples"
+                >
+                  <Shuffle size={12} />
+                </button>
+              </div>
+            )}
 
             {/* Error - red for error state */}
             {error && (
