@@ -438,7 +438,9 @@ function buildElements(
   // Output mode element
   elements.push({
     id: uuidv4(),
-    text: outputMode === 'gameplay' ? 'game UI visible' : 'no UI (concept)',
+    text: outputMode === 'gameplay'
+      ? 'gameplay: HUD and UI elements'
+      : 'concept: artistic visualization',
     category: 'composition',
     locked: false,
   });
@@ -605,12 +607,10 @@ export function buildMockPromptWithElements(
   promptParts.push(variety.time);
   promptParts.push(variety.atmosphere);
 
-  // 8. Output mode (with weight consideration if gameUI dim has weight)
-  if (outputMode === 'gameplay') {
-    const gameUIClause = gameUIDim ? buildWeightedClause(gameUIDim, 50) : null;
-    promptParts.push(gameUIClause || 'game UI overlay');
-  } else {
-    promptParts.push('concept art');
+  // 8. Output mode - multi-phrase mode section
+  const modeSection = buildModeSection(outputMode, gameUIDim);
+  if (modeSection.length > 0) {
+    promptParts.push(...modeSection);
   }
 
   // 9. Quality
