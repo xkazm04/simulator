@@ -1,80 +1,94 @@
-# Project Showcase Modal
+# Simulator
 
 ## What This Is
 
-A full-screen immersive modal that presents completed Simulator projects as cinematic showcases. When viewers click a poster in the gallery, they enter a dark, dramatic presentation of the project's creative journey - base image, transformation dimensions, and all generated images/videos - designed to fit entirely within the viewport without scrolling.
+A "What If" image visualization tool that combines cultural references (games, movies, art) to generate unique prompts for AI image generators. Users describe a vision through Smart Breakdown, adjust dimensions, and generate images in Gameplay (mechanics-focused) or Concept (artstyle-focused) modes. Autoplay automates the generate-evaluate-refine loop.
 
 ## Core Value
 
-The generated content is the hero - everything else gets out of the way. Minimal chrome, maximum visual impact.
+Transform fuzzy creative visions into concrete, curated AI-generated imagery through intelligent prompt building and automated refinement.
+
+## Current Milestone: v1.1 Refinement
+
+**Goal:** Make Smart Breakdown the central source of truth and strengthen the distinction between Gameplay and Concept modes.
+
+**Target features:**
+- Smart Breakdown autosave (persist format, keyElements, reasoning)
+- Autoplay uses Smart Breakdown context for evaluation
+- Stronger Gameplay mode (mechanics, UI/HUD focus)
+- Stronger Concept mode (artstyle, visualization focus)
+- Remove unused Presets system
 
 ## Requirements
 
 ### Validated
 
-<!-- Existing Simulator capabilities this feature builds on -->
+<!-- Shipped capabilities -->
 
-- [x] Project data persistence (dimensions, prompts, images, videos) — existing
-- [x] Poster gallery at /posters with click handling — existing
-- [x] ProjectShowcaseModal component structure — existing (to be redesigned)
-- [x] Image/video storage and retrieval via API — existing
-- [x] Dimension data model with type, reference, weight — existing
+- [x] Image generation via Leonardo AI — v1.0
+- [x] Dimension-based prompt building — v1.0
+- [x] Smart Breakdown vision parsing — v1.0
+- [x] Direction center for refinement feedback — v1.0
+- [x] Panel image saving system — v1.0
+- [x] Gemini AI provider integration — v1.0
+- [x] Autoplay orchestration loop (generate → evaluate → refine) — v1.0
+- [x] Autoplay UI controls with target picker — v1.0
+- [x] Step indicator and progress display — v1.0
+- [x] UI lock during autoplay — v1.0
 
 ### Active
 
-<!-- New showcase modal requirements -->
+<!-- v1.1 Refinement scope -->
 
-- [ ] Full-screen modal overlay with ESC/X to close
-- [ ] Immersive/cinematic visual design - dark background, dramatic lighting effects, minimal UI chrome
-- [ ] Single viewport layout - all content fits without scrolling
-- [ ] Base image display showing the original reference
-- [ ] Dimensions displayed as subtle labels/tags near base image or in corner
-- [ ] Mixed grid of generated images and videos as primary content
-- [ ] Click-to-expand interaction for images/videos showing full size + associated prompt
-- [ ] Video playback inline with image grid (mixed media gallery)
-- [ ] Read-only presentation mode (no editing capabilities)
-- [ ] Responsive design for different screen sizes while maintaining single-viewport goal
+- [ ] Smart Breakdown result autosave (format, keyElements, reasoning)
+- [ ] Autoplay evaluation uses Smart Breakdown context
+- [ ] Stronger Gameplay mode differentiation (mechanics, authentic UI/HUD)
+- [ ] Stronger Concept mode differentiation (artstyle, game visualization)
+- [ ] Delete Presets system (generationPresets.ts, PresetSelector.tsx)
 
 ### Out of Scope
 
-- Editing project content from showcase — this is view-only presentation
-- Social sharing features — may add later but not v1
-- Print/export functionality — future enhancement
-- Animation transitions between projects — single project view only
-- Comments/reactions system — not a social platform
+- Poster mode changes — separate workflow, working as intended
+- Natural language goal input for autoplay — keeping number picker
+- New presets — removing presets entirely, not replacing them
+- Smart Breakdown UI changes — only persistence and integration
 
 ## Context
 
-This is a brownfield addition to the existing Simulator application. The Simulator already has:
-- A subfeature architecture with contexts (BrainContext, DimensionsContext, PromptsContext)
-- Project persistence via SQLite and API routes
-- A poster gallery page at `/app/posters/page.tsx`
-- Existing `ProjectShowcaseModal` component that needs complete redesign
+**Smart Breakdown as core:**
+- Currently: SmartBreakdownResult metadata (format, keyElements, reasoning) is lost after "Apply to Simulator"
+- Goal: Persist full breakdown, use in autoplay evaluation for richer context
 
-The showcase modal should consume existing project data but present it in a completely new, cinematic layout optimized for viewing rather than editing.
+**Mode differentiation problem:**
+- Currently: Gameplay adds "game UI overlay", Concept adds "concept art" — too subtle
+- Goal: Gameplay = in-game feel, mechanics visible, authentic HUD; Concept = artistic interpretation, visual style exploration
 
-**Key data available per project:**
-- Base image (text description or uploaded image data)
-- Dimensions array (type, label, reference, weight, filterMode, transformMode)
-- Generated prompts (sceneType, prompt text, elements, negativePrompt)
-- Panel images (generated images with URLs and associated prompt IDs)
-- Videos (if generated via Leonardo Seedance)
+**Presets removal:**
+- 8 curated presets exist (Cinematic Epic, Cozy RPG, etc.) but add complexity
+- User preference: remove entirely, not simplify
+
+**Key integration points:**
+- `subfeature_brain/components/SmartBreakdown.tsx` — breakdown UI
+- `hooks/useAutosave.ts` — persistence (needs breakdown support)
+- `hooks/useAutoplayOrchestrator.ts` — evaluation criteria builder
+- `subfeature_brain/lib/imageEvaluator.ts` — evaluation logic
+- `lib/promptBuilder.ts` — mode-specific prompt generation
 
 ## Constraints
 
-- **Tech stack**: Must use existing Next.js 16 / React 19 / Tailwind CSS 4 / Framer Motion stack
-- **Data source**: Must consume existing project API endpoints and data structures
-- **Performance**: Modal should load quickly - consider lazy loading large images
-- **Accessibility**: Must support keyboard navigation (ESC to close, arrow keys for gallery if applicable)
+- **Tech stack**: Existing Next.js / React / Tailwind / Framer Motion
+- **AI Provider**: Use existing Gemini provider
+- **Backward compatibility**: Existing saved projects should still load
 
 ## Key Decisions
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| Full-screen modal vs dedicated page | Modal keeps context, no URL change, faster to close | — Pending |
-| Single viewport layout | Cinematic impact, no scroll distraction | — Pending |
-| Mixed image/video grid | Unified presentation of all generated media | — Pending |
-| Subtle dimension labels | Focus on visuals, not metadata | — Pending |
+| Gemini for evaluation | Already integrated, vision capable | ✓ Good |
+| 3 iteration limit | Balance automation vs cost | ✓ Good |
+| useReducer state machine | Matches codebase patterns | ✓ Good |
+| Delete Presets entirely | Reduces complexity, user preference | — Pending |
+| Smart Breakdown as source of truth | Richer evaluation context | — Pending |
 
 ---
-*Last updated: 2026-01-27 after initialization*
+*Last updated: 2026-01-29 after v1.1 milestone initialization*

@@ -1,4 +1,17 @@
 
+/**
+ * SmartBreakdownPersisted - Subset of SmartBreakdownResult for database storage
+ * Excludes fields that are already persisted separately (dimensions, outputMode)
+ * and transient fields (success boolean)
+ */
+export interface SmartBreakdownPersisted {
+  baseImage: {
+    format: string;
+    keyElements: string[];
+  };
+  reasoning: string;
+}
+
 export type DimensionType =
   | 'environment'
   | 'characters'
@@ -1178,6 +1191,8 @@ export interface AutoplayIteration {
     approved: boolean;
     feedback?: string;
     score?: number;
+    improvements?: string[];
+    strengths?: string[];
   }>;
   /** Count of images saved this iteration */
   savedCount: number;

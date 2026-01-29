@@ -132,6 +132,22 @@ function initializeSchema(database: Database.Database): void {
     if (!hasVideoUrl) {
       database.exec(`ALTER TABLE panel_images ADD COLUMN video_url TEXT;`);
     }
+
+    // Check if vision_sentence column exists in project_state (added for smart breakdown persistence)
+    const stateColumns = database.prepare(
+      "PRAGMA table_info(project_state)"
+    ).all() as Array<{ name: string }>;
+
+    const hasVisionSentence = stateColumns.some(col => col.name === 'vision_sentence');
+    if (!hasVisionSentence) {
+      database.exec(`ALTER TABLE project_state ADD COLUMN vision_sentence TEXT;`);
+    }
+
+    // Check if breakdown_json column exists in project_state (for smart breakdown persistence)
+    const hasBreakdownJson = stateColumns.some(col => col.name === 'breakdown_json');
+    if (!hasBreakdownJson) {
+      database.exec(`ALTER TABLE project_state ADD COLUMN breakdown_json TEXT;`);
+    }
   }
 }
 
@@ -158,6 +174,8 @@ export interface DbProjectState {
   project_id: string;
   base_prompt: string | null;
   base_image_file: string | null;
+  vision_sentence: string | null;
+  breakdown_json: string | null;  // Smart Breakdown result (format, keyElements, reasoning)
   output_mode: string;
   dimensions_json: string | null;
   feedback_json: string | null;
