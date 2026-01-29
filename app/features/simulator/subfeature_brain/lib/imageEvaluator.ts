@@ -63,8 +63,30 @@ export interface EvaluationResponse {
  */
 export function buildEvaluationPrompt(criteria: EvaluationCriteria): string {
   const modeContext = criteria.outputMode === 'gameplay'
-    ? 'This is a GAMEPLAY screenshot - it should include game UI elements like HUD, health bars, or interface elements appropriate to the genre.'
-    : 'This is CONCEPT ART - it should be clean without game UI overlays, focusing on artistic quality and scene composition.';
+    ? `This is a GAMEPLAY screenshot.
+
+GAMEPLAY MODE REQUIREMENTS:
+- MUST include visible game UI elements (HUD, health bars, minimap, inventory icons, etc.)
+- Should feel like an authentic in-game capture
+- Game mechanics should be visually implied (player stats, action states)
+- UI placement should feel genre-appropriate
+
+SCORING EMPHASIS for gameplay:
+- Goal Fit: Does it look like a real game screenshot?
+- Mode Compliance: Are UI elements present and genre-appropriate?
+- Reward images that feel "playable" - like a screenshot from active gameplay.`
+    : `This is CONCEPT ART visualization.
+
+CONCEPT MODE REQUIREMENTS:
+- MUST NOT have game UI overlays or HUD elements
+- Should emphasize artistic interpretation and visual style
+- Focus on composition, lighting, and aesthetic quality
+- Stylized rendering and artistic exploration encouraged
+
+SCORING EMPHASIS for concept:
+- Goal Fit: Does it capture the creative vision artistically?
+- Mode Compliance: Is it clean without any game interface?
+- Reward images that feel like polished concept illustrations.`;
 
   const aspectsList = criteria.expectedAspects.length > 0
     ? `Expected aspects: ${criteria.expectedAspects.join(', ')}`
