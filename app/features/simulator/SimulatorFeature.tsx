@@ -76,10 +76,9 @@ function SimulatorContent() {
     poster: pm.poster,
     currentProject: pm.project.currentProject,
   });
-  const ie = useImageEffects({ imageGen, submittedForGenerationRef: pm.submittedForGenerationRef, setSavedPromptIds: pm.setSavedPromptIds });
-  useAutosave();
 
   // Autoplay orchestrator - wires together state machine with image generation
+  // NOTE: Must be defined BEFORE useImageEffects so we can pass isRunning to prevent race conditions
   const autoplayOrchestrator = useAutoplayOrchestrator({
     generatedImages: imageGen.generatedImages,
     isGeneratingImages: imageGen.isGeneratingImages,
@@ -90,13 +89,25 @@ function SimulatorContent() {
     outputMode: brain.outputMode,
     dimensions: dimensions.dimensions,
     baseImage: brain.baseImage,
+    visionSentence: brain.visionSentence,
+    breakdown: brain.breakdown,
     onRegeneratePrompts: simulator.handleGenerate,
   });
+
+  // Image effects - skip auto-generation during autoplay (orchestrator controls flow)
+  const ie = useImageEffects({
+    imageGen,
+    submittedForGenerationRef: pm.submittedForGenerationRef,
+    setSavedPromptIds: pm.setSavedPromptIds,
+    isAutoplayRunning: autoplayOrchestrator.isRunning,
+  });
+  useAutosave();
 
   // Create autoplay props object to pass down through layouts
   const autoplayProps = {
     isRunning: autoplayOrchestrator.isRunning,
     canStart: autoplayOrchestrator.canStart,
+    canStartReason: autoplayOrchestrator.canStartReason,
     status: autoplayOrchestrator.status,
     currentIteration: autoplayOrchestrator.currentIteration,
     maxIterations: autoplayOrchestrator.maxIterations,
