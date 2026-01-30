@@ -38,7 +38,7 @@
  * - text/icon: text-COLOR-400 or text-COLOR-500
  */
 
-export type SemanticColor = 'primary' | 'success' | 'warning' | 'error' | 'processing';
+export type SemanticColor = 'primary' | 'success' | 'warning' | 'error' | 'processing' | 'neutral';
 
 /**
  * Design Token CSS class mappings for spacing
@@ -148,6 +148,16 @@ export const semanticColors = {
     text: 'text-purple-400',
     ring: 'ring-purple-500/30',
     shadow: 'shadow-purple-500/10',
+  },
+
+  // Neutral (slate) - inactive, default state
+  neutral: {
+    border: 'border-slate-500/30',
+    bg: 'bg-slate-500/10',
+    bgHover: 'bg-slate-500/20',
+    text: 'text-slate-400',
+    ring: 'ring-slate-500/30',
+    shadow: 'shadow-slate-500/10',
   },
 } as const;
 

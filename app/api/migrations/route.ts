@@ -1,50 +1,77 @@
 /**
  * Database Migrations API
- * Provides endpoints for managing database migrations.
+ * Provides endpoints for managing database migrations with Supabase.
+ *
+ * For Supabase, migrations are run via the SQL Editor in Supabase Dashboard
+ * or through the Supabase CLI. This endpoint provides status checking.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import {
-  getMigrationStatus,
-  runPendingMigrations,
-  rollbackMigration,
-  getMigrationHistory,
-  verifyMigrationChecksums,
-} from '@/app/lib/db';
+import { getDb, checkConnection, TABLES } from '@/app/lib/supabase';
+import fs from 'fs';
+import path from 'path';
 
 /**
- * GET /api/migrations - Get migration status and history
+ * GET /api/migrations - Get migration status and info
  */
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const action = searchParams.get('action') || 'status';
-    const limit = parseInt(searchParams.get('limit') || '50', 10);
 
     switch (action) {
       case 'status': {
-        const status = getMigrationStatus();
-        return NextResponse.json({
-          success: true,
-          data: status,
-        });
-      }
+        const connectionStatus = await checkConnection();
+        const supabase = getDb();
 
-      case 'history': {
-        const history = getMigrationHistory(limit);
-        return NextResponse.json({
-          success: true,
-          data: history,
-        });
-      }
+        // Try to get table counts to verify schema exists
+        const tables = Object.values(TABLES);
+        const tableStatus: Record<string, { exists: boolean; count?: number }> = {};
 
-      case 'verify': {
-        const mismatches = verifyMigrationChecksums();
+        for (const table of tables) {
+          try {
+            const { count, error } = await supabase
+              .from(table)
+              .select('*', { count: 'exact', head: true });
+
+            tableStatus[table] = {
+              exists: !error || error.code !== '42P01',
+              count: count ?? undefined,
+            };
+          } catch {
+            tableStatus[table] = { exists: false };
+          }
+        }
+
         return NextResponse.json({
           success: true,
           data: {
-            valid: mismatches.length === 0,
-            mismatches,
+            database: 'supabase',
+            connected: connectionStatus.connected,
+            connectionError: connectionStatus.error,
+            tables: tableStatus,
+            migrationNote: 'Migrations are managed via Supabase Dashboard SQL Editor. See db/migrations/ for SQL scripts.',
+          },
+        });
+      }
+
+      case 'scripts': {
+        // List available migration scripts
+        const migrationsDir = path.join(process.cwd(), 'db', 'migrations');
+        let scripts: string[] = [];
+
+        try {
+          scripts = fs.readdirSync(migrationsDir).filter(f => f.endsWith('.sql'));
+        } catch {
+          scripts = [];
+        }
+
+        return NextResponse.json({
+          success: true,
+          data: {
+            scripts,
+            location: 'db/migrations/',
+            instruction: 'Copy these SQL scripts to Supabase Dashboard SQL Editor to run migrations',
           },
         });
       }
@@ -65,12 +92,12 @@ export async function GET(request: NextRequest) {
 }
 
 /**
- * POST /api/migrations - Run migrations or rollback
+ * POST /api/migrations - Run migration (only baseline via Supabase)
  */
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { action, targetVersion, dryRun } = body;
+    const { action } = body;
 
     // Check for admin authorization in production
     if (process.env.NODE_ENV === 'production') {
@@ -85,61 +112,37 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    switch (action) {
-      case 'run': {
-        if (dryRun) {
-          // In dry-run mode, just return pending migrations
-          const status = getMigrationStatus();
-          return NextResponse.json({
-            success: true,
-            dryRun: true,
-            data: {
-              wouldRun: status.pendingMigrations,
-              count: status.pendingCount,
-            },
-          });
-        }
+    if (action === 'verify') {
+      // Verify that all required tables exist
+      const supabase = getDb();
+      const requiredTables = [TABLES.projects, TABLES.projectState, TABLES.panelImages, TABLES.projectPosters];
+      const missingTables: string[] = [];
 
-        const result = runPendingMigrations();
+      for (const table of requiredTables) {
+        const { error } = await supabase.from(table).select('*', { count: 'exact', head: true });
+        if (error?.code === '42P01') {
+          missingTables.push(table);
+        }
+      }
+
+      if (missingTables.length > 0) {
         return NextResponse.json({
-          success: result.success,
-          data: result,
+          success: false,
+          error: `Missing tables: ${missingTables.join(', ')}. Run the migration SQL in Supabase Dashboard.`,
+          data: { missingTables },
         });
       }
 
-      case 'rollback': {
-        if (dryRun) {
-          const status = getMigrationStatus();
-          const currentVersion = status.currentVersion;
-          const wouldRollback = targetVersion
-            ? status.appliedMigrations.filter((m) => m.version > targetVersion)
-            : currentVersion
-            ? [status.appliedMigrations[status.appliedMigrations.length - 1]]
-            : [];
-
-          return NextResponse.json({
-            success: true,
-            dryRun: true,
-            data: {
-              wouldRollback,
-              targetVersion: targetVersion || (currentVersion ? 'previous' : null),
-            },
-          });
-        }
-
-        const result = rollbackMigration(targetVersion);
-        return NextResponse.json({
-          success: result.success,
-          data: result,
-        });
-      }
-
-      default:
-        return NextResponse.json(
-          { success: false, error: `Unknown action: ${action}. Use 'run' or 'rollback'` },
-          { status: 400 }
-        );
+      return NextResponse.json({
+        success: true,
+        message: 'All required tables exist',
+      });
     }
+
+    return NextResponse.json({
+      success: false,
+      error: 'For Supabase, run migrations via Supabase Dashboard SQL Editor. Use ?action=scripts to see available migration files.',
+    });
   } catch (error) {
     console.error('[api/migrations] POST error:', error);
     return NextResponse.json(

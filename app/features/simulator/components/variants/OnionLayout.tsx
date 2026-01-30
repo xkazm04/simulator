@@ -86,6 +86,7 @@ export interface OnionLayoutProps {
   autoplay?: {
     isRunning: boolean;
     canStart: boolean;
+    canStartReason: string | null;
     status: string;
     currentIteration: number;
     maxIterations: number;

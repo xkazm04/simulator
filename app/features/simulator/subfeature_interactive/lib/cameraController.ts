@@ -544,7 +544,7 @@ export class CameraController {
  * Create camera for specific game type
  */
 export function createCameraForGameType(
-  gameType: 'platformer' | 'top-down' | 'puzzle' | 'shooter',
+  gameType: 'platformer' | 'top-down' | 'puzzle' | 'shooter' | 'fps' | 'third-person',
   viewport: { width: number; height: number },
   worldBounds: { width: number; height: number }
 ): CameraController {
@@ -572,6 +572,18 @@ export function createCameraForGameType(
       followSmoothing: 0.15,
       deadZone: { x: 0.05, y: 0.05 },
       lookAhead: { x: 100, y: 60 },
+    },
+    fps: {
+      mode: 'follow',
+      followSmoothing: 0.2,
+      deadZone: { x: 0.02, y: 0.02 },
+      lookAhead: { x: 120, y: 80 },
+    },
+    'third-person': {
+      mode: 'follow',
+      followSmoothing: 0.1,
+      deadZone: { x: 0.1, y: 0.15 },
+      lookAhead: { x: 60, y: 30 },
     },
   };
 

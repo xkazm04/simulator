@@ -7,8 +7,9 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getDb, DbInteractivePrototype } from '@/app/lib/db';
+import { getDb, TABLES, DbInteractivePrototype } from '@/app/lib/supabase';
 import { v4 as uuidv4 } from 'uuid';
+import { fetchProject } from '../helpers';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -20,32 +21,25 @@ interface RouteParams {
 export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
     const { id } = await params;
-    const db = getDb();
+    const supabase = getDb();
 
-    // Check project exists
-    const project = db.prepare('SELECT id FROM projects WHERE id = ?').get(id);
+    const project = await fetchProject(supabase, id);
     if (!project) {
-      return NextResponse.json(
-        { success: false, error: 'Project not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ success: false, error: 'Project not found' }, { status: 404 });
     }
 
-    const prototypes = db.prepare(`
-      SELECT id, project_id, prompt_id, image_id, mode, status, error, config_json, assets_json, created_at
-      FROM interactive_prototypes WHERE project_id = ?
-    `).all(id) as DbInteractivePrototype[];
+    const { data: prototypes, error } = await supabase
+      .from(TABLES.interactivePrototypes).select('*').eq('project_id', id);
 
-    return NextResponse.json({
-      success: true,
-      prototypes,
-    });
+    if (error) {
+      console.error('Get prototypes error:', error);
+      return NextResponse.json({ success: false, error: 'Failed to get prototypes' }, { status: 500 });
+    }
+
+    return NextResponse.json({ success: true, prototypes: prototypes as DbInteractivePrototype[] });
   } catch (error) {
     console.error('Get prototypes error:', error);
-    return NextResponse.json(
-      { success: false, error: 'Failed to get prototypes' },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, error: 'Failed to get prototypes' }, { status: 500 });
   }
 }
 
@@ -55,72 +49,56 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 export async function POST(request: NextRequest, { params }: RouteParams) {
   try {
     const { id } = await params;
-    const body = await request.json();
-    const db = getDb();
+    const { promptId, imageId, mode, status, error: protoError, config, assets } = await request.json();
+    const supabase = getDb();
 
-    // Check project exists
-    const project = db.prepare('SELECT id FROM projects WHERE id = ?').get(id);
+    const project = await fetchProject(supabase, id);
     if (!project) {
-      return NextResponse.json(
-        { success: false, error: 'Project not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ success: false, error: 'Project not found' }, { status: 404 });
     }
 
-    const {
-      promptId,
-      imageId,
-      mode,
-      status,
-      error: prototypeError,
-      config,
-      assets,
-    } = body;
-
     if (!promptId || !mode || !status) {
-      return NextResponse.json(
-        { success: false, error: 'Missing required fields: promptId, mode, status' },
-        { status: 400 }
-      );
+      return NextResponse.json({ success: false, error: 'Missing required fields: promptId, mode, status' }, { status: 400 });
     }
 
     const now = new Date().toISOString();
+    const { data: existing } = await supabase
+      .from(TABLES.interactivePrototypes).select('id').eq('project_id', id).eq('prompt_id', promptId).single();
 
-    // Use INSERT OR REPLACE to handle both insert and update
-    const prototypeId = uuidv4();
-    db.prepare(`
-      INSERT INTO interactive_prototypes (id, project_id, prompt_id, image_id, mode, status, error, config_json, assets_json, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(project_id, prompt_id) DO UPDATE SET
-        image_id = excluded.image_id,
-        mode = excluded.mode,
-        status = excluded.status,
-        error = excluded.error,
-        config_json = excluded.config_json,
-        assets_json = excluded.assets_json
-    `).run(
-      prototypeId,
-      id,
-      promptId,
-      imageId || null,
-      mode,
-      status,
-      prototypeError || null,
-      config ? JSON.stringify(config) : null,
-      assets ? JSON.stringify(assets) : null,
-      now
-    );
+    let prototypeId: string;
 
-    return NextResponse.json({
-      success: true,
-      prototypeId,
-    });
+    if (existing) {
+      prototypeId = existing.id;
+      const { error: updateError } = await supabase.from(TABLES.interactivePrototypes)
+        .update({
+          image_id: imageId || null, mode, status, error: protoError || null,
+          config_json: config || null, assets_json: assets || null,
+        })
+        .eq('id', prototypeId);
+
+      if (updateError) {
+        console.error('Update prototype error:', updateError);
+        return NextResponse.json({ success: false, error: 'Failed to save prototype' }, { status: 500 });
+      }
+    } else {
+      prototypeId = uuidv4();
+      const { error: insertError } = await supabase.from(TABLES.interactivePrototypes)
+        .insert({
+          id: prototypeId, project_id: id, prompt_id: promptId,
+          image_id: imageId || null, mode, status, error: protoError || null,
+          config_json: config || null, assets_json: assets || null, created_at: now,
+        });
+
+      if (insertError) {
+        console.error('Insert prototype error:', insertError);
+        return NextResponse.json({ success: false, error: 'Failed to save prototype' }, { status: 500 });
+      }
+    }
+
+    return NextResponse.json({ success: true, prototypeId });
   } catch (error) {
     console.error('Save prototype error:', error);
-    return NextResponse.json(
-      { success: false, error: 'Failed to save prototype' },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, error: 'Failed to save prototype' }, { status: 500 });
   }
 }
 
@@ -131,42 +109,24 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
   try {
     const { id } = await params;
     const body = await request.json();
-    const db = getDb();
+    const supabase = getDb();
 
-    // Check project exists
-    const project = db.prepare('SELECT id FROM projects WHERE id = ?').get(id);
+    const project = await fetchProject(supabase, id);
     if (!project) {
-      return NextResponse.json(
-        { success: false, error: 'Project not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ success: false, error: 'Project not found' }, { status: 404 });
     }
 
     if (body.promptId) {
-      // Delete specific prototype by promptId
-      db.prepare(`
-        DELETE FROM interactive_prototypes WHERE project_id = ? AND prompt_id = ?
-      `).run(id, body.promptId);
+      await supabase.from(TABLES.interactivePrototypes).delete().eq('project_id', id).eq('prompt_id', body.promptId);
     } else if (body.prototypeId) {
-      // Delete specific prototype by id
-      db.prepare(`
-        DELETE FROM interactive_prototypes WHERE id = ? AND project_id = ?
-      `).run(body.prototypeId, id);
+      await supabase.from(TABLES.interactivePrototypes).delete().eq('id', body.prototypeId).eq('project_id', id);
     } else {
-      // Delete all prototypes for project
-      db.prepare(`
-        DELETE FROM interactive_prototypes WHERE project_id = ?
-      `).run(id);
+      await supabase.from(TABLES.interactivePrototypes).delete().eq('project_id', id);
     }
 
-    return NextResponse.json({
-      success: true,
-    });
+    return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Delete prototype error:', error);
-    return NextResponse.json(
-      { success: false, error: 'Failed to delete prototype' },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, error: 'Failed to delete prototype' }, { status: 500 });
   }
 }

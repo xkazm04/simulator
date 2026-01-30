@@ -54,7 +54,7 @@ export interface AutoplayControlsProps {
 /**
  * Phase configuration for status display
  */
-const PHASE_CONFIG: Record<string, { label: string; color: typeof semanticColors.primary }> = {
+const PHASE_CONFIG: Record<string, { label: string; color: (typeof semanticColors)[keyof typeof semanticColors] }> = {
   idle: { label: 'Ready', color: semanticColors.primary },
   generating: { label: 'Generating', color: semanticColors.primary },
   evaluating: { label: 'Evaluating', color: semanticColors.processing },

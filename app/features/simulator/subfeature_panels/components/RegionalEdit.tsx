@@ -60,8 +60,9 @@ export function RegionalEdit({
   const handleClearMask = useCallback(() => {
     // Call the exposed clearMask method on the canvas
     const canvas = document.querySelector('canvas');
-    if (canvas && (canvas as HTMLCanvasElement & { clearMask?: () => void }).clearMask) {
-      (canvas as HTMLCanvasElement & { clearMask?: () => void }).clearMask();
+    const clearMaskFn = (canvas as HTMLCanvasElement & { clearMask?: () => void })?.clearMask;
+    if (clearMaskFn) {
+      clearMaskFn();
     }
     onClearMask();
   }, [onClearMask]);

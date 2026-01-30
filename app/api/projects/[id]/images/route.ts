@@ -7,29 +7,12 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getDb, DbPanelImage } from '@/app/lib/db';
+import { getDb, TABLES, DbPanelImage } from '@/app/lib/supabase';
 import { v4 as uuidv4 } from 'uuid';
+import { fetchProject, touchProject } from '../helpers';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
-}
-
-interface SaveImageBody {
-  side: 'left' | 'right';
-  slotIndex: number;
-  imageUrl: string;
-  videoUrl?: string;
-  prompt?: string;
-}
-
-interface UpdateImageBody {
-  imageId: string;
-  videoUrl?: string;
-  imageUrl?: string;
-}
-
-interface DeleteImageBody {
-  imageId: string;
 }
 
 /**
@@ -38,157 +21,96 @@ interface DeleteImageBody {
 export async function POST(request: NextRequest, { params }: RouteParams) {
   try {
     const { id: projectId } = await params;
-    const body: SaveImageBody = await request.json();
-    const { side, slotIndex, imageUrl, videoUrl, prompt } = body;
+    const { side, slotIndex, imageUrl, videoUrl, prompt } = await request.json();
 
     // Validate input
     if (!side || !['left', 'right'].includes(side)) {
-      return NextResponse.json(
-        { success: false, error: 'Invalid side (must be "left" or "right")' },
-        { status: 400 }
-      );
+      return NextResponse.json({ success: false, error: 'Invalid side (must be "left" or "right")' }, { status: 400 });
     }
     if (slotIndex === undefined || slotIndex < 0 || slotIndex >= 5) {
-      return NextResponse.json(
-        { success: false, error: 'Invalid slot index (must be 0-4)' },
-        { status: 400 }
-      );
+      return NextResponse.json({ success: false, error: 'Invalid slot index (must be 0-4)' }, { status: 400 });
     }
     if (!imageUrl) {
-      return NextResponse.json(
-        { success: false, error: 'Image URL is required' },
-        { status: 400 }
-      );
+      return NextResponse.json({ success: false, error: 'Image URL is required' }, { status: 400 });
     }
 
-    const db = getDb();
-    const now = new Date().toISOString();
-
-    // Check project exists
-    const project = db.prepare('SELECT id FROM projects WHERE id = ?').get(projectId);
+    const supabase = getDb();
+    const project = await fetchProject(supabase, projectId);
     if (!project) {
-      return NextResponse.json(
-        { success: false, error: 'Project not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ success: false, error: 'Project not found' }, { status: 404 });
     }
 
-    // Use INSERT OR REPLACE to handle existing slot
-    const imageId = uuidv4();
-
-    // First delete any existing image in this slot
-    db.prepare(`
-      DELETE FROM panel_images
-      WHERE project_id = ? AND side = ? AND slot_index = ?
-    `).run(projectId, side, slotIndex);
+    // Delete existing image in this slot
+    await supabase.from(TABLES.panelImages).delete()
+      .eq('project_id', projectId).eq('side', side).eq('slot_index', slotIndex);
 
     // Insert new image
-    db.prepare(`
-      INSERT INTO panel_images (id, project_id, side, slot_index, image_url, video_url, prompt, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(imageId, projectId, side, slotIndex, imageUrl, videoUrl || null, prompt || null, now);
+    const imageId = uuidv4();
+    const now = new Date().toISOString();
+    const { error } = await supabase.from(TABLES.panelImages).insert({
+      id: imageId, project_id: projectId, side, slot_index: slotIndex,
+      image_url: imageUrl, video_url: videoUrl || null, prompt: prompt || null, created_at: now,
+    });
 
-    // Update project timestamp
-    db.prepare('UPDATE projects SET updated_at = ? WHERE id = ?')
-      .run(now, projectId);
+    if (error) {
+      console.error('Insert panel image error:', error);
+      return NextResponse.json({ success: false, error: 'Failed to save image' }, { status: 500 });
+    }
+
+    await touchProject(supabase, projectId);
 
     const panelImage: DbPanelImage = {
-      id: imageId,
-      project_id: projectId,
-      side,
-      slot_index: slotIndex,
-      image_url: imageUrl,
-      video_url: videoUrl || null,
-      prompt: prompt || null,
-      created_at: now,
+      id: imageId, project_id: projectId, side, slot_index: slotIndex,
+      image_url: imageUrl, video_url: videoUrl || null, prompt: prompt || null, created_at: now,
     };
 
-    return NextResponse.json({
-      success: true,
-      image: panelImage,
-    });
+    return NextResponse.json({ success: true, image: panelImage });
   } catch (error) {
     console.error('Save panel image error:', error);
-    return NextResponse.json(
-      { success: false, error: 'Failed to save image' },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, error: 'Failed to save image' }, { status: 500 });
   }
 }
 
 /**
- * PATCH - Update image video URL
+ * PATCH - Update image video URL or image URL
  */
 export async function PATCH(request: NextRequest, { params }: RouteParams) {
   try {
     const { id: projectId } = await params;
-    const body: UpdateImageBody = await request.json();
-    const { imageId, videoUrl, imageUrl } = body;
+    const { imageId, videoUrl, imageUrl } = await request.json();
 
     if (!imageId) {
-      return NextResponse.json(
-        { success: false, error: 'Image ID is required' },
-        { status: 400 }
-      );
+      return NextResponse.json({ success: false, error: 'Image ID is required' }, { status: 400 });
+    }
+    if (videoUrl === undefined && imageUrl === undefined) {
+      return NextResponse.json({ success: false, error: 'Either videoUrl or imageUrl is required' }, { status: 400 });
     }
 
-    if (!videoUrl && !imageUrl) {
-      return NextResponse.json(
-        { success: false, error: 'Either videoUrl or imageUrl is required' },
-        { status: 400 }
-      );
+    const supabase = getDb();
+    const updateData: Record<string, string | null> = {};
+    if (videoUrl !== undefined) updateData.video_url = videoUrl || null;
+    if (imageUrl !== undefined) updateData.image_url = imageUrl;
+
+    const { error, count } = await supabase.from(TABLES.panelImages)
+      .update(updateData).eq('id', imageId).eq('project_id', projectId);
+
+    if (error) {
+      console.error('Update panel image error:', error);
+      return NextResponse.json({ success: false, error: 'Failed to update image' }, { status: 500 });
+    }
+    if (count === 0) {
+      return NextResponse.json({ success: false, error: 'Image not found' }, { status: 404 });
     }
 
-    const db = getDb();
-    const now = new Date().toISOString();
+    await touchProject(supabase, projectId);
 
-    // Build update query dynamically based on provided fields
-    const updates: string[] = [];
-    const values: (string | null)[] = [];
+    const { data: updatedImage } = await supabase.from(TABLES.panelImages)
+      .select('*').eq('id', imageId).single();
 
-    if (videoUrl !== undefined) {
-      updates.push('video_url = ?');
-      values.push(videoUrl || null);
-    }
-    if (imageUrl !== undefined) {
-      updates.push('image_url = ?');
-      values.push(imageUrl);
-    }
-
-    values.push(imageId, projectId);
-
-    const result = db.prepare(`
-      UPDATE panel_images
-      SET ${updates.join(', ')}
-      WHERE id = ? AND project_id = ?
-    `).run(...values);
-
-    if (result.changes === 0) {
-      return NextResponse.json(
-        { success: false, error: 'Image not found' },
-        { status: 404 }
-      );
-    }
-
-    // Update project timestamp
-    db.prepare('UPDATE projects SET updated_at = ? WHERE id = ?')
-      .run(now, projectId);
-
-    // Fetch updated image
-    const updatedImage = db.prepare(`
-      SELECT * FROM panel_images WHERE id = ?
-    `).get(imageId) as DbPanelImage;
-
-    return NextResponse.json({
-      success: true,
-      image: updatedImage,
-    });
+    return NextResponse.json({ success: true, image: updatedImage as DbPanelImage });
   } catch (error) {
     console.error('Update panel image error:', error);
-    return NextResponse.json(
-      { success: false, error: 'Failed to update image' },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, error: 'Failed to update image' }, { status: 500 });
   }
 }
 
@@ -198,43 +120,28 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 export async function DELETE(request: NextRequest, { params }: RouteParams) {
   try {
     const { id: projectId } = await params;
-    const body: DeleteImageBody = await request.json();
-    const { imageId } = body;
+    const { imageId } = await request.json();
 
     if (!imageId) {
-      return NextResponse.json(
-        { success: false, error: 'Image ID is required' },
-        { status: 400 }
-      );
+      return NextResponse.json({ success: false, error: 'Image ID is required' }, { status: 400 });
     }
 
-    const db = getDb();
-    const now = new Date().toISOString();
+    const supabase = getDb();
+    const { error, count } = await supabase.from(TABLES.panelImages)
+      .delete().eq('id', imageId).eq('project_id', projectId);
 
-    const result = db.prepare(`
-      DELETE FROM panel_images
-      WHERE id = ? AND project_id = ?
-    `).run(imageId, projectId);
-
-    if (result.changes === 0) {
-      return NextResponse.json(
-        { success: false, error: 'Image not found' },
-        { status: 404 }
-      );
+    if (error) {
+      console.error('Delete panel image error:', error);
+      return NextResponse.json({ success: false, error: 'Failed to delete image' }, { status: 500 });
+    }
+    if (count === 0) {
+      return NextResponse.json({ success: false, error: 'Image not found' }, { status: 404 });
     }
 
-    // Update project timestamp
-    db.prepare('UPDATE projects SET updated_at = ? WHERE id = ?')
-      .run(now, projectId);
-
-    return NextResponse.json({
-      success: true,
-    });
+    await touchProject(supabase, projectId);
+    return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Delete panel image error:', error);
-    return NextResponse.json(
-      { success: false, error: 'Failed to delete image' },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, error: 'Failed to delete image' }, { status: 500 });
   }
 }

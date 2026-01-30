@@ -185,10 +185,18 @@ export function applyActionToHotspot(
   hotspot: Hotspot,
   config: HotspotActionConfig
 ): Hotspot {
+  // Map HotspotActionType to InteractiveRegion action types
+  const actionTypeMap: Record<HotspotActionType, 'navigate' | 'toggle' | 'animate' | 'callback'> = {
+    navigate: 'navigate',
+    tooltip: 'callback',
+    highlight: 'callback',
+    callback: 'callback',
+  };
+
   const updatedHotspot: Hotspot = {
     ...hotspot,
     action: {
-      type: config.type === 'tooltip' ? 'callback' : config.type,
+      type: actionTypeMap[config.type],
       target: config.url,
       params: {
         tooltipText: config.tooltipText,

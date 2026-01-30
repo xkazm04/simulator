@@ -161,7 +161,7 @@ function PromptCardComponent({
 
   // Image generation state
   const isGenerating = generatedImage?.status === 'pending' || generatedImage?.status === 'generating';
-  const isComplete = generatedImage?.status === 'complete' && generatedImage?.url;
+  const isComplete = generatedImage?.status === 'complete' && !!generatedImage?.url;
   const isFailed = generatedImage?.status === 'failed';
 
   // Memoized copy handler using the useCopyFeedback hook

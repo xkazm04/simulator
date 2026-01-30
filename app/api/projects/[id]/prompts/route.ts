@@ -8,7 +8,8 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getDb, DbGeneratedPrompt } from '@/app/lib/db';
+import { getDb, TABLES, DbGeneratedPrompt } from '@/app/lib/supabase';
+import { fetchProject, touchProject } from '../helpers';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -20,33 +21,25 @@ interface RouteParams {
 export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
     const { id } = await params;
-    const db = getDb();
+    const supabase = getDb();
 
-    // Check project exists
-    const project = db.prepare('SELECT id FROM projects WHERE id = ?').get(id);
+    const project = await fetchProject(supabase, id);
     if (!project) {
-      return NextResponse.json(
-        { success: false, error: 'Project not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ success: false, error: 'Project not found' }, { status: 404 });
     }
 
-    const prompts = db.prepare(`
-      SELECT id, project_id, scene_number, scene_type, prompt, negative_prompt, copied, rating, locked, elements_json, created_at
-      FROM generated_prompts WHERE project_id = ?
-      ORDER BY scene_number
-    `).all(id) as DbGeneratedPrompt[];
+    const { data: prompts, error } = await supabase
+      .from(TABLES.generatedPrompts).select('*').eq('project_id', id).order('scene_number');
 
-    return NextResponse.json({
-      success: true,
-      prompts,
-    });
+    if (error) {
+      console.error('Get prompts error:', error);
+      return NextResponse.json({ success: false, error: 'Failed to get prompts' }, { status: 500 });
+    }
+
+    return NextResponse.json({ success: true, prompts: prompts as DbGeneratedPrompt[] });
   } catch (error) {
     console.error('Get prompts error:', error);
-    return NextResponse.json(
-      { success: false, error: 'Failed to get prompts' },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, error: 'Failed to get prompts' }, { status: 500 });
   }
 }
 
@@ -56,73 +49,43 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 export async function POST(request: NextRequest, { params }: RouteParams) {
   try {
     const { id } = await params;
-    const body = await request.json();
-    const db = getDb();
+    const { prompts } = await request.json();
+    const supabase = getDb();
 
-    // Check project exists
-    const project = db.prepare('SELECT id FROM projects WHERE id = ?').get(id);
+    const project = await fetchProject(supabase, id);
     if (!project) {
-      return NextResponse.json(
-        { success: false, error: 'Project not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ success: false, error: 'Project not found' }, { status: 404 });
     }
 
-    const { prompts } = body;
-
     if (!Array.isArray(prompts)) {
-      return NextResponse.json(
-        { success: false, error: 'prompts must be an array' },
-        { status: 400 }
-      );
+      return NextResponse.json({ success: false, error: 'prompts must be an array' }, { status: 400 });
     }
 
     const now = new Date().toISOString();
 
-    // Use a transaction to replace all prompts
-    const deleteStmt = db.prepare('DELETE FROM generated_prompts WHERE project_id = ?');
-    const insertStmt = db.prepare(`
-      INSERT INTO generated_prompts (id, project_id, scene_number, scene_type, prompt, negative_prompt, copied, rating, locked, elements_json, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
+    // Delete existing and insert new
+    await supabase.from(TABLES.generatedPrompts).delete().eq('project_id', id);
 
-    const transaction = db.transaction(() => {
-      // Clear existing prompts
-      deleteStmt.run(id);
+    if (prompts.length > 0) {
+      const promptsToInsert = prompts.map((p: Record<string, unknown>) => ({
+        id: p.id, project_id: id, scene_number: p.sceneNumber, scene_type: p.sceneType,
+        prompt: p.prompt, negative_prompt: p.negativePrompt || null,
+        copied: p.copied || false, rating: p.rating || null, locked: p.locked || false,
+        elements_json: p.elements || null, created_at: now,
+      }));
 
-      // Insert new prompts
-      for (const p of prompts) {
-        insertStmt.run(
-          p.id,
-          id,
-          p.sceneNumber,
-          p.sceneType,
-          p.prompt,
-          p.negativePrompt || null,
-          p.copied ? 1 : 0,
-          p.rating || null,
-          p.locked ? 1 : 0,
-          p.elements ? JSON.stringify(p.elements) : null,
-          now
-        );
+      const { error } = await supabase.from(TABLES.generatedPrompts).insert(promptsToInsert);
+      if (error) {
+        console.error('Insert prompts error:', error);
+        return NextResponse.json({ success: false, error: 'Failed to save prompts' }, { status: 500 });
       }
-    });
+    }
 
-    transaction();
-
-    // Update project timestamp
-    db.prepare('UPDATE projects SET updated_at = ? WHERE id = ?').run(now, id);
-
-    return NextResponse.json({
-      success: true,
-      count: prompts.length,
-    });
+    await touchProject(supabase, id);
+    return NextResponse.json({ success: true, count: prompts.length });
   } catch (error) {
     console.error('Save prompts error:', error);
-    return NextResponse.json(
-      { success: false, error: 'Failed to save prompts' },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, error: 'Failed to save prompts' }, { status: 500 });
   }
 }
 
@@ -132,80 +95,43 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 export async function PUT(request: NextRequest, { params }: RouteParams) {
   try {
     const { id } = await params;
-    const body = await request.json();
-    const db = getDb();
+    const { promptId, updates } = await request.json();
+    const supabase = getDb();
 
-    // Check project exists
-    const project = db.prepare('SELECT id FROM projects WHERE id = ?').get(id);
+    const project = await fetchProject(supabase, id);
     if (!project) {
-      return NextResponse.json(
-        { success: false, error: 'Project not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ success: false, error: 'Project not found' }, { status: 404 });
     }
-
-    const { promptId, updates } = body;
 
     if (!promptId || !updates) {
-      return NextResponse.json(
-        { success: false, error: 'Missing required fields: promptId, updates' },
-        { status: 400 }
-      );
+      return NextResponse.json({ success: false, error: 'Missing required fields: promptId, updates' }, { status: 400 });
     }
 
-    // Build update query dynamically
-    const updateFields: string[] = [];
-    const updateValues: (string | number | null)[] = [];
+    const updateData: Record<string, unknown> = {};
+    if (updates.copied !== undefined) updateData.copied = updates.copied;
+    if (updates.rating !== undefined) updateData.rating = updates.rating;
+    if (updates.locked !== undefined) updateData.locked = updates.locked;
+    if (updates.elements !== undefined) updateData.elements_json = updates.elements;
 
-    if (updates.copied !== undefined) {
-      updateFields.push('copied = ?');
-      updateValues.push(updates.copied ? 1 : 0);
-    }
-    if (updates.rating !== undefined) {
-      updateFields.push('rating = ?');
-      updateValues.push(updates.rating);
-    }
-    if (updates.locked !== undefined) {
-      updateFields.push('locked = ?');
-      updateValues.push(updates.locked ? 1 : 0);
-    }
-    if (updates.elements !== undefined) {
-      updateFields.push('elements_json = ?');
-      updateValues.push(JSON.stringify(updates.elements));
+    if (Object.keys(updateData).length === 0) {
+      return NextResponse.json({ success: true, message: 'No updates provided' });
     }
 
-    if (updateFields.length === 0) {
-      return NextResponse.json({
-        success: true,
-        message: 'No updates provided',
-      });
+    const { error, count } = await supabase.from(TABLES.generatedPrompts)
+      .update(updateData).eq('id', promptId).eq('project_id', id);
+
+    if (error) {
+      console.error('Update prompt error:', error);
+      return NextResponse.json({ success: false, error: 'Failed to update prompt' }, { status: 500 });
+    }
+    if (count === 0) {
+      return NextResponse.json({ success: false, error: 'Prompt not found' }, { status: 404 });
     }
 
-    updateValues.push(promptId);
-    updateValues.push(id);
-
-    const result = db.prepare(`
-      UPDATE generated_prompts
-      SET ${updateFields.join(', ')}
-      WHERE id = ? AND project_id = ?
-    `).run(...updateValues);
-
-    if (result.changes === 0) {
-      return NextResponse.json(
-        { success: false, error: 'Prompt not found' },
-        { status: 404 }
-      );
-    }
-
-    return NextResponse.json({
-      success: true,
-    });
+    return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Update prompt error:', error);
-    return NextResponse.json(
-      { success: false, error: 'Failed to update prompt' },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, error: 'Failed to update prompt' }, { status: 500 });
   }
 }
 
@@ -216,37 +142,22 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
   try {
     const { id } = await params;
     const body = await request.json();
-    const db = getDb();
+    const supabase = getDb();
 
-    // Check project exists
-    const project = db.prepare('SELECT id FROM projects WHERE id = ?').get(id);
+    const project = await fetchProject(supabase, id);
     if (!project) {
-      return NextResponse.json(
-        { success: false, error: 'Project not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ success: false, error: 'Project not found' }, { status: 404 });
     }
 
     if (body.promptId) {
-      // Delete specific prompt
-      db.prepare(`
-        DELETE FROM generated_prompts WHERE id = ? AND project_id = ?
-      `).run(body.promptId, id);
+      await supabase.from(TABLES.generatedPrompts).delete().eq('id', body.promptId).eq('project_id', id);
     } else {
-      // Delete all prompts for project
-      db.prepare(`
-        DELETE FROM generated_prompts WHERE project_id = ?
-      `).run(id);
+      await supabase.from(TABLES.generatedPrompts).delete().eq('project_id', id);
     }
 
-    return NextResponse.json({
-      success: true,
-    });
+    return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Delete prompts error:', error);
-    return NextResponse.json(
-      { success: false, error: 'Failed to delete prompts' },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, error: 'Failed to delete prompts' }, { status: 500 });
   }
 }

@@ -618,7 +618,7 @@ export class PhysicsWorld {
  * Create a pre-configured physics world for a specific game type
  */
 export function createPhysicsWorldForGameType(
-  gameType: 'platformer' | 'top-down' | 'puzzle' | 'shooter',
+  gameType: 'platformer' | 'top-down' | 'puzzle' | 'shooter' | 'fps' | 'third-person',
   bounds: { width: number; height: number }
 ): PhysicsWorld {
   const configs: Record<string, Partial<PhysicsConfig>> = {
@@ -641,6 +641,16 @@ export function createPhysicsWorldForGameType(
       gravity: { x: 0, y: 0.3 }, // Light gravity for projectiles
       airFriction: 0.001, // Low air friction for fast projectiles
       enableSleeping: false,
+    },
+    fps: {
+      gravity: { x: 0, y: 0.3 }, // Light gravity for FPS projectiles
+      airFriction: 0.001, // Low air friction for fast projectiles
+      enableSleeping: false,
+    },
+    'third-person': {
+      gravity: { x: 0, y: 1 }, // Standard gravity for third-person movement
+      airFriction: 0.01,
+      enableSleeping: false, // Keep player responsive
     },
   };
 

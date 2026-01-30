@@ -8,7 +8,8 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
-import { getDb, DbProjectPoster } from '@/app/lib/db';
+import { getDb, TABLES, DbProjectPoster } from '@/app/lib/supabase';
+import { fetchProject } from '../helpers';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -20,30 +21,20 @@ interface RouteParams {
 export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
     const { id } = await params;
-    const db = getDb();
+    const supabase = getDb();
 
-    const poster = db.prepare(`
-      SELECT id, project_id, image_url, prompt, dimensions_json, created_at
-      FROM project_posters WHERE project_id = ?
-    `).get(id) as DbProjectPoster | undefined;
+    const { data: poster, error } = await supabase
+      .from(TABLES.projectPosters).select('*').eq('project_id', id).single();
 
-    if (!poster) {
-      return NextResponse.json({
-        success: true,
-        poster: null,
-      });
+    if (error && error.code !== 'PGRST116') {
+      console.error('Get poster error:', error);
+      return NextResponse.json({ success: false, error: 'Failed to get poster' }, { status: 500 });
     }
 
-    return NextResponse.json({
-      success: true,
-      poster,
-    });
+    return NextResponse.json({ success: true, poster: (poster as DbProjectPoster) || null });
   } catch (error) {
     console.error('Get poster error:', error);
-    return NextResponse.json(
-      { success: false, error: 'Failed to get poster' },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, error: 'Failed to get poster' }, { status: 500 });
   }
 }
 
@@ -53,76 +44,50 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 export async function POST(request: NextRequest, { params }: RouteParams) {
   try {
     const { id } = await params;
-    const body = await request.json();
-    const { imageUrl, prompt, dimensionsJson } = body;
+    const { imageUrl, prompt, dimensionsJson } = await request.json();
 
     if (!imageUrl) {
-      return NextResponse.json(
-        { success: false, error: 'imageUrl is required' },
-        { status: 400 }
-      );
+      return NextResponse.json({ success: false, error: 'imageUrl is required' }, { status: 400 });
     }
 
-    const db = getDb();
-
-    // Check project exists
-    const project = db.prepare('SELECT id FROM projects WHERE id = ?').get(id);
+    const supabase = getDb();
+    const project = await fetchProject(supabase, id);
     if (!project) {
-      return NextResponse.json(
-        { success: false, error: 'Project not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ success: false, error: 'Project not found' }, { status: 404 });
     }
 
-    // Check if poster already exists
-    const existingPoster = db.prepare(
-      'SELECT id FROM project_posters WHERE project_id = ?'
-    ).get(id) as { id: string } | undefined;
+    const now = new Date().toISOString();
+    const { data: existingPoster } = await supabase
+      .from(TABLES.projectPosters).select('id').eq('project_id', id).single();
 
     let poster: DbProjectPoster;
 
     if (existingPoster) {
-      // Update existing poster
-      db.prepare(`
-        UPDATE project_posters
-        SET image_url = ?, prompt = ?, dimensions_json = ?, created_at = datetime('now')
-        WHERE project_id = ?
-      `).run(imageUrl, prompt || null, dimensionsJson || null, id);
-
-      poster = db.prepare(`
-        SELECT id, project_id, image_url, prompt, dimensions_json, created_at
-        FROM project_posters WHERE project_id = ?
-      `).get(id) as DbProjectPoster;
+      await supabase.from(TABLES.projectPosters)
+        .update({ image_url: imageUrl, prompt: prompt || null, dimensions_json: dimensionsJson || null, created_at: now })
+        .eq('project_id', id);
+      const { data: updated } = await supabase
+        .from(TABLES.projectPosters).select('*').eq('project_id', id).single();
+      poster = updated as DbProjectPoster;
     } else {
-      // Create new poster
       const posterId = uuidv4();
-      db.prepare(`
-        INSERT INTO project_posters (id, project_id, image_url, prompt, dimensions_json)
-        VALUES (?, ?, ?, ?, ?)
-      `).run(posterId, id, imageUrl, prompt || null, dimensionsJson || null);
-
-      poster = db.prepare(`
-        SELECT id, project_id, image_url, prompt, dimensions_json, created_at
-        FROM project_posters WHERE id = ?
-      `).get(posterId) as DbProjectPoster;
+      await supabase.from(TABLES.projectPosters).insert({
+        id: posterId, project_id: id, image_url: imageUrl,
+        prompt: prompt || null, dimensions_json: dimensionsJson || null, created_at: now,
+      });
+      const { data: inserted } = await supabase
+        .from(TABLES.projectPosters).select('*').eq('id', posterId).single();
+      poster = inserted as DbProjectPoster;
     }
 
-    return NextResponse.json({
-      success: true,
-      poster,
-    });
+    return NextResponse.json({ success: true, poster });
   } catch (error) {
     console.error('Save poster error:', error);
-    return NextResponse.json(
-      { success: false, error: 'Failed to save poster' },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, error: 'Failed to save poster' }, { status: 500 });
   }
 }
 
-/**
- * PUT - Save/update project poster (alias for POST)
- */
+/** PUT - Alias for POST */
 export async function PUT(request: NextRequest, routeParams: RouteParams) {
   return POST(request, routeParams);
 }
@@ -133,27 +98,23 @@ export async function PUT(request: NextRequest, routeParams: RouteParams) {
 export async function DELETE(request: NextRequest, { params }: RouteParams) {
   try {
     const { id } = await params;
-    const db = getDb();
+    const supabase = getDb();
 
-    const result = db.prepare('DELETE FROM project_posters WHERE project_id = ?').run(id);
+    const { error, count } = await supabase
+      .from(TABLES.projectPosters).delete().eq('project_id', id);
 
-    if (result.changes === 0) {
-      return NextResponse.json({
-        success: true,
-        deleted: false,
-        message: 'No poster found to delete',
-      });
+    if (error) {
+      console.error('Delete poster error:', error);
+      return NextResponse.json({ success: false, error: 'Failed to delete poster' }, { status: 500 });
     }
 
     return NextResponse.json({
       success: true,
-      deleted: true,
+      deleted: (count ?? 0) > 0,
+      message: (count ?? 0) === 0 ? 'No poster found to delete' : undefined,
     });
   } catch (error) {
     console.error('Delete poster error:', error);
-    return NextResponse.json(
-      { success: false, error: 'Failed to delete poster' },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, error: 'Failed to delete poster' }, { status: 500 });
   }
 }

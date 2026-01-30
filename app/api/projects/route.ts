@@ -6,7 +6,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getDb, DbProject } from '@/app/lib/db';
+import { getDb, DbProject, TABLES } from '@/app/lib/supabase';
 import { v4 as uuidv4 } from 'uuid';
 
 /**
@@ -14,17 +14,24 @@ import { v4 as uuidv4 } from 'uuid';
  */
 export async function GET() {
   try {
-    const db = getDb();
+    const supabase = getDb();
 
-    const projects = db.prepare(`
-      SELECT id, name, created_at, updated_at
-      FROM projects
-      ORDER BY updated_at DESC
-    `).all() as DbProject[];
+    const { data: projects, error } = await supabase
+      .from(TABLES.projects)
+      .select('id, name, created_at, updated_at')
+      .order('updated_at', { ascending: false });
+
+    if (error) {
+      console.error('List projects error:', error);
+      return NextResponse.json(
+        { success: false, error: 'Failed to list projects' },
+        { status: 500 }
+      );
+    }
 
     return NextResponse.json({
       success: true,
-      projects,
+      projects: projects as DbProject[],
     });
   } catch (error) {
     console.error('List projects error:', error);
@@ -49,21 +56,49 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const db = getDb();
+    const supabase = getDb();
     const projectId = uuidv4();
     const now = new Date().toISOString();
 
     // Create project
-    db.prepare(`
-      INSERT INTO projects (id, name, created_at, updated_at)
-      VALUES (?, ?, ?, ?)
-    `).run(projectId, name.trim(), now, now);
+    const { error: projectError } = await supabase
+      .from(TABLES.projects)
+      .insert({
+        id: projectId,
+        name: name.trim(),
+        created_at: now,
+        updated_at: now,
+      });
+
+    if (projectError) {
+      console.error('Create project error:', projectError);
+      return NextResponse.json(
+        { success: false, error: 'Failed to create project' },
+        { status: 500 }
+      );
+    }
 
     // Create initial state
-    db.prepare(`
-      INSERT INTO project_state (project_id, base_prompt, output_mode, dimensions_json, feedback_json, updated_at)
-      VALUES (?, '', 'gameplay', '[]', '{"positive":"","negative":""}', ?)
-    `).run(projectId, now);
+    const { error: stateError } = await supabase
+      .from(TABLES.projectState)
+      .insert({
+        project_id: projectId,
+        base_prompt: '',
+        output_mode: 'gameplay',
+        dimensions_json: [],
+        feedback_json: { positive: '', negative: '' },
+        updated_at: now,
+      });
+
+    if (stateError) {
+      console.error('Create project state error:', stateError);
+      // Try to clean up the project
+      await supabase.from(TABLES.projects).delete().eq('id', projectId);
+      return NextResponse.json(
+        { success: false, error: 'Failed to create project state' },
+        { status: 500 }
+      );
+    }
 
     const project: DbProject = {
       id: projectId,
