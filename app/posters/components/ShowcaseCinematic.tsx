@@ -18,10 +18,20 @@ import { ProjectWithState } from './ProjectShowcaseModal';
 import { HeroZone } from './cinematic/HeroZone';
 import { FloatingGallery } from './cinematic/FloatingGallery';
 import { DimensionRibbon } from './cinematic/DimensionRibbon';
+import { DimensionSpotlight } from './cinematic/DimensionSpotlight';
+import { BasePromptBanner } from './cinematic/BasePromptBanner';
 import { PromptNarrative } from './cinematic/PromptNarrative';
 import { CinematicVideo } from './cinematic/CinematicVideo';
 import { AmbientEffects } from './cinematic/AmbientEffects';
 import { StatsBar } from './cinematic/StatsBar';
+
+interface Dimension {
+  id: string;
+  type: string;
+  label: string;
+  reference: string;
+  weight?: number;
+}
 
 interface ShowcaseCinematicProps {
   project: ProjectWithState;
@@ -30,6 +40,7 @@ interface ShowcaseCinematicProps {
 
 export function ShowcaseCinematic({ project, onImageClick }: ShowcaseCinematicProps) {
   const [activeSection, setActiveSection] = useState<'gallery' | 'prompts' | 'video'>('gallery');
+  const [selectedDimension, setSelectedDimension] = useState<Dimension | null>(null);
 
   // Parse dimensions from JSON
   const dimensions = useMemo(() => {
@@ -102,10 +113,18 @@ export function ShowcaseCinematic({ project, onImageClick }: ShowcaseCinematicPr
         {/* Center Ring: Main Content Area */}
         <div className="flex-1 flex min-h-0 min-w-0">
           {/* Left Ribbon: Dimensions */}
-          <DimensionRibbon dimensions={dimensions} />
+          <DimensionRibbon
+            dimensions={dimensions}
+            onDimensionClick={setSelectedDimension}
+          />
 
           {/* Center: Hero + Gallery/Content */}
           <div className="flex-1 flex flex-col min-w-0 min-h-0 relative">
+            {/* Base Prompt Banner - Absolute top inside center area */}
+            <div className="absolute top-0 left-0 right-0 z-20 px-4 pt-2">
+              <BasePromptBanner prompt={project.state?.base_prompt || null} />
+            </div>
+
             {/* Hero Zone - Always visible as ambient background */}
             <HeroZone
               imageUrl={heroImage}
@@ -180,6 +199,12 @@ export function ShowcaseCinematic({ project, onImageClick }: ShowcaseCinematicPr
       {/* Cinematic Letterbox Bars */}
       <div className="absolute top-0 left-0 right-0 h-8 bg-gradient-to-b from-black to-transparent pointer-events-none z-30" />
       <div className="absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-black to-transparent pointer-events-none z-30" />
+
+      {/* Dimension Spotlight Overlay */}
+      <DimensionSpotlight
+        dimension={selectedDimension}
+        onClose={() => setSelectedDimension(null)}
+      />
     </div>
   );
 }

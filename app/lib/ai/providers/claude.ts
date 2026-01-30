@@ -96,10 +96,9 @@ export class ClaudeProvider implements AIProvider {
     }
 
     // Check cache (unless skipped)
+    const userId = request.metadata?.userId as string | undefined;
     if (this.enableCache && !request.skipCache) {
-      const cacheKey = AICache.generateKey({
-        provider: 'claude',
-        model: this.model,
+      const cacheKey = AICache.generateUserIsolatedKey('claude', this.model, userId, {
         systemPrompt: request.systemPrompt,
         userPrompt: request.userPrompt,
         maxTokens: request.maxTokens || this.defaultMaxTokens,
@@ -166,9 +165,7 @@ export class ClaudeProvider implements AIProvider {
 
     // Cache response
     if (this.enableCache && !request.skipCache) {
-      const cacheKey = AICache.generateKey({
-        provider: 'claude',
-        model: this.model,
+      const cacheKey = AICache.generateUserIsolatedKey('claude', this.model, userId, {
         systemPrompt: request.systemPrompt,
         userPrompt: request.userPrompt,
         maxTokens: request.maxTokens || this.defaultMaxTokens,

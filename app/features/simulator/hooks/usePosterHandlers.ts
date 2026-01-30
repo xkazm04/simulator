@@ -12,7 +12,6 @@
 
 import { useState, useCallback } from 'react';
 import { usePoster } from './usePoster';
-import { useProject } from './useProject';
 import { useDimensionsContext } from '../subfeature_dimensions';
 import { useBrainContext } from '../subfeature_brain';
 
@@ -20,10 +19,11 @@ interface UsePosterHandlersOptions {
   setShowPosterOverlay: (show: boolean) => void;
   /** Shared poster instance from useProjectManager to avoid duplicate state */
   poster: ReturnType<typeof usePoster>;
+  /** Current project from useProjectManager - required for poster generation */
+  currentProject: { id: string; name: string } | null;
 }
 
-export function usePosterHandlers({ setShowPosterOverlay, poster }: UsePosterHandlersOptions) {
-  const project = useProject();
+export function usePosterHandlers({ setShowPosterOverlay, poster, currentProject }: UsePosterHandlersOptions) {
   const dimensions = useDimensionsContext();
   const brain = useBrainContext();
 
@@ -31,16 +31,26 @@ export function usePosterHandlers({ setShowPosterOverlay, poster }: UsePosterHan
 
   // Generate 4 poster variations
   const handleGeneratePoster = useCallback(async () => {
-    if (project.currentProject) {
-      setShowPosterOverlay(true);
-      await poster.generatePosters(
-        project.currentProject.id,
-        project.currentProject.name,
-        dimensions.dimensions,
-        brain.baseImage
-      );
+    if (!currentProject) {
+      console.warn('[Poster] No current project - cannot generate poster');
+      // Could auto-create project here, but for now just warn
+      return;
     }
-  }, [project.currentProject, dimensions.dimensions, brain.baseImage, poster, setShowPosterOverlay]);
+
+    if (!brain.baseImage?.trim()) {
+      console.warn('[Poster] No base prompt - cannot generate poster');
+      return;
+    }
+
+    console.log('[Poster] Starting generation for project:', currentProject.id);
+    setShowPosterOverlay(true);
+    await poster.generatePosters(
+      currentProject.id,
+      currentProject.name,
+      dimensions.dimensions,
+      brain.baseImage
+    );
+  }, [currentProject, dimensions.dimensions, brain.baseImage, poster, setShowPosterOverlay]);
 
   // Select a poster from the grid
   const handleSelectPoster = useCallback((index: number) => {
@@ -49,16 +59,16 @@ export function usePosterHandlers({ setShowPosterOverlay, poster }: UsePosterHan
 
   // Save the selected poster
   const handleSavePoster = useCallback(async () => {
-    if (!project.currentProject) return;
+    if (!currentProject) return;
 
     setIsSavingPoster(true);
-    const savedPoster = await poster.savePoster(project.currentProject.id);
+    const savedPoster = await poster.savePoster(currentProject.id);
     setIsSavingPoster(false);
 
     if (savedPoster) {
       poster.setPoster(savedPoster);
     }
-  }, [project.currentProject, poster]);
+  }, [currentProject, poster]);
 
   // Cancel poster generation
   const handleCancelPosterGeneration = useCallback(async () => {
@@ -67,10 +77,10 @@ export function usePosterHandlers({ setShowPosterOverlay, poster }: UsePosterHan
 
   // Upload poster from local file
   const handleUploadPoster = useCallback(async (imageDataUrl: string) => {
-    if (!project.currentProject) return;
+    if (!currentProject) return;
 
     try {
-      const response = await fetch(`/api/projects/${project.currentProject.id}/poster`, {
+      const response = await fetch(`/api/projects/${currentProject.id}/poster`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -97,7 +107,7 @@ export function usePosterHandlers({ setShowPosterOverlay, poster }: UsePosterHan
     } catch (err) {
       console.error('Failed to upload poster:', err);
     }
-  }, [project.currentProject, dimensions.dimensions, poster, setShowPosterOverlay]);
+  }, [currentProject, dimensions.dimensions, poster, setShowPosterOverlay]);
 
   return {
     poster,

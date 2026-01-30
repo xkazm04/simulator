@@ -21,6 +21,9 @@ export class AICache {
 
   /**
    * Generate a cache key from request parameters
+   *
+   * @param params - Request parameters to include in key
+   * @returns JSON string cache key
    */
   static generateKey(params: Record<string, unknown>): string {
     // Sort keys for consistent hashing
@@ -36,6 +39,41 @@ export class AICache {
       }, {} as Record<string, unknown>);
 
     return JSON.stringify(sortedParams);
+  }
+
+  /**
+   * Generate a user-isolated cache key
+   *
+   * Includes userId in the cache key to prevent cross-user cache leakage.
+   * Anonymous users (no userId) share a common cache namespace.
+   *
+   * Key format: {provider}:{model}:{userId|'anonymous'}:{contentHash}
+   *
+   * @param provider - AI provider type
+   * @param model - Model identifier
+   * @param userId - Optional user ID for isolation (undefined = shared cache)
+   * @param params - Additional request parameters to hash
+   * @returns Formatted cache key string
+   *
+   * @example
+   * // User-isolated key
+   * AICache.generateUserIsolatedKey('claude', 'sonnet', 'user123', { prompt: 'hello' });
+   * // => 'claude:sonnet:user123:{"prompt":"hello"}'
+   *
+   * @example
+   * // Anonymous/shared key
+   * AICache.generateUserIsolatedKey('gemini', 'flash', undefined, { prompt: 'hello' });
+   * // => 'gemini:flash:anonymous:{"prompt":"hello"}'
+   */
+  static generateUserIsolatedKey(
+    provider: string,
+    model: string,
+    userId: string | undefined,
+    params: Record<string, unknown>
+  ): string {
+    const userPart = userId || 'anonymous';
+    const contentHash = AICache.generateKey(params);
+    return `${provider}:${model}:${userPart}:${contentHash}`;
   }
 
   /**

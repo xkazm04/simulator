@@ -9,7 +9,22 @@ export { PhysicsWorld, createPhysicsWorldForGameType } from './physicsWorld';
 export type { PhysicsConfig, PhysicsBody, CollisionEvent, CollisionCallback } from './physicsWorld';
 
 // Input management
-export { InputManager, createInputManager, createInputManagerForGameType } from './inputManager';
+export {
+  InputManager,
+  createInputManager,
+  createInputManagerForGameType,
+  getBindingsForGameType,
+  getInputSchemePreset,
+  getPresetsForGameType,
+  getKeyDisplayName,
+  serializeBindings,
+  deserializeBindings,
+  saveBindingsToStorage,
+  loadBindingsFromStorage,
+  INPUT_SCHEME_PRESETS,
+  KEY_DISPLAY_NAMES,
+  ACTION_DISPLAY_NAMES,
+} from './inputManager';
 export type {
   InputAction,
   KeyBinding,
@@ -17,6 +32,7 @@ export type {
   TouchState,
   VirtualJoystickState,
   InputState,
+  InputSchemePreset,
 } from './inputManager';
 
 // Game mechanics templates

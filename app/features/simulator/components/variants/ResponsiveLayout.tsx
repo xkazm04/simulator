@@ -11,7 +11,6 @@ import React, { memo, useMemo } from 'react';
 import { useResponsive } from '../../hooks/useResponsive';
 import { OnionLayout, OnionLayoutProps } from './OnionLayout';
 import { MobileLayout, MobileLayoutProps } from './MobileLayout';
-import { GeneratedPrompt } from '../../types';
 
 export interface ResponsiveLayoutProps extends OnionLayoutProps {
   /** Force a specific layout (useful for testing) */

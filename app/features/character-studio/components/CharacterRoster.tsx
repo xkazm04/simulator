@@ -1,10 +1,21 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Search, Filter, Loader2, Users, Sparkles } from 'lucide-react';
+import { Plus, Loader2, Users, Sparkles, ArrowLeftRight, X, Check } from 'lucide-react';
 import type { Character, CharacterStatus } from '../types';
 import { CharacterCard } from './CharacterCard';
+import { RosterFilters } from './RosterFilters';
+import {
+  type FilterState,
+  type SortOption,
+  type ViewMode,
+  type RosterState,
+  DEFAULT_FILTERS,
+  DEFAULT_SORT,
+  processCharacters,
+  getCharacterTags,
+} from '../lib/rosterFiltering';
 
 interface CharacterRosterProps {
   characters: Character[];
@@ -13,14 +24,31 @@ interface CharacterRosterProps {
   onCreate: () => void;
   isCollapsed: boolean;
   isLoading: boolean;
+  // Comparison mode props
+  comparisonMode?: boolean;
+  comparisonIds?: string[];
+  onComparisonModeChange?: (enabled: boolean) => void;
+  onComparisonSelect?: (ids: string[]) => void;
+  maxCompareCount?: number;
 }
 
-const STATUS_FILTERS: { value: CharacterStatus | 'all'; label: string }[] = [
-  { value: 'all', label: 'all' },
-  { value: 'ready', label: 'ready' },
-  { value: 'processing', label: 'processing' },
-  { value: 'failed', label: 'failed' },
-];
+const ROSTER_STATE_KEY = 'character-roster-state';
+
+function loadRosterState(): Partial<RosterState> {
+  if (typeof window === 'undefined') return {};
+  const stored = localStorage.getItem(ROSTER_STATE_KEY);
+  if (!stored) return {};
+  try {
+    return JSON.parse(stored);
+  } catch {
+    return {};
+  }
+}
+
+function saveRosterState(state: RosterState): void {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(ROSTER_STATE_KEY, JSON.stringify(state));
+}
 
 export function CharacterRoster({
   characters,
@@ -29,17 +57,67 @@ export function CharacterRoster({
   onCreate,
   isCollapsed,
   isLoading,
+  comparisonMode = false,
+  comparisonIds = [],
+  onComparisonModeChange,
+  onComparisonSelect,
+  maxCompareCount = 4,
 }: CharacterRosterProps) {
-  const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<CharacterStatus | 'all'>('all');
-  const [showFilters, setShowFilters] = useState(false);
+  // Roster state with persistence
+  const [viewMode, setViewMode] = useState<ViewMode>('list');
+  const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
+  const [sort, setSort] = useState<SortOption>(DEFAULT_SORT);
 
-  // Filter characters
-  const filteredCharacters = characters.filter((char) => {
-    const matchesSearch = char.name.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesStatus = statusFilter === 'all' || char.status === statusFilter;
-    return matchesSearch && matchesStatus;
-  });
+  // Load persisted state on mount
+  useEffect(() => {
+    const saved = loadRosterState();
+    if (saved.viewMode) setViewMode(saved.viewMode);
+    if (saved.filters) setFilters(saved.filters);
+    if (saved.sort) setSort(saved.sort);
+  }, []);
+
+  // Save state on changes
+  useEffect(() => {
+    saveRosterState({ viewMode, filters, sort });
+  }, [viewMode, filters, sort]);
+
+  // Process characters with filters and sorting
+  const filteredCharacters = useMemo(() => {
+    return processCharacters(characters, { viewMode, filters, sort });
+  }, [characters, viewMode, filters, sort]);
+
+  // Handle comparison selection toggle
+  const handleComparisonToggle = useCallback((id: string) => {
+    if (!onComparisonSelect) return;
+
+    if (comparisonIds.includes(id)) {
+      onComparisonSelect(comparisonIds.filter((cid) => cid !== id));
+    } else if (comparisonIds.length < maxCompareCount) {
+      onComparisonSelect([...comparisonIds, id]);
+    }
+  }, [comparisonIds, maxCompareCount, onComparisonSelect]);
+
+  // Handle card click in comparison mode vs normal mode
+  const handleCardClick = useCallback((id: string) => {
+    if (comparisonMode) {
+      handleComparisonToggle(id);
+    } else {
+      onSelect(id);
+    }
+  }, [comparisonMode, handleComparisonToggle, onSelect]);
+
+  // Toggle comparison mode
+  const handleToggleComparisonMode = useCallback(() => {
+    if (onComparisonModeChange) {
+      onComparisonModeChange(!comparisonMode);
+      if (!comparisonMode && onComparisonSelect) {
+        onComparisonSelect([]);
+      }
+    }
+  }, [comparisonMode, onComparisonModeChange, onComparisonSelect]);
+
+  // Ready characters count (for comparison)
+  const readyCount = characters.filter((c) => c.status === 'ready').length;
 
   // Collapsed view
   if (isCollapsed) {
@@ -58,15 +136,42 @@ export function CharacterRoster({
           <Plus size={16} />
         </motion.button>
 
+        {/* Compare button (collapsed) */}
+        {readyCount >= 2 && onComparisonModeChange && (
+          <motion.button
+            onClick={handleToggleComparisonMode}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            className={`w-10 h-10 rounded-lg border flex items-center justify-center
+                     transition-colors ${
+                       comparisonMode
+                         ? 'border-cyan-500/50 bg-cyan-500/10 text-cyan-400'
+                         : 'border-white/10 text-slate-500 hover:text-cyan-400 hover:border-cyan-500/30'
+                     }`}
+            title="Compare characters"
+          >
+            <ArrowLeftRight size={14} />
+          </motion.button>
+        )}
+
         {/* Character icons */}
         {filteredCharacters.map((character) => (
-          <CharacterCard
-            key={character.id}
-            character={character}
-            isSelected={character.id === selectedId}
-            onSelect={onSelect}
-            isCompact
-          />
+          <div key={character.id} className="relative">
+            <CharacterCard
+              character={character}
+              isSelected={comparisonMode ? comparisonIds.includes(character.id) : character.id === selectedId}
+              onSelect={handleCardClick}
+              isCompact
+              tags={getCharacterTags(character.id)}
+            />
+            {/* Comparison selection indicator */}
+            {comparisonMode && comparisonIds.includes(character.id) && (
+              <div className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-cyan-500
+                            flex items-center justify-center">
+                <Check size={10} className="text-white" />
+              </div>
+            )}
+          </div>
         ))}
       </div>
     );
@@ -74,72 +179,67 @@ export function CharacterRoster({
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
-      {/* Search & Filter */}
-      <div className="p-3 space-y-2 border-b border-white/5">
-        {/* Search input */}
-        <div className="relative">
-          <Search
-            size={14}
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500"
-          />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search characters..."
-            className="w-full pl-9 pr-9 py-2 bg-slate-900/50 border border-white/5 rounded-lg
-                     text-xs text-slate-200 placeholder-slate-600 focus:outline-none
-                     focus:border-cyan-500/30 transition-colors"
-          />
-          <button
-            onClick={() => setShowFilters(!showFilters)}
-            className={`absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded
-                      transition-colors ${
-                        showFilters || statusFilter !== 'all'
-                          ? 'text-cyan-400 bg-cyan-500/10'
-                          : 'text-slate-500 hover:text-slate-300'
-                      }`}
+      {/* Comparison mode header */}
+      <AnimatePresence>
+        {comparisonMode && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            className="overflow-hidden"
           >
-            <Filter size={12} />
-          </button>
-        </div>
-
-        {/* Filter dropdown */}
-        <AnimatePresence>
-          {showFilters && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              exit={{ opacity: 0, height: 0 }}
-              className="flex flex-wrap gap-1"
-            >
-              {STATUS_FILTERS.map((filter) => (
+            <div className="p-3 bg-cyan-500/10 border-b border-cyan-500/20">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <ArrowLeftRight size={14} className="text-cyan-400" />
+                  <span className="text-xs font-mono text-cyan-400">Comparison Mode</span>
+                </div>
                 <button
-                  key={filter.value}
-                  onClick={() => setStatusFilter(filter.value)}
-                  className={`px-2 py-1 rounded text-[10px] font-mono uppercase transition-colors ${
-                    statusFilter === filter.value
-                      ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30'
-                      : 'text-slate-500 hover:text-slate-300 border border-transparent'
-                  }`}
+                  onClick={handleToggleComparisonMode}
+                  className="p-1 rounded text-cyan-400 hover:bg-cyan-500/20 transition-colors"
                 >
-                  {filter.label}
+                  <X size={14} />
                 </button>
-              ))}
-            </motion.div>
-          )}
-        </AnimatePresence>
+              </div>
+              <p className="text-[10px] text-cyan-300/70 mt-1">
+                Select {maxCompareCount - comparisonIds.length > 0
+                  ? `up to ${maxCompareCount - comparisonIds.length} more`
+                  : 'no more'} characters ({comparisonIds.length}/{maxCompareCount})
+              </p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Filters */}
+      <div className="p-3 border-b border-white/5">
+        <RosterFilters
+          viewMode={viewMode}
+          filters={filters}
+          sort={sort}
+          onViewModeChange={setViewMode}
+          onFiltersChange={setFilters}
+          onSortChange={setSort}
+          characterCount={characters.length}
+          filteredCount={filteredCharacters.length}
+        />
       </div>
 
-      {/* Character List */}
-      <div className="flex-1 overflow-auto ms-scrollbar p-2 space-y-1">
+      {/* Character List / Grid */}
+      <div className={`flex-1 overflow-auto ms-scrollbar p-2 ${
+        viewMode === 'grid' ? 'grid grid-cols-2 gap-2 auto-rows-min' : 'space-y-1'
+      }`}>
         {isLoading ? (
-          <div className="flex flex-col items-center justify-center py-8 text-slate-500">
+          <div className={`flex flex-col items-center justify-center py-8 text-slate-500 ${
+            viewMode === 'grid' ? 'col-span-2' : ''
+          }`}>
             <Loader2 size={24} className="animate-spin mb-2" />
             <span className="text-xs font-mono">Loading...</span>
           </div>
         ) : filteredCharacters.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-6 px-4">
+          <div className={`flex flex-col items-center justify-center py-6 px-4 ${
+            viewMode === 'grid' ? 'col-span-2' : ''
+          }`}>
             {characters.length === 0 ? (
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
@@ -184,13 +284,10 @@ export function CharacterRoster({
               </motion.div>
             ) : (
               <div className="flex flex-col items-center text-slate-500 py-4">
-                <Search size={20} className="mb-2 opacity-50" />
+                <Users size={20} className="mb-2 opacity-50" />
                 <span className="text-xs font-mono">No matches found</span>
                 <button
-                  onClick={() => {
-                    setSearchQuery('');
-                    setStatusFilter('all');
-                  }}
+                  onClick={() => setFilters(DEFAULT_FILTERS)}
                   className="text-[10px] text-cyan-400 hover:text-cyan-300 font-mono mt-2"
                 >
                   Clear filters
@@ -198,26 +295,102 @@ export function CharacterRoster({
               </div>
             )}
           </div>
+        ) : viewMode === 'grid' ? (
+          // Grid view
+          filteredCharacters.map((character, index) => (
+            <motion.div
+              key={character.id}
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ delay: index * 0.02 }}
+              className="relative"
+            >
+              {/* Selection checkbox for comparison mode */}
+              {comparisonMode && (
+                <button
+                  onClick={() => handleComparisonToggle(character.id)}
+                  disabled={!comparisonIds.includes(character.id) && comparisonIds.length >= maxCompareCount}
+                  className={`absolute left-1 top-1 z-10 w-5 h-5 rounded
+                            flex items-center justify-center transition-all ${
+                              comparisonIds.includes(character.id)
+                                ? 'bg-cyan-500 text-white'
+                                : comparisonIds.length >= maxCompareCount
+                                ? 'bg-slate-700 text-slate-500 cursor-not-allowed'
+                                : 'bg-slate-700 text-slate-400 hover:bg-slate-600'
+                            }`}
+                >
+                  {comparisonIds.includes(character.id) && <Check size={12} />}
+                </button>
+              )}
+
+              <CharacterCard
+                character={character}
+                isSelected={comparisonMode ? comparisonIds.includes(character.id) : character.id === selectedId}
+                onSelect={handleCardClick}
+                isGrid
+                tags={getCharacterTags(character.id)}
+              />
+            </motion.div>
+          ))
         ) : (
+          // List view
           filteredCharacters.map((character, index) => (
             <motion.div
               key={character.id}
               initial={{ opacity: 0, x: -10 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: index * 0.03 }}
+              className="relative"
             >
-              <CharacterCard
-                character={character}
-                isSelected={character.id === selectedId}
-                onSelect={onSelect}
-              />
+              {/* Selection checkbox for comparison mode */}
+              {comparisonMode && (
+                <button
+                  onClick={() => handleComparisonToggle(character.id)}
+                  disabled={!comparisonIds.includes(character.id) && comparisonIds.length >= maxCompareCount}
+                  className={`absolute left-0 top-1/2 -translate-y-1/2 z-10 w-5 h-5 rounded
+                            flex items-center justify-center transition-all ${
+                              comparisonIds.includes(character.id)
+                                ? 'bg-cyan-500 text-white'
+                                : comparisonIds.length >= maxCompareCount
+                                ? 'bg-slate-700 text-slate-500 cursor-not-allowed'
+                                : 'bg-slate-700 text-slate-400 hover:bg-slate-600'
+                            }`}
+                >
+                  {comparisonIds.includes(character.id) && <Check size={12} />}
+                </button>
+              )}
+
+              <div className={comparisonMode ? 'ml-7' : ''}>
+                <CharacterCard
+                  character={character}
+                  isSelected={comparisonMode ? comparisonIds.includes(character.id) : character.id === selectedId}
+                  onSelect={handleCardClick}
+                  tags={getCharacterTags(character.id)}
+                />
+              </div>
             </motion.div>
           ))
         )}
       </div>
 
-      {/* Add Character Button */}
-      <div className="p-3 border-t border-white/5">
+      {/* Footer buttons */}
+      <div className="p-3 border-t border-white/5 space-y-2">
+        {/* Compare button */}
+        {readyCount >= 2 && onComparisonModeChange && !comparisonMode && (
+          <button
+            onClick={handleToggleComparisonMode}
+            className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg
+                     border border-cyan-500/30 hover:border-cyan-500/50
+                     bg-cyan-500/10 hover:bg-cyan-500/20
+                     text-cyan-400 font-mono text-xs uppercase
+                     tracking-wider transition-colors"
+          >
+            <ArrowLeftRight size={14} />
+            compare characters
+          </button>
+        )}
+
+        {/* Add Character Button */}
         <button
           onClick={onCreate}
           className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg

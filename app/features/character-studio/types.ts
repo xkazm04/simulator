@@ -353,3 +353,59 @@ export interface Developer {
   credits_balance: number;
   created_at: string;
 }
+
+// =============================================================================
+// Trait System Types
+// =============================================================================
+
+export type TraitCategory = 'facial' | 'style' | 'pose' | 'expression' | 'identity';
+
+export interface CharacterTrait {
+  id: string;
+  category: TraitCategory;
+  name: string;
+  value: string;
+  weight: number; // 0-1, importance for generation
+  confidence: number; // 0-1, how confident the system is about this trait
+  editable: boolean;
+  source: 'extracted' | 'user' | 'refined';
+}
+
+export interface TraitHistoryEntry {
+  id: string;
+  traitId: string;
+  previousValue: string;
+  newValue: string;
+  previousWeight: number;
+  newWeight: number;
+  timestamp: string;
+  source: 'user' | 'refinement';
+}
+
+export interface CharacterTraits {
+  characterId: string;
+  version: number;
+  traits: CharacterTrait[];
+  history: TraitHistoryEntry[];
+  lastModified: string;
+}
+
+export interface UpdateTraitRequest {
+  traitId: string;
+  value?: string;
+  weight?: number;
+}
+
+export interface UpdateTraitsResponse {
+  success: boolean;
+  updatedTraits: CharacterTrait[];
+  newVersion: number;
+}
+
+export const TRAIT_CATEGORY_INFO: Record<TraitCategory, { label: string; icon: string; color: string }> = {
+  facial: { label: 'Facial Features', icon: 'Scan', color: '#00d4ff' },
+  style: { label: 'Visual Style', icon: 'Palette', color: '#ff6b9d' },
+  pose: { label: 'Pose & Body', icon: 'Move', color: '#a855f7' },
+  expression: { label: 'Expression', icon: 'Smile', color: '#00ff88' },
+  identity: { label: 'Identity Markers', icon: 'Fingerprint', color: '#ffaa00' },
+};

@@ -19,21 +19,23 @@ import {
   Trash2,
   Wand2,
   Loader2,
-  Palette,
-  MonitorPlay,
-  Film,
   Undo2,
   Redo2,
   RefreshCw,
   Sparkles,
   ChevronDown,
   ChevronUp,
+  MonitorPlay,
+  Palette,
+  Film,
 } from 'lucide-react';
 import {
   InteractiveMode,
   GeneratedImage,
   OutputMode,
   Dimension,
+  ExtendedAutoplayConfig,
+  AutoplayLogEntry,
 } from '../../types';
 import { InteractiveModeToggle } from '../../subfeature_interactive';
 import { NegativePromptInput } from '../../components/NegativePromptInput';
@@ -46,9 +48,10 @@ import { useDimensionsContext } from '../../subfeature_dimensions/DimensionsCont
 import { useSimulatorContext } from '../../SimulatorContext';
 import { expandCollapse, transitions } from '../../lib/motion';
 import { semanticColors } from '../../lib/semanticColors';
-import { refineFeedback } from '../lib/simulatorAI';
-import { PresetSelector } from './PresetSelector';
+import { refineFeedback, smartBreakdown } from '../lib/simulatorAI';
 import { AutoplayControls } from './AutoplayControls';
+import { AutoplaySetupModal } from './AutoplaySetupModal';
+import { useModalInstance } from '@/app/providers';
 
 export interface DirectorControlProps {
   // Interactive mode props
@@ -65,10 +68,11 @@ export interface DirectorControlProps {
   isGeneratingPoster: boolean;
   onGeneratePoster?: () => Promise<void>;
 
-  // Autoplay orchestrator props
+  // Autoplay orchestrator props (legacy single-mode)
   autoplay?: {
     isRunning: boolean;
     canStart: boolean;
+    canStartReason: string | null;
     status: string;
     currentIteration: number;
     maxIterations: number;
@@ -79,6 +83,30 @@ export interface DirectorControlProps {
     onStart: (config: { targetSavedCount: number; maxIterations: number }) => void;
     onStop: () => void;
     onReset: () => void;
+  };
+
+  // Multi-phase autoplay props
+  multiPhaseAutoplay?: {
+    isRunning: boolean;
+    canStart: boolean;
+    canStartReason: string | null;
+    hasContent: boolean;
+    phase: string;
+    conceptProgress: { saved: number; target: number };
+    gameplayProgress: { saved: number; target: number };
+    posterSelected: boolean;
+    hudGenerated: number;
+    error?: string;
+    onStart: (config: ExtendedAutoplayConfig) => void;
+    onStop: () => void;
+    onReset: () => void;
+  };
+
+  // Event log for activity modal (optional)
+  eventLog?: {
+    textEvents: AutoplayLogEntry[];
+    imageEvents: AutoplayLogEntry[];
+    clearEvents: () => void;
   };
 }
 
@@ -92,6 +120,8 @@ export function DirectorControl({
   isGeneratingPoster,
   onGeneratePoster,
   autoplay,
+  multiPhaseAutoplay,
+  eventLog,
 }: DirectorControlProps) {
   // Get state and handlers from contexts
   const brain = useBrainContext();
@@ -104,8 +134,14 @@ export function DirectorControl({
   const [isRefining, setIsRefining] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(true);
 
-  // Derive autoplay lock state
-  const isAutoplayLocked = autoplay?.isRunning ?? false;
+  // Modal provider for root-level rendering (avoids z-index issues)
+  const autoplayModal = useModalInstance('autoplay-setup');
+
+  // Derive autoplay lock state - check both single-mode and multi-phase
+  const isAutoplayLocked = (autoplay?.isRunning ?? false) || (multiPhaseAutoplay?.isRunning ?? false);
+
+  // Use multi-phase autoplay if available, fall back to legacy
+  const activeAutoplay = multiPhaseAutoplay || autoplay;
 
   const isAnyGenerating = simulator.isGenerating || isGeneratingPoster || isRefining || isAutoplayLocked;
 
@@ -150,19 +186,62 @@ export function DirectorControl({
     brain.setOutputMode(mode);
   }, [brain]);
 
-  // Preset application handler
-  const handleApplyPreset = useCallback((
-    presetDimensions: Dimension[],
-    outputMode: OutputMode,
-    negativePrompts: NegativePromptItem[]
-  ) => {
-    // Apply dimensions
-    dimensions.setDimensions(presetDimensions);
-    // Apply output mode
-    brain.setOutputMode(outputMode);
-    // Apply negative prompts (merge with existing)
-    prompts.setNegativePrompts([...prompts.negativePrompts, ...negativePrompts]);
-  }, [dimensions, brain, prompts]);
+  /**
+   * Handle Smart Breakdown from autoplay modal
+   * Called when user starts autoplay without existing content but with a prompt idea
+   */
+  const handleSmartBreakdownForAutoplay = useCallback(async (visionSentence: string): Promise<boolean> => {
+    try {
+      const result = await smartBreakdown(visionSentence);
+
+      if (!result.success) {
+        console.error('[DirectorControl] Smart Breakdown failed');
+        return false;
+      }
+
+      // Update brain context with the results
+      brain.setBaseImage(result.baseImage.description);
+      brain.setVisionSentence(visionSentence);
+      brain.setBreakdown({
+        baseImage: {
+          format: result.baseImage.format,
+          keyElements: result.baseImage.keyElements,
+        },
+        reasoning: result.reasoning,
+      });
+      brain.setOutputMode(result.suggestedOutputMode);
+
+      // Create and set dimensions
+      const newDimensions = result.dimensions.map(d => {
+        const allPresets = [...DEFAULT_DIMENSIONS, ...EXTRA_DIMENSIONS];
+        const preset = allPresets.find(p => p.type === d.type);
+        if (preset) {
+          return createDimensionWithDefaults({
+            ...preset,
+            id: `${d.type}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            reference: d.reference,
+          });
+        }
+        // Fallback if no preset found
+        return createDimensionWithDefaults({
+          type: d.type,
+          label: d.type.charAt(0).toUpperCase() + d.type.slice(1),
+          icon: 'Sparkles',
+          placeholder: `Enter ${d.type}...`,
+          id: `${d.type}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          reference: d.reference,
+        });
+      });
+
+      dimensions.setDimensions(newDimensions);
+
+      console.log('[DirectorControl] Smart Breakdown applied for autoplay');
+      return true;
+    } catch (error) {
+      console.error('[DirectorControl] Smart Breakdown error:', error);
+      return false;
+    }
+  }, [brain, dimensions]);
 
   // Auto-expand when generating
   useEffect(() => {
@@ -376,75 +455,175 @@ export function DirectorControl({
         )}
       </AnimatePresence>
 
-      {/* Two-row action area */}
+      {/* Action area */}
       <div className="space-y-2">
-        {/* Row 1: Mode selection */}
-        <div className="flex gap-2 items-center">
-          {/* Preset Selector */}
-          <PresetSelector
-            currentDimensions={dimensions.dimensions}
-            onApplyPreset={handleApplyPreset}
-            disabled={isAnyGenerating}
-          />
-
-          {/* Interactive Mode Toggle */}
-          {onInteractiveModeChange && availableInteractiveModes.length > 1 && (
+        {/* Interactive Mode Toggle (if available) */}
+        {onInteractiveModeChange && availableInteractiveModes.length > 1 && (
+          <div className="flex gap-2 items-center mb-2">
             <InteractiveModeToggle
               mode={interactiveMode}
               availableModes={availableInteractiveModes}
               onModeChange={onInteractiveModeChange}
               disabled={isAnyGenerating}
             />
+          </div>
+        )}
+
+        {/* Output Mode Toggle - only show when NOT in autoplay mode */}
+        {!isAutoplayLocked && (
+          <div className="flex gap-2 items-center mb-2">
+            <span className="text-xs font-medium text-slate-500 mr-2">Mode:</span>
+            <div className="flex radius-md border border-slate-800 bg-slate-900/50 overflow-hidden">
+              <button
+                onClick={() => brain.setOutputMode('concept')}
+                disabled={isAnyGenerating}
+                data-testid="output-mode-concept"
+                className={`px-3 py-1.5 flex items-center justify-center gap-1.5 text-xs font-mono uppercase tracking-wide transition-colors
+                            ${brain.outputMode === 'concept'
+                              ? 'bg-amber-500/20 text-amber-400 border-r border-amber-500/30'
+                              : 'text-slate-500 hover:text-slate-300 border-r border-slate-800'
+                            } disabled:opacity-50 disabled:cursor-not-allowed`}
+                title="Concept Art Mode"
+              >
+                <Palette size={12} />
+                <span>Concept</span>
+              </button>
+              <button
+                onClick={() => brain.setOutputMode('gameplay')}
+                disabled={isAnyGenerating}
+                data-testid="output-mode-gameplay"
+                className={`px-3 py-1.5 flex items-center justify-center gap-1.5 text-xs font-mono uppercase tracking-wide transition-colors border-r
+                            ${brain.outputMode === 'gameplay'
+                              ? 'bg-purple-500/20 text-purple-400 border-purple-500/30'
+                              : 'text-slate-500 hover:text-slate-300 border-slate-800'
+                            } disabled:opacity-50 disabled:cursor-not-allowed`}
+                title="Gameplay Screenshot Mode"
+              >
+                <MonitorPlay size={12} />
+                <span>Gameplay</span>
+              </button>
+              <button
+                onClick={() => brain.setOutputMode('poster')}
+                disabled={isAnyGenerating}
+                data-testid="output-mode-poster"
+                className={`px-3 py-1.5 flex items-center justify-center gap-1.5 text-xs font-mono uppercase tracking-wide transition-colors
+                            ${brain.outputMode === 'poster'
+                              ? 'bg-rose-500/20 text-rose-400'
+                              : 'text-slate-500 hover:text-slate-300'
+                            } disabled:opacity-50 disabled:cursor-not-allowed`}
+                title="Generate Key Art Poster"
+              >
+                <Film size={12} />
+                <span>Poster</span>
+              </button>
+            </div>
+            {isAutoplayLocked && (
+              <span className="text-xs text-slate-600 ml-2">(Auto-selected during autoplay)</span>
+            )}
+          </div>
+        )}
+
+        {/* Autoplay + Generate button + History */}
+        <div className="flex gap-2 items-center">
+          {/* Multi-Phase Autoplay - show modal trigger when multi-phase is available */}
+          {brain.outputMode !== 'poster' && multiPhaseAutoplay && (
+            <>
+              {multiPhaseAutoplay.isRunning ? (
+                /* When running, show a compact status button that reopens the activity modal */
+                <button
+                  onClick={() => autoplayModal.open(
+                    <AutoplaySetupModal
+                      isOpen={true}
+                      onClose={autoplayModal.close}
+                      onStart={multiPhaseAutoplay.onStart}
+                      hasContent={multiPhaseAutoplay.hasContent}
+                      onSmartBreakdown={handleSmartBreakdownForAutoplay}
+                      canStart={multiPhaseAutoplay.canStart}
+                      canStartReason={multiPhaseAutoplay.canStartReason}
+                      isRunning={multiPhaseAutoplay.isRunning}
+                      // Activity mode props
+                      currentPhase={multiPhaseAutoplay.phase as any}
+                      conceptProgress={multiPhaseAutoplay.conceptProgress}
+                      gameplayProgress={multiPhaseAutoplay.gameplayProgress}
+                      posterSelected={multiPhaseAutoplay.posterSelected}
+                      hudGenerated={multiPhaseAutoplay.hudGenerated}
+                      hudTarget={multiPhaseAutoplay.gameplayProgress.target}
+                      error={multiPhaseAutoplay.error}
+                      textEvents={eventLog?.textEvents || []}
+                      imageEvents={eventLog?.imageEvents || []}
+                      onStop={multiPhaseAutoplay.onStop}
+                      onReset={() => {
+                        multiPhaseAutoplay.onReset();
+                        eventLog?.clearEvents();
+                      }}
+                    />
+                  )}
+                  className={`flex items-center gap-1.5 px-3 py-1 radius-sm border transition-colors
+                    ${semanticColors.processing.bg} ${semanticColors.processing.border} ${semanticColors.processing.text}
+                    hover:brightness-125`}
+                  data-testid="autoplay-activity-btn"
+                >
+                  <Sparkles size={12} className="animate-pulse" />
+                  <span className="font-mono type-label uppercase">
+                    {multiPhaseAutoplay.conceptProgress.saved + multiPhaseAutoplay.gameplayProgress.saved}/
+                    {multiPhaseAutoplay.conceptProgress.target + multiPhaseAutoplay.gameplayProgress.target}
+                  </span>
+                </button>
+              ) : (
+                <button
+                  onClick={() => autoplayModal.open(
+                    <AutoplaySetupModal
+                      isOpen={true}
+                      onClose={autoplayModal.close}
+                      onStart={(config) => {
+                        // Clear events when starting fresh
+                        eventLog?.clearEvents();
+                        multiPhaseAutoplay.onStart(config);
+                      }}
+                      hasContent={multiPhaseAutoplay.hasContent}
+                      onSmartBreakdown={handleSmartBreakdownForAutoplay}
+                      canStart={multiPhaseAutoplay.canStart}
+                      canStartReason={multiPhaseAutoplay.canStartReason}
+                      isRunning={multiPhaseAutoplay.isRunning}
+                      // Activity mode props
+                      currentPhase={multiPhaseAutoplay.phase as any}
+                      conceptProgress={multiPhaseAutoplay.conceptProgress}
+                      gameplayProgress={multiPhaseAutoplay.gameplayProgress}
+                      posterSelected={multiPhaseAutoplay.posterSelected}
+                      hudGenerated={multiPhaseAutoplay.hudGenerated}
+                      hudTarget={multiPhaseAutoplay.gameplayProgress.target}
+                      error={multiPhaseAutoplay.error}
+                      textEvents={eventLog?.textEvents || []}
+                      imageEvents={eventLog?.imageEvents || []}
+                      onStop={multiPhaseAutoplay.onStop}
+                      onReset={() => {
+                        multiPhaseAutoplay.onReset();
+                        eventLog?.clearEvents();
+                      }}
+                    />
+                  )}
+                  disabled={!multiPhaseAutoplay.canStart || (isAnyGenerating && !isAutoplayLocked)}
+                  title={multiPhaseAutoplay.canStartReason || undefined}
+                  className={`flex items-center gap-1.5 px-3 py-1 radius-sm border transition-colors
+                    ${!multiPhaseAutoplay.canStart || (isAnyGenerating && !isAutoplayLocked)
+                      ? 'bg-slate-900/50 border-slate-700 text-slate-600 cursor-not-allowed opacity-50'
+                      : `${semanticColors.processing.bg} ${semanticColors.processing.border} ${semanticColors.processing.text} hover:brightness-125`
+                    }`}
+                  data-testid="autoplay-setup-btn"
+                >
+                  <Sparkles size={12} />
+                  <span className="font-mono type-label uppercase">Auto</span>
+                </button>
+              )}
+            </>
           )}
 
-          {/* Output Mode Toggle - full width */}
-          <div className="flex-1 flex radius-md border border-slate-800 bg-slate-900/50 overflow-hidden">
-            <button
-              onClick={() => brain.setOutputMode('concept')}
-              data-testid="output-mode-concept"
-              className={`flex-1 py-2 flex items-center justify-center gap-2 text-md font-mono uppercase tracking-wide transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/50
-                          ${brain.outputMode === 'concept'
-                            ? 'bg-amber-500/20 text-amber-400 border-r border-amber-500/30'
-                            : 'text-slate-500 hover:text-slate-300 border-r border-slate-800'}`}
-              title="Concept Art Mode"
-            >
-              <Palette size={14} />
-              <span>Concept</span>
-            </button>
-            <button
-              onClick={() => brain.setOutputMode('gameplay')}
-              data-testid="output-mode-gameplay"
-              className={`flex-1 py-2 flex items-center justify-center gap-2 text-md font-mono uppercase tracking-wide transition-colors border-r focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-500/50
-                          ${brain.outputMode === 'gameplay'
-                            ? 'bg-purple-500/20 text-purple-400 border-purple-500/30'
-                            : 'text-slate-500 hover:text-slate-300 border-slate-800'}`}
-              title="Gameplay Screenshot Mode"
-            >
-              <MonitorPlay size={14} />
-              <span>Gameplay</span>
-            </button>
-            <button
-              onClick={() => brain.setOutputMode('poster')}
-              data-testid="output-mode-poster"
-              className={`flex-1 py-2 flex items-center justify-center gap-2 text-md font-mono uppercase tracking-wide transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-500/50
-                          ${brain.outputMode === 'poster'
-                            ? 'bg-rose-500/20 text-rose-400'
-                            : 'text-slate-500 hover:text-slate-300'}`}
-              title="Generate Key Art Poster"
-            >
-              <Film size={14} />
-              <span>Poster</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Row 2: Autoplay + Generate button + History */}
-        <div className="flex gap-2 items-center">
-          {/* Autoplay Controls - only show if not poster mode */}
-          {brain.outputMode !== 'poster' && autoplay && (
+          {/* Legacy Autoplay Controls - only show if multi-phase not available */}
+          {brain.outputMode !== 'poster' && !multiPhaseAutoplay && autoplay && (
             <AutoplayControls
               isRunning={autoplay.isRunning}
               canStart={autoplay.canStart}
+              canStartReason={autoplay.canStartReason}
               status={autoplay.status}
               currentIteration={autoplay.currentIteration}
               maxIterations={autoplay.maxIterations}
@@ -527,6 +706,8 @@ export function DirectorControl({
           )}
         </div>
       </div>
+
+      {/* Autoplay modal renders through ModalProvider at root level */}
     </div>
   );
 }

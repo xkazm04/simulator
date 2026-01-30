@@ -12,13 +12,13 @@
 'use client';
 
 import React, { useState, useRef, useCallback, useMemo } from 'react';
-import { motion, AnimatePresence, PanInfo } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useDrag } from '@use-gesture/react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { GeneratedPrompt, GeneratedImage, InteractiveMode, InteractivePrototype } from '../../types';
 import { PromptCard, SkeletonPromptCard } from '../../subfeature_prompts/components/PromptCard';
 import { useHapticFeedback } from '../../hooks/useResponsive';
-import { snapToNearest, triggerHaptic, GESTURE_PRESETS } from '../../lib/gestureController';
+import { snapToNearest, GESTURE_PRESETS } from '../../lib/gestureController';
 import { semanticColors } from '../../lib/semanticColors';
 
 interface MobilePromptCarouselProps {

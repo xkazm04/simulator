@@ -17,12 +17,15 @@ interface UseImageEffectsOptions {
   imageGen: ReturnType<typeof useImageGeneration>;
   submittedForGenerationRef: MutableRefObject<Set<string>>;
   setSavedPromptIds: React.Dispatch<React.SetStateAction<Set<string>>>;
+  /** When true, skip auto-generation - orchestrator controls the flow */
+  isAutoplayRunning?: boolean;
 }
 
 export function useImageEffects({
   imageGen,
   submittedForGenerationRef,
   setSavedPromptIds,
+  isAutoplayRunning = false,
 }: UseImageEffectsOptions) {
   const prompts = usePromptsContext();
   const simulator = useSimulatorContext();
@@ -40,7 +43,11 @@ export function useImageEffects({
   }, [simulator.isGenerating, imageGen.deleteAllGenerations, submittedForGenerationRef]);
 
   // Trigger image generation when new prompts arrive
+  // Skip during autoplay - the orchestrator controls generation flow
   useEffect(() => {
+    // During autoplay, the orchestrator controls when images are generated
+    if (isAutoplayRunning) return;
+
     if (prompts.generatedPrompts.length > 0 && !simulator.isGenerating) {
       const promptsNeedingImages = prompts.generatedPrompts.filter(
         (p) => !submittedForGenerationRef.current.has(p.id)
@@ -57,7 +64,7 @@ export function useImageEffects({
         );
       }
     }
-  }, [prompts.generatedPrompts, simulator.isGenerating, imageGen, submittedForGenerationRef]);
+  }, [prompts.generatedPrompts, simulator.isGenerating, imageGen, submittedForGenerationRef, isAutoplayRunning]);
 
   // Handle saving an image to panel
   const handleStartImage = useCallback((promptId: string) => {

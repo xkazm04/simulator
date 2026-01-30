@@ -52,6 +52,15 @@ export interface VisionRequest extends BaseAIRequest {
   temperature?: number;
 }
 
+export interface MultiImageVisionRequest extends BaseAIRequest {
+  type: 'vision';
+  imageDataUrls: string[];
+  prompt: string;
+  systemInstruction?: string;
+  maxTokens?: number;
+  temperature?: number;
+}
+
 export interface ImageGenerationRequest extends BaseAIRequest {
   type: 'image-generation';
   prompt: string;
@@ -305,4 +314,6 @@ export interface ProviderMetrics {
   avgLatencyMs: number;
   rateLimitHits: number;
   estimatedCostUsd: number;
+  lastSuccessAt: number | null;
+  lastFailureAt: number | null;
 }

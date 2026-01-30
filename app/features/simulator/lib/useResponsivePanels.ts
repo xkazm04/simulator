@@ -42,12 +42,12 @@ export function useResponsivePanels(): ResponsivePanelState {
   // Detect if we're on a small screen
   const [isSmallScreen, setIsSmallScreen] = useState(false);
 
-  // Panel states - initialize based on screen size
+  // Panel states - initialize collapsed by default
   // Top/bottom bars always start collapsed, expand on generation
   const [topBarExpanded, setTopBarExpanded] = useState(false);
   const [bottomBarExpanded, setBottomBarExpanded] = useState(false);
-  // Sidebars start collapsed on small screens only
-  const [sidebarsExpanded, setSidebarsExpanded] = useState(true);
+  // Sidebars start collapsed on ALL screen sizes by default
+  const [sidebarsExpanded, setSidebarsExpanded] = useState(false);
 
   // Detect screen size on mount and resize
   useEffect(() => {
@@ -58,13 +58,6 @@ export function useResponsivePanels(): ResponsivePanelState {
 
     // Check immediately
     checkScreenSize();
-
-    // Set initial sidebar state based on screen size
-    // Only run once on mount
-    const initialIsSmall = window.innerWidth <= XL_BREAKPOINT;
-    if (initialIsSmall) {
-      setSidebarsExpanded(false);
-    }
 
     // Listen for resize
     window.addEventListener('resize', checkScreenSize);

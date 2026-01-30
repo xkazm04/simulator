@@ -30,6 +30,7 @@ import {
 export interface GenerateOverrides {
   baseImage?: string;
   dimensions?: Array<{ type: DimensionType; label: string; reference: string }>;
+  feedback?: { positive: string; negative: string };
 }
 
 export interface SimulatorContextValue {
@@ -82,6 +83,7 @@ export function SimulatorProvider({ children }: SimulatorProviderProps) {
       label: d.label,
       reference: d.reference,
     }));
+    const effectiveFeedback = overrides?.feedback ?? brain.feedback;
 
     // Start or continue a generation session for learning
     const existingSession = getActiveSession();
@@ -94,7 +96,7 @@ export function SimulatorProvider({ children }: SimulatorProviderProps) {
       const result = await generateWithFeedback(
         effectiveBaseImage,
         effectiveDimensions,
-        brain.feedback,
+        effectiveFeedback,
         brain.outputMode,
         prompts.lockedElements
       );

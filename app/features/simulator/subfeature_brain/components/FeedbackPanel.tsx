@@ -84,7 +84,6 @@ export function FeedbackPanel({
   onPromptUndo,
   onPromptRedo,
 }: FeedbackPanelProps) {
-  const [outputModeOpen, setOutputModeOpen] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [showAnalytics, setShowAnalytics] = useState(false);
   const [learningStatus, setLearningStatus] = useState<{
@@ -94,7 +93,6 @@ export function FeedbackPanel({
     positiveRate: number;
   } | null>(null);
   const hasLockedItems = hasLockedPrompts || lockedElements.length > 0;
-  const isGameplayMode = outputMode === 'gameplay';
   const isAnyGenerating = isGenerating || isGeneratingPoster;
 
   // Load learning status

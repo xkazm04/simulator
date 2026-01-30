@@ -117,21 +117,39 @@ export function useProjectManager({ imageGen, onProjectChange }: UseProjectManag
           targetProjectId = project.projects[0].id;
         }
 
-        const projectWithState = await project.selectProject(targetProjectId);
+        console.log('[useProjectManager] Auto-selecting project:', targetProjectId);
+        let projectWithState = await project.selectProject(targetProjectId);
+
+        // If selection failed and we tried localStorage ID, fall back to first project
+        if (!projectWithState && targetProjectId !== project.projects[0].id) {
+          console.warn('[useProjectManager] Failed to select last project, falling back to first');
+          targetProjectId = project.projects[0].id;
+          projectWithState = await project.selectProject(targetProjectId);
+
+          // Clear stale localStorage
+          try {
+            localStorage.removeItem(LAST_PROJECT_KEY);
+          } catch {
+            // Ignore
+          }
+        }
+
         if (projectWithState?.state) {
           restoreProjectState(projectWithState.state);
         }
         poster.setPoster(projectWithState?.poster || null);
 
-        // Persist selection to localStorage
-        try {
-          localStorage.setItem(LAST_PROJECT_KEY, targetProjectId);
-        } catch {
-          // localStorage not available
-        }
+        // Persist selection to localStorage only if successful
+        if (projectWithState) {
+          try {
+            localStorage.setItem(LAST_PROJECT_KEY, targetProjectId);
+          } catch {
+            // localStorage not available
+          }
 
-        // Notify parent of project change
-        onProjectChange?.(targetProjectId);
+          // Notify parent of project change
+          onProjectChange?.(targetProjectId);
+        }
       }
     };
     selectProject();
@@ -139,6 +157,8 @@ export function useProjectManager({ imageGen, onProjectChange }: UseProjectManag
 
   // Handle project selection
   const handleProjectSelect = useCallback(async (projectId: string) => {
+    console.log('[useProjectManager] handleProjectSelect called with:', projectId);
+
     // Persist selection to localStorage for next session
     try {
       localStorage.setItem(LAST_PROJECT_KEY, projectId);
@@ -150,6 +170,8 @@ export function useProjectManager({ imageGen, onProjectChange }: UseProjectManag
     onProjectChange?.(projectId);
 
     const projectWithState = await project.selectProject(projectId);
+    console.log('[useProjectManager] selectProject result:', projectWithState ? 'success' : 'failed');
+
     if (projectWithState?.state) {
       restoreProjectState(projectWithState.state);
     } else {

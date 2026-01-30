@@ -119,10 +119,9 @@ export class GeminiProvider implements AIProvider {
     }
 
     // Check cache
+    const userId = request.metadata?.userId as string | undefined;
     if (this.enableCache && !request.skipCache) {
-      const cacheKey = AICache.generateKey({
-        provider: 'gemini',
-        model: this.textModel,
+      const cacheKey = AICache.generateUserIsolatedKey('gemini', this.textModel, userId, {
         systemPrompt: request.systemPrompt,
         userPrompt: request.userPrompt,
         maxTokens: request.maxTokens || this.defaultMaxTokens,
@@ -187,9 +186,7 @@ export class GeminiProvider implements AIProvider {
 
     // Cache response
     if (this.enableCache && !request.skipCache) {
-      const cacheKey = AICache.generateKey({
-        provider: 'gemini',
-        model: this.textModel,
+      const cacheKey = AICache.generateUserIsolatedKey('gemini', this.textModel, userId, {
         systemPrompt: request.systemPrompt,
         userPrompt: request.userPrompt,
         maxTokens: request.maxTokens || this.defaultMaxTokens,
@@ -219,10 +216,9 @@ export class GeminiProvider implements AIProvider {
     }
 
     // Check cache (hash image data for key)
+    const userId = request.metadata?.userId as string | undefined;
     if (this.enableCache && !request.skipCache) {
-      const cacheKey = AICache.generateKey({
-        provider: 'gemini-vision',
-        model: this.visionModel,
+      const cacheKey = AICache.generateUserIsolatedKey('gemini-vision', this.visionModel, userId, {
         imageHash: this.hashImageData(request.imageDataUrl),
         prompt: request.prompt,
         systemInstruction: request.systemInstruction,
@@ -283,9 +279,7 @@ export class GeminiProvider implements AIProvider {
 
     // Cache response
     if (this.enableCache && !request.skipCache) {
-      const cacheKey = AICache.generateKey({
-        provider: 'gemini-vision',
-        model: this.visionModel,
+      const cacheKey = AICache.generateUserIsolatedKey('gemini-vision', this.visionModel, userId, {
         imageHash: this.hashImageData(request.imageDataUrl),
         prompt: request.prompt,
         systemInstruction: request.systemInstruction,
@@ -294,6 +288,161 @@ export class GeminiProvider implements AIProvider {
     }
 
     return response;
+  }
+
+  /**
+   * Analyze multiple images using Gemini Vision
+   * Used for comparing poster variations or other multi-image analysis
+   */
+  async analyzeMultipleImages(request: {
+    type: 'vision';
+    imageDataUrls: string[];
+    prompt: string;
+    systemInstruction?: string;
+    maxTokens?: number;
+    temperature?: number;
+    metadata?: { feature?: string; userId?: string; [key: string]: unknown };
+  }): Promise<VisionResponse> {
+    const requestId = `gemini-multi-vision-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+    const startTime = Date.now();
+    const costTracker = getCostTracker();
+    const rateLimiter = getRateLimiter();
+
+    if (!this.isAvailable()) {
+      throw new AIError(
+        'Gemini API key not configured',
+        'PROVIDER_UNAVAILABLE',
+        'gemini'
+      );
+    }
+
+    if (request.imageDataUrls.length === 0) {
+      throw new AIError(
+        'No images provided for analysis',
+        'INVALID_REQUEST',
+        'gemini'
+      );
+    }
+
+    // Check rate limit
+    if (!rateLimiter.tryAcquire('gemini')) {
+      costTracker.trackRateLimitHit('gemini');
+      const status = rateLimiter.getStatus('gemini');
+      throw new AIError(
+        'Rate limit exceeded for Gemini API',
+        'RATE_LIMITED',
+        'gemini',
+        429,
+        true,
+        status.resetAt - Date.now()
+      );
+    }
+
+    // Execute with retry
+    const result = await withRetry(
+      () => this.callGeminiMultiVisionAPI(request),
+      'gemini',
+      {
+        maxRetries: 3,
+        onRetry: (attempt, error, delay) => {
+          console.warn(`Gemini Multi-Vision retry ${attempt}: ${error.message}, waiting ${delay}ms`);
+        },
+      }
+    );
+
+    const latency = Date.now() - startTime;
+
+    const response: VisionResponse = {
+      type: 'vision',
+      requestId,
+      provider: 'gemini',
+      latencyMs: latency,
+      cached: false,
+      text: result.text,
+      usage: result.usage,
+    };
+
+    costTracker.trackRequest('gemini', true, latency, result.usage, request.metadata?.feature as string, false);
+
+    return response;
+  }
+
+  /**
+   * Call Gemini Vision API with multiple images
+   */
+  private async callGeminiMultiVisionAPI(request: {
+    imageDataUrls: string[];
+    prompt: string;
+    systemInstruction?: string;
+    maxTokens?: number;
+    temperature?: number;
+  }): Promise<{ text: string; usage: AIUsage }> {
+    try {
+      const client = this.getClient();
+
+      // Build parts array with all images first, then the prompt
+      const parts: Array<{ inlineData: { mimeType: string; data: string } } | { text: string }> = [];
+
+      // Add all images
+      for (const imageDataUrl of request.imageDataUrls) {
+        parts.push(this.parseImageDataUrl(imageDataUrl));
+      }
+
+      // Add the text prompt
+      parts.push({ text: request.prompt });
+
+      const response = await client.models.generateContent({
+        model: this.visionModel,
+        contents: [{
+          role: 'user',
+          parts,
+        }],
+        config: {
+          temperature: request.temperature ?? 0.3,
+          maxOutputTokens: request.maxTokens || this.defaultMaxTokens,
+          ...(request.systemInstruction && { systemInstruction: request.systemInstruction }),
+        },
+      });
+
+      const text = response.text;
+      if (!text) {
+        throw new AIError(
+          'No text response from Gemini Multi-Vision',
+          'GENERATION_FAILED',
+          'gemini'
+        );
+      }
+
+      // Estimate usage (multiple images add more tokens)
+      const imageTokenEstimate = request.imageDataUrls.length * 1000;
+      const usage: AIUsage = {
+        inputTokens: Math.ceil((request.prompt.length + imageTokenEstimate) / 4),
+        outputTokens: Math.ceil(text.length / 4),
+      };
+
+      const costEstimate = getCostTracker().estimateCost(
+        'gemini',
+        usage.inputTokens || 0,
+        usage.outputTokens || 0,
+        0,
+        this.visionModel
+      );
+      usage.estimatedCostUsd = costEstimate.estimatedCostUsd;
+
+      return { text, usage };
+    } catch (error) {
+      if (error instanceof AIError) {
+        throw error;
+      }
+
+      throw new AIError(
+        error instanceof Error ? error.message : 'Unknown error calling Gemini Multi-Vision API',
+        'NETWORK_ERROR',
+        'gemini',
+        undefined,
+        true
+      );
+    }
   }
 
   /**

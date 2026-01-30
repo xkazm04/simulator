@@ -42,6 +42,24 @@ export { AICache, getAICache, withCache } from './cache';
 export { RateLimiter, getRateLimiter } from './rate-limiter';
 export { withRetry, shouldRetry, calculateDelay, createRetryWrapper } from './retry';
 export { CostTracker, getCostTracker } from './cost-tracker';
+export {
+  healthCheck,
+  getProviderHealth,
+  isProviderAvailable,
+  type ProviderHealth,
+  type HealthStatus,
+  type HealthCheckResponse,
+} from './health-check';
+export {
+  CircuitBreaker,
+  getCircuitBreaker,
+  getAllCircuitStatus,
+  resetAllCircuits,
+  withCircuitBreaker,
+  type CircuitState,
+  type CircuitStatus,
+  type CircuitBreakerConfig,
+} from './circuit-breaker';
 
 // ============================================================================
 // PROVIDERS

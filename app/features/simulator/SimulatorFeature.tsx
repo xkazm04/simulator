@@ -15,6 +15,8 @@ import { usePosterHandlers } from './hooks/usePosterHandlers';
 import { useImageEffects } from './hooks/useImageEffects';
 import { useAutosave } from './hooks/useAutosave';
 import { useAutoplayOrchestrator } from './hooks/useAutoplayOrchestrator';
+import { useMultiPhaseAutoplay } from './hooks/useMultiPhaseAutoplay';
+import { useAutoplayEventLog } from './hooks/useAutoplayEventLog';
 import { OnionLayout } from './components/variants/OnionLayout';
 import { ModalLoadingFallback } from './components/ModalLoadingFallback';
 import { Toast, useToast } from '@/app/components/ui';
@@ -77,6 +79,9 @@ function SimulatorContent() {
     currentProject: pm.project.currentProject,
   });
 
+  // Event log for autoplay activity monitoring
+  const eventLog = useAutoplayEventLog();
+
   // Autoplay orchestrator - wires together state machine with image generation
   // NOTE: Must be defined BEFORE useImageEffects so we can pass isRunning to prevent race conditions
   const autoplayOrchestrator = useAutoplayOrchestrator({
@@ -92,6 +97,34 @@ function SimulatorContent() {
     visionSentence: brain.visionSentence,
     breakdown: brain.breakdown,
     onRegeneratePrompts: simulator.handleGenerate,
+    onLogEvent: eventLog.addEvent,
+  });
+
+  // Multi-phase autoplay - orchestrates concept, gameplay, poster, and HUD phases
+  const multiPhaseAutoplay = useMultiPhaseAutoplay({
+    generatedImages: imageGen.generatedImages,
+    isGeneratingImages: imageGen.isGeneratingImages,
+    generateImagesFromPrompts: imageGen.generateImagesFromPrompts,
+    saveImageToPanel: imageGen.saveImageToPanel,
+    leftPanelSlots: imageGen.leftPanelSlots,
+    rightPanelSlots: imageGen.rightPanelSlots,
+    setFeedback: brain.setFeedback,
+    setOutputMode: brain.setOutputMode,
+    baseImage: brain.baseImage,
+    visionSentence: brain.visionSentence,
+    breakdown: brain.breakdown,
+    generatedPrompts: prompts.generatedPrompts,
+    dimensions: dimensions.dimensions,
+    outputMode: brain.outputMode,
+    generatePosters: ph.poster.generatePosters,
+    posterGenerations: ph.poster.posterGenerations,
+    selectPoster: ph.handleSelectPoster,
+    savePoster: ph.handleSavePoster,
+    isGeneratingPoster: ph.poster.isGenerating,
+    currentProjectId,
+    currentProjectName: pm.project.currentProject?.name || 'Untitled',
+    onRegeneratePrompts: simulator.handleGenerate,
+    onLogEvent: eventLog.addEvent,
   });
 
   // Image effects - skip auto-generation during autoplay (orchestrator controls flow)
@@ -99,11 +132,11 @@ function SimulatorContent() {
     imageGen,
     submittedForGenerationRef: pm.submittedForGenerationRef,
     setSavedPromptIds: pm.setSavedPromptIds,
-    isAutoplayRunning: autoplayOrchestrator.isRunning,
+    isAutoplayRunning: autoplayOrchestrator.isRunning || multiPhaseAutoplay.isRunning,
   });
   useAutosave();
 
-  // Create autoplay props object to pass down through layouts
+  // Create autoplay props object to pass down through layouts (legacy single-mode)
   const autoplayProps = {
     isRunning: autoplayOrchestrator.isRunning,
     canStart: autoplayOrchestrator.canStart,
@@ -118,6 +151,29 @@ function SimulatorContent() {
     onStart: autoplayOrchestrator.startAutoplay,
     onStop: autoplayOrchestrator.abortAutoplay,
     onReset: autoplayOrchestrator.resetAutoplay,
+  };
+
+  // Create multi-phase autoplay props
+  const multiPhaseAutoplayProps = {
+    isRunning: multiPhaseAutoplay.isRunning,
+    canStart: multiPhaseAutoplay.canStart,
+    canStartReason: multiPhaseAutoplay.canStartReason,
+    hasContent: multiPhaseAutoplay.hasContent,
+    phase: multiPhaseAutoplay.phase,
+    conceptProgress: multiPhaseAutoplay.conceptProgress,
+    gameplayProgress: multiPhaseAutoplay.gameplayProgress,
+    posterSelected: multiPhaseAutoplay.posterSelected,
+    hudGenerated: multiPhaseAutoplay.hudGenerated,
+    error: multiPhaseAutoplay.error,
+    onStart: multiPhaseAutoplay.startMultiPhase,
+    onStop: multiPhaseAutoplay.abort,
+    onReset: multiPhaseAutoplay.reset,
+    // Event log for activity modal
+    eventLog: {
+      textEvents: eventLog.textEvents,
+      imageEvents: eventLog.imageEvents,
+      clearEvents: eventLog.clearEvents,
+    },
   };
 
   const selectedPromptImage = selectedPrompt ? imageGen.generatedImages.find(img => img.promptId === selectedPrompt.id) : undefined;
@@ -195,6 +251,7 @@ function SimulatorContent() {
           onViewPrompt={setSelectedPrompt}
           onUploadImageToPanel={imageGen.uploadImageToPanel}
           autoplay={autoplayProps}
+          multiPhaseAutoplay={multiPhaseAutoplayProps}
         />
 
         {selectedPrompt && (

@@ -24,7 +24,9 @@ interface PromptOutputProps {
   // Image generation props
   generatedImages?: GeneratedImage[];
   onStartImage?: (promptId: string) => void;
+  onDeleteImage?: (promptId: string) => void;
   savedPromptIds?: Set<string>;  // IDs of prompts that have been saved to panel
+  allSlotsFull?: boolean;  // All panel slots are occupied
   // Interactive prototype props
   interactiveMode?: InteractiveMode;
   interactivePrototypes?: Map<string, InteractivePrototype>;
@@ -47,7 +49,9 @@ function PromptOutputComponent({
   onViewPrompt,
   generatedImages = [],
   onStartImage,
+  onDeleteImage,
   savedPromptIds = new Set(),
+  allSlotsFull = false,
   interactiveMode = 'static',
   interactivePrototypes,
   onInteractiveClick,
@@ -134,7 +138,9 @@ function PromptOutputComponent({
                 index={index}
                 generatedImage={generatedImage}
                 onStartImage={onStartImage}
+                onDeleteImage={onDeleteImage}
                 isSavedToPanel={isSavedToPanel}
+                allSlotsFull={allSlotsFull}
                 interactiveMode={interactiveMode}
                 interactivePrototype={interactivePrototype}
                 onInteractiveClick={onInteractiveClick}
@@ -183,6 +189,9 @@ function arePropsEqual(
 
   // Compare savedPromptIds set by size first (fast check)
   if (prevProps.savedPromptIds?.size !== nextProps.savedPromptIds?.size) return false;
+
+  // Compare allSlotsFull flag
+  if (prevProps.allSlotsFull !== nextProps.allSlotsFull) return false;
 
   // Compare interactive prototypes map by reference
   if (prevProps.interactivePrototypes !== nextProps.interactivePrototypes) return false;

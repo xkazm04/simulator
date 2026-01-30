@@ -18,8 +18,19 @@ interface RouteParams {
  * GET - Get project with full state
  */
 export async function GET(request: NextRequest, { params }: RouteParams) {
+  let projectId: string | undefined;
   try {
     const { id } = await params;
+    projectId = id;
+
+    if (!id || typeof id !== 'string') {
+      console.error('Invalid project ID:', id);
+      return NextResponse.json(
+        { success: false, error: 'Invalid project ID' },
+        { status: 400 }
+      );
+    }
+
     const db = getDb();
 
     // Get project
@@ -35,11 +46,29 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       );
     }
 
-    // Get state
-    const state = db.prepare(`
-      SELECT project_id, base_prompt, base_image_file, vision_sentence, breakdown_json, output_mode, dimensions_json, feedback_json, updated_at
-      FROM project_state WHERE project_id = ?
-    `).get(id) as DbProjectState | undefined;
+    // Get state - handle missing columns gracefully for older databases
+    let state: DbProjectState | undefined;
+    try {
+      state = db.prepare(`
+        SELECT project_id, base_prompt, base_image_file, vision_sentence, breakdown_json, output_mode, dimensions_json, feedback_json, updated_at
+        FROM project_state WHERE project_id = ?
+      `).get(id) as DbProjectState | undefined;
+    } catch (columnError) {
+      // Fallback for databases missing vision_sentence or breakdown_json columns
+      console.warn('Using fallback query for older database schema');
+      const basicState = db.prepare(`
+        SELECT project_id, base_prompt, base_image_file, output_mode, dimensions_json, feedback_json, updated_at
+        FROM project_state WHERE project_id = ?
+      `).get(id) as Omit<DbProjectState, 'vision_sentence' | 'breakdown_json'> | undefined;
+
+      if (basicState) {
+        state = {
+          ...basicState,
+          vision_sentence: null,
+          breakdown_json: null,
+        } as DbProjectState;
+      }
+    }
 
     // Get panel images
     const panelImages = db.prepare(`
@@ -93,9 +122,10 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       project: projectWithState,
     });
   } catch (error) {
-    console.error('Get project error:', error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error(`Get project error (id=${projectId}):`, errorMessage, error);
     return NextResponse.json(
-      { success: false, error: 'Failed to get project' },
+      { success: false, error: `Failed to get project: ${errorMessage}` },
       { status: 500 }
     );
   }

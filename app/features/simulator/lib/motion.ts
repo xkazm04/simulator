@@ -12,7 +12,7 @@
  */
 
 import { Variants, Transition, TargetAndTransition } from 'framer-motion';
-import { useState, useEffect, useSyncExternalStore } from 'react';
+import { useSyncExternalStore } from 'react';
 
 // ============================================
 // Reduced Motion Support (WCAG 2.1 Level AAA)

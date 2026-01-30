@@ -59,6 +59,8 @@ export class CostTracker {
       avgLatencyMs: 0,
       rateLimitHits: 0,
       estimatedCostUsd: 0,
+      lastSuccessAt: null,
+      lastFailureAt: null,
     };
   }
 
@@ -121,8 +123,10 @@ export class CostTracker {
     providerMetrics.requests++;
     if (success) {
       providerMetrics.successes++;
+      providerMetrics.lastSuccessAt = Date.now();
     } else {
       providerMetrics.failures++;
+      providerMetrics.lastFailureAt = Date.now();
     }
     providerMetrics.avgLatencyMs =
       (providerMetrics.avgLatencyMs * (providerMetrics.requests - 1) + latencyMs) /

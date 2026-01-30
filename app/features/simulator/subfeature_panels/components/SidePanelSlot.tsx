@@ -26,6 +26,8 @@ interface SidePanelSlotProps {
   side: 'left' | 'right';
   onRemove?: (imageId: string) => void;
   onView?: (image: SavedPanelImage) => void;
+  /** Callback when empty slot is clicked - for upload functionality */
+  onEmptySlotClick?: (side: 'left' | 'right', slotIndex: number) => void;
 }
 
 export function SidePanelSlot({
@@ -34,6 +36,7 @@ export function SidePanelSlot({
   side,
   onRemove,
   onView,
+  onEmptySlotClick,
 }: SidePanelSlotProps) {
   if (image) {
     return (
@@ -96,16 +99,21 @@ export function SidePanelSlot({
   return (
     <div
       data-testid={`side-panel-slot-empty-${side}-${slotIndex}`}
+      onClick={() => onEmptySlotClick?.(side, slotIndex)}
       className="aspect-square bg-slate-900/40 radius-lg border border-slate-800/60
-                 flex items-center justify-center
+                 flex flex-col items-center justify-center gap-1
                  opacity-40 hover:opacity-100 hover:scale-105 hover:border-amber-500/30
                  hover:shadow-elevated hover:shadow-amber-900/20
                  transition-all duration-300 cursor-pointer group backdrop-blur-sm"
+      title="Click to upload image"
     >
       <ImageIcon
         size={20}
         className="text-slate-700 group-hover:text-amber-400 transition-colors"
       />
+      <span className="font-mono text-[8px] text-slate-700 group-hover:text-amber-400 uppercase tracking-wider transition-colors">
+        Upload
+      </span>
     </div>
   );
 }

@@ -3,19 +3,21 @@
  *
  * Uses better-sqlite3 for synchronous, fast SQLite access.
  * Database is stored in data/simulator.db
+ * Includes automatic migration system for schema versioning.
  */
 
 import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
+import { MigrationRunner, migrations } from './migrations';
 
 // Database path
 const DB_DIR = path.join(process.cwd(), 'data');
 const DB_PATH = path.join(DB_DIR, 'simulator.db');
-const SCHEMA_PATH = path.join(process.cwd(), 'db', 'simulator-schema.sql');
 
 // Singleton database instance
 let db: Database.Database | null = null;
+let migrationRunner: MigrationRunner | null = null;
 
 /**
  * Get or create the database instance
@@ -34,121 +36,136 @@ export function getDb(): Database.Database {
   // Enable WAL mode for better concurrent read performance
   db.pragma('journal_mode = WAL');
 
-  // Initialize schema if needed
-  initializeSchema(db);
+  // Run migrations
+  runMigrations(db);
 
   return db;
 }
 
 /**
- * Initialize database schema
+ * Get the migration runner instance
  */
-function initializeSchema(database: Database.Database): void {
-  // Check if projects table exists
-  const projectsTableExists = database.prepare(
-    "SELECT name FROM sqlite_master WHERE type='table' AND name='projects'"
-  ).get();
-
-  if (!projectsTableExists) {
-    // Read and execute full schema
-    const schema = fs.readFileSync(SCHEMA_PATH, 'utf-8');
-    database.exec(schema);
-  } else {
-    // Check if project_posters table exists (added later)
-    const postersTableExists = database.prepare(
-      "SELECT name FROM sqlite_master WHERE type='table' AND name='project_posters'"
-    ).get();
-
-    if (!postersTableExists) {
-      // Add the project_posters table to existing database
-      database.exec(`
-        CREATE TABLE IF NOT EXISTS project_posters (
-          id TEXT PRIMARY KEY,
-          project_id TEXT REFERENCES projects(id) ON DELETE CASCADE,
-          image_url TEXT NOT NULL,
-          prompt TEXT,
-          dimensions_json TEXT,
-          created_at TEXT DEFAULT (datetime('now')),
-          UNIQUE(project_id)
-        );
-        CREATE INDEX IF NOT EXISTS idx_project_posters_project ON project_posters(project_id);
-      `);
-    }
-
-    // Check if interactive_prototypes table exists (added for full state persistence)
-    const prototypesTableExists = database.prepare(
-      "SELECT name FROM sqlite_master WHERE type='table' AND name='interactive_prototypes'"
-    ).get();
-
-    if (!prototypesTableExists) {
-      database.exec(`
-        CREATE TABLE IF NOT EXISTS interactive_prototypes (
-          id TEXT PRIMARY KEY,
-          project_id TEXT REFERENCES projects(id) ON DELETE CASCADE,
-          prompt_id TEXT NOT NULL,
-          image_id TEXT,
-          mode TEXT NOT NULL CHECK(mode IN ('static', 'webgl', 'clickable', 'trailer')),
-          status TEXT NOT NULL CHECK(status IN ('pending', 'generating', 'ready', 'failed')),
-          error TEXT,
-          config_json TEXT,
-          assets_json TEXT,
-          created_at TEXT DEFAULT (datetime('now')),
-          UNIQUE(project_id, prompt_id)
-        );
-        CREATE INDEX IF NOT EXISTS idx_interactive_prototypes_project ON interactive_prototypes(project_id);
-      `);
-    }
-
-    // Check if generated_prompts table exists (added for session state persistence)
-    const promptsTableExists = database.prepare(
-      "SELECT name FROM sqlite_master WHERE type='table' AND name='generated_prompts'"
-    ).get();
-
-    if (!promptsTableExists) {
-      database.exec(`
-        CREATE TABLE IF NOT EXISTS generated_prompts (
-          id TEXT PRIMARY KEY,
-          project_id TEXT REFERENCES projects(id) ON DELETE CASCADE,
-          scene_number INTEGER NOT NULL,
-          scene_type TEXT NOT NULL,
-          prompt TEXT NOT NULL,
-          negative_prompt TEXT,
-          copied INTEGER DEFAULT 0,
-          rating TEXT CHECK(rating IN ('up', 'down') OR rating IS NULL),
-          locked INTEGER DEFAULT 0,
-          elements_json TEXT,
-          created_at TEXT DEFAULT (datetime('now'))
-        );
-        CREATE INDEX IF NOT EXISTS idx_generated_prompts_project ON generated_prompts(project_id);
-      `);
-    }
-
-    // Check if video_url column exists in panel_images (added for video generation)
-    const panelImagesColumns = database.prepare(
-      "PRAGMA table_info(panel_images)"
-    ).all() as Array<{ name: string }>;
-
-    const hasVideoUrl = panelImagesColumns.some(col => col.name === 'video_url');
-    if (!hasVideoUrl) {
-      database.exec(`ALTER TABLE panel_images ADD COLUMN video_url TEXT;`);
-    }
-
-    // Check if vision_sentence column exists in project_state (added for smart breakdown persistence)
-    const stateColumns = database.prepare(
-      "PRAGMA table_info(project_state)"
-    ).all() as Array<{ name: string }>;
-
-    const hasVisionSentence = stateColumns.some(col => col.name === 'vision_sentence');
-    if (!hasVisionSentence) {
-      database.exec(`ALTER TABLE project_state ADD COLUMN vision_sentence TEXT;`);
-    }
-
-    // Check if breakdown_json column exists in project_state (for smart breakdown persistence)
-    const hasBreakdownJson = stateColumns.some(col => col.name === 'breakdown_json');
-    if (!hasBreakdownJson) {
-      database.exec(`ALTER TABLE project_state ADD COLUMN breakdown_json TEXT;`);
-    }
+export function getMigrationRunner(): MigrationRunner {
+  if (!migrationRunner) {
+    const database = getDb();
+    migrationRunner = new MigrationRunner(database, {
+      logLevel: process.env.NODE_ENV === 'production' ? 'warn' : 'info',
+    });
+    migrationRunner.registerMigrations(migrations);
   }
+  return migrationRunner;
+}
+
+/**
+ * Run database migrations
+ */
+function runMigrations(database: Database.Database): void {
+  try {
+    const runner = new MigrationRunner(database, {
+      logLevel: process.env.NODE_ENV === 'production' ? 'warn' : 'info',
+    });
+    runner.registerMigrations(migrations);
+
+    // Check for pending migrations
+    const status = runner.getStatus();
+    if (status.pendingCount > 0) {
+      console.info(`[db] Running ${status.pendingCount} pending migration(s)...`);
+      const results = runner.runPending();
+
+      const failed = results.filter((r) => !r.success);
+      if (failed.length > 0) {
+        console.error('[db] Some migrations failed:', failed.map((f) => `${f.version}: ${f.error}`));
+      } else {
+        console.info(`[db] All migrations completed successfully`);
+      }
+    }
+
+    // Store runner for later use
+    migrationRunner = runner;
+  } catch (error) {
+    console.error('[db] Migration error:', error);
+    // Don't throw - let the app continue with existing schema
+  }
+}
+
+/**
+ * Get migration status
+ */
+export function getMigrationStatus(): {
+  currentVersion: string | null;
+  pendingCount: number;
+  appliedCount: number;
+  pendingMigrations: Array<{ version: string; name: string }>;
+  appliedMigrations: Array<{ version: string; name: string; appliedAt: string }>;
+} {
+  const runner = getMigrationRunner();
+  return runner.getStatus();
+}
+
+/**
+ * Manually trigger pending migrations
+ */
+export function runPendingMigrations(): {
+  success: boolean;
+  results: Array<{
+    version: string;
+    name: string;
+    success: boolean;
+    error?: string;
+  }>;
+} {
+  const runner = getMigrationRunner();
+  const results = runner.runPending();
+  return {
+    success: results.every((r) => r.success),
+    results: results.map((r) => ({
+      version: r.version,
+      name: r.name,
+      success: r.success,
+      error: r.error,
+    })),
+  };
+}
+
+/**
+ * Rollback to a specific version
+ */
+export function rollbackMigration(targetVersion?: string): {
+  success: boolean;
+  results: Array<{
+    version: string;
+    name: string;
+    success: boolean;
+    error?: string;
+  }>;
+} {
+  const runner = getMigrationRunner();
+  const results = runner.rollback(targetVersion);
+  return {
+    success: results.every((r) => r.success),
+    results: results.map((r) => ({
+      version: r.version,
+      name: r.name,
+      success: r.success,
+      error: r.error,
+    })),
+  };
+}
+
+/**
+ * Get migration history
+ */
+export function getMigrationHistory(limit = 50) {
+  const runner = getMigrationRunner();
+  return runner.getHistory(limit);
+}
+
+/**
+ * Verify migration checksums
+ */
+export function verifyMigrationChecksums() {
+  const runner = getMigrationRunner();
+  return runner.verifyChecksums();
 }
 
 /**
@@ -158,6 +175,7 @@ export function closeDb(): void {
   if (db) {
     db.close();
     db = null;
+    migrationRunner = null;
   }
 }
 
@@ -229,6 +247,25 @@ export interface DbGeneratedPrompt {
   created_at: string;
 }
 
+export interface DbProjectMetadata {
+  project_id: string;
+  tags_json: string | null;
+  category: string | null;
+  is_favorite: number; // 0 or 1 in SQLite
+  view_count: number;
+  last_viewed_at: string | null;
+}
+
+export interface DbSession {
+  id: string;
+  started_at: string;
+  ended_at: string | null;
+  project_id: string | null;
+  actions_count: number;
+  generations_count: number;
+  duration_seconds: number | null;
+}
+
 // Project with full state
 export interface ProjectWithState extends DbProject {
   state: DbProjectState | null;
@@ -236,4 +273,5 @@ export interface ProjectWithState extends DbProject {
   poster?: DbProjectPoster | null;
   prototypes?: DbInteractivePrototype[];
   generatedPrompts?: DbGeneratedPrompt[];
+  metadata?: DbProjectMetadata | null;
 }

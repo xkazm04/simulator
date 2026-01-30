@@ -82,6 +82,22 @@ const MECHANICS_OPTIONS: MechanicsOption[] = [
     controls: ['WASD: Move', 'Mouse: Aim', 'Click: Shoot', 'Space: Dodge'],
     features: ['Projectile physics', 'Mouse aiming', 'Quick movement', 'Combat focus'],
   },
+  {
+    type: 'fps',
+    icon: <Target size={16} />,
+    label: 'FPS',
+    description: 'First-person shooter style',
+    controls: ['WASD: Move', 'Mouse: Look', 'Click: Shoot', 'E: Interact'],
+    features: ['WASD strafing', 'Mouse look', 'Cover system', 'Target practice'],
+  },
+  {
+    type: 'third-person',
+    icon: <Gamepad2 size={16} />,
+    label: 'Third-Person',
+    description: 'Third-person camera with character',
+    controls: ['WASD / Arrows: Move', 'Space: Jump', 'E: Action', 'Q: Secondary'],
+    features: ['Character controller', 'Camera follow', 'Smooth movement', 'Collectibles'],
+  },
 ];
 
 export function MechanicsSelector({

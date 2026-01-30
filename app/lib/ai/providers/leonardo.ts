@@ -20,10 +20,13 @@ import {
 import { getRateLimiter } from '../rate-limiter';
 import { getCostTracker } from '../cost-tracker';
 import { withRetry } from '../retry';
+import { truncatePromptForLeonardo, truncateNegativePrompt } from '../promptTruncation';
 
 // Leonardo model constants
 const LUCIDE_ORIGIN_MODEL_ID = '7b592283-e8a7-4c5a-9ba6-d18c31f258b9';
 const LUCIDE_ORIGIN_STYLE_ID = '111dc692-d470-4eec-b791-3475abac4c46';
+// Leonardo Diffusion XL - recommended for canvas inpainting (Lucide Origin doesn't support it)
+const LEONARDO_DIFFUSION_XL_MODEL_ID = '1e60896f-3c26-4296-8ecc-53e2afecc132';
 const BASE_URL = 'https://cloud.leonardo.ai/api/rest/v1';
 const BASE_URL_V2 = 'https://cloud.leonardo.ai/api/rest/v2';
 const SEEDANCE_MODEL_ID = 'seedance-1.0-pro-fast';
@@ -42,6 +45,22 @@ export interface VideoGenerationRequest {
 export interface VideoGenerationResult {
   status: 'pending' | 'complete' | 'failed';
   videoUrl?: string;
+  error?: string;
+}
+
+// Canvas inpainting types
+export interface CanvasInpaintingRequest {
+  canvasInitId: string;
+  canvasMaskId: string;
+  prompt: string;
+  initStrength?: number;  // 0-1, default 0.15 (lower = more change)
+  width: number;
+  height: number;
+}
+
+export interface CanvasInpaintingResult {
+  status: 'pending' | 'complete' | 'failed';
+  imageUrl?: string;
   error?: string;
 }
 
@@ -457,6 +476,9 @@ export class LeonardoProvider implements AIProvider {
 
     const { initImageId, prompt, duration = 8 } = request;
 
+    // Apply smart truncation to video prompt
+    const truncatedPrompt = truncatePromptForLeonardo(prompt);
+
     // Seedance 1.0 video generation payload
     // Based on API docs: https://docs.leonardo.ai/docs/generate-with-seedance-1-0
     // Supported 16:9 dimensions for seedance-1.0-pro-fast:
@@ -467,7 +489,7 @@ export class LeonardoProvider implements AIProvider {
       model: SEEDANCE_MODEL_ID,
       public: false,
       parameters: {
-        prompt: prompt.slice(0, 1500), // Max 1500 chars
+        prompt: truncatedPrompt,
         guidances: {
           start_frame: [
             {
@@ -643,6 +665,343 @@ export class LeonardoProvider implements AIProvider {
     );
   }
 
+  // ============================================================================
+  // CANVAS INPAINTING
+  // ============================================================================
+
+  /**
+   * Upload both init image and mask for canvas inpainting
+   * Uses the dedicated /canvas-init-image endpoint which returns IDs
+   * that are recognized for canvas operations.
+   *
+   * Mask format: white = edit area, black = preserve area
+   */
+  async uploadCanvasImages(
+    initBuffer: Buffer,
+    maskBuffer: Buffer,
+    initExtension: string = 'jpg',
+    maskExtension: string = 'png'
+  ): Promise<{ initImageId: string; maskImageId: string }> {
+    if (!this.isAvailable()) {
+      throw new AIError(
+        'Leonardo API key not configured',
+        'PROVIDER_UNAVAILABLE',
+        'leonardo'
+      );
+    }
+
+    // Step 1: Get presigned URLs for both images via canvas-init-image endpoint
+    console.log('[Leonardo] Getting presigned URLs for canvas images...');
+    const initResponse = await fetch(`${BASE_URL}/canvas-init-image`, {
+      method: 'POST',
+      headers: this.headers,
+      body: JSON.stringify({
+        initExtension,
+        maskExtension,
+      }),
+    });
+
+    if (!initResponse.ok) {
+      const errorData = await initResponse.json().catch(() => ({}));
+      throw new AIError(
+        errorData.error || `Failed to get canvas upload URLs: ${initResponse.statusText}`,
+        this.mapHttpErrorCode(initResponse.status),
+        'leonardo',
+        initResponse.status
+      );
+    }
+
+    const data = await initResponse.json();
+    const canvasData = data.uploadCanvasInitImage;
+
+    // Note: API returns "masksImageId" (plural), not "maskImageId"
+    if (!canvasData?.initImageId || !canvasData?.masksImageId) {
+      throw new AIError(
+        `Invalid response from canvas-init-image endpoint: ${JSON.stringify(data).substring(0, 500)}`,
+        'GENERATION_FAILED',
+        'leonardo'
+      );
+    }
+
+    const {
+      initImageId,
+      initFields: initFieldsRaw,
+      initUrl,
+      masksImageId: maskImageId,
+      masksFields: maskFieldsRaw,
+      masksUrl: maskUrl,
+    } = canvasData;
+
+    console.log('[Leonardo] Got canvas image IDs - init:', initImageId, 'mask:', maskImageId);
+
+    // Parse fields
+    let initFields: Record<string, string>;
+    let maskFields: Record<string, string>;
+    try {
+      initFields = typeof initFieldsRaw === 'string' ? JSON.parse(initFieldsRaw) : initFieldsRaw;
+      maskFields = typeof maskFieldsRaw === 'string' ? JSON.parse(maskFieldsRaw) : maskFieldsRaw;
+    } catch (e) {
+      console.error('[Leonardo] Failed to parse canvas fields');
+      throw new AIError(
+        'Failed to parse upload fields from Leonardo API for canvas',
+        'GENERATION_FAILED',
+        'leonardo'
+      );
+    }
+
+    // Step 2: Upload init image to S3
+    console.log('[Leonardo] Uploading init image to S3...');
+    await this.uploadToS3(initUrl, initFields, initBuffer, initExtension, 'init');
+
+    // Step 3: Upload mask to S3
+    console.log('[Leonardo] Uploading mask to S3...');
+    await this.uploadToS3(maskUrl, maskFields, maskBuffer, maskExtension, 'mask');
+
+    console.log('[Leonardo] Canvas images uploaded successfully');
+    return { initImageId, maskImageId };
+  }
+
+  /**
+   * Helper to upload a file to S3 presigned URL
+   */
+  private async uploadToS3(
+    presignedUrl: string,
+    fields: Record<string, string>,
+    buffer: Buffer,
+    extension: string,
+    type: 'init' | 'mask'
+  ): Promise<void> {
+    const boundary = `----FormBoundary${Date.now()}${Math.random()}`;
+    const parts: Buffer[] = [];
+
+    for (const [fieldKey, value] of Object.entries(fields)) {
+      parts.push(Buffer.from(
+        `--${boundary}\r\n` +
+        `Content-Disposition: form-data; name="${fieldKey}"\r\n\r\n` +
+        `${value}\r\n`
+      ));
+    }
+
+    const mimeType = extension === 'png' ? 'image/png' : extension === 'webp' ? 'image/webp' : 'image/jpeg';
+    parts.push(Buffer.from(
+      `--${boundary}\r\n` +
+      `Content-Disposition: form-data; name="file"; filename="${type}.${extension}"\r\n` +
+      `Content-Type: ${mimeType}\r\n\r\n`
+    ));
+    parts.push(buffer);
+    parts.push(Buffer.from(`\r\n--${boundary}--\r\n`));
+
+    const bodyBuffer = Buffer.concat(parts);
+    console.log(`[Leonardo] Uploading ${type}, size:`, bodyBuffer.length, 'bytes');
+
+    const uploadResponse = await fetch(presignedUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': `multipart/form-data; boundary=${boundary}`,
+        'Content-Length': String(bodyBuffer.length),
+      },
+      body: bodyBuffer,
+    });
+
+    if (!uploadResponse.ok && uploadResponse.status !== 204) {
+      const errorText = await uploadResponse.text().catch(() => 'Unknown error');
+      console.error(`[Leonardo] ${type} S3 upload error:`, errorText);
+      throw new AIError(
+        `Failed to upload ${type} to S3: ${uploadResponse.statusText} - ${errorText}`,
+        'GENERATION_FAILED',
+        'leonardo',
+        uploadResponse.status
+      );
+    }
+  }
+
+  /**
+   * @deprecated Use uploadCanvasImages instead for canvas inpainting
+   * Upload a mask image for inpainting using the standard init-image endpoint.
+   * Note: This creates IDs that may not work with canvas operations.
+   */
+  async uploadMaskImage(maskBuffer: Buffer, extension: string = 'png'): Promise<string> {
+    if (!this.isAvailable()) {
+      throw new AIError(
+        'Leonardo API key not configured',
+        'PROVIDER_UNAVAILABLE',
+        'leonardo'
+      );
+    }
+
+    // Step 1: Get presigned URL (same endpoint as init-image)
+    const initResponse = await fetch(`${BASE_URL}/init-image`, {
+      method: 'POST',
+      headers: this.headers,
+      body: JSON.stringify({ extension }),
+    });
+
+    if (!initResponse.ok) {
+      const errorData = await initResponse.json().catch(() => ({}));
+      throw new AIError(
+        errorData.error || `Failed to get mask upload URL: ${initResponse.statusText}`,
+        this.mapHttpErrorCode(initResponse.status),
+        'leonardo',
+        initResponse.status
+      );
+    }
+
+    const initData = await initResponse.json();
+    const { uploadInitImage } = initData;
+
+    if (!uploadInitImage?.id || !uploadInitImage?.url || !uploadInitImage?.fields) {
+      throw new AIError(
+        `Invalid response from init-image endpoint for mask: ${JSON.stringify(initData)}`,
+        'GENERATION_FAILED',
+        'leonardo'
+      );
+    }
+
+    const { id: imageId, url: presignedUrl, fields: fieldsRaw } = uploadInitImage;
+    console.log('[Leonardo] Got presigned URL for mask ID:', imageId);
+
+    // Parse fields
+    let fields: Record<string, string>;
+    try {
+      fields = typeof fieldsRaw === 'string' ? JSON.parse(fieldsRaw) : fieldsRaw;
+    } catch (e) {
+      console.error('[Leonardo] Failed to parse mask fields:', fieldsRaw);
+      throw new AIError(
+        'Failed to parse upload fields from Leonardo API for mask',
+        'GENERATION_FAILED',
+        'leonardo'
+      );
+    }
+
+    // Step 2: Upload mask to S3
+    const boundary = `----FormBoundary${Date.now()}`;
+    const parts: Buffer[] = [];
+
+    for (const [fieldKey, value] of Object.entries(fields)) {
+      parts.push(Buffer.from(
+        `--${boundary}\r\n` +
+        `Content-Disposition: form-data; name="${fieldKey}"\r\n\r\n` +
+        `${value}\r\n`
+      ));
+    }
+
+    const mimeType = extension === 'png' ? 'image/png' : extension === 'webp' ? 'image/webp' : 'image/jpeg';
+    parts.push(Buffer.from(
+      `--${boundary}\r\n` +
+      `Content-Disposition: form-data; name="file"; filename="mask.${extension}"\r\n` +
+      `Content-Type: ${mimeType}\r\n\r\n`
+    ));
+    parts.push(maskBuffer);
+    parts.push(Buffer.from(`\r\n--${boundary}--\r\n`));
+
+    const bodyBuffer = Buffer.concat(parts);
+    console.log('[Leonardo] Uploading mask, size:', bodyBuffer.length, 'bytes');
+
+    const uploadResponse = await fetch(presignedUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': `multipart/form-data; boundary=${boundary}`,
+        'Content-Length': String(bodyBuffer.length),
+      },
+      body: bodyBuffer,
+    });
+
+    if (!uploadResponse.ok && uploadResponse.status !== 204) {
+      const errorText = await uploadResponse.text().catch(() => 'Unknown error');
+      console.error('[Leonardo] Mask S3 upload error:', errorText);
+      throw new AIError(
+        `Failed to upload mask to S3: ${uploadResponse.statusText} - ${errorText}`,
+        'GENERATION_FAILED',
+        'leonardo',
+        uploadResponse.status
+      );
+    }
+
+    console.log('[Leonardo] Mask uploaded successfully, ID:', imageId);
+    return imageId;
+  }
+
+  /**
+   * Start canvas inpainting generation
+   * Uses canvasRequest mode with init image and mask
+   */
+  async startCanvasInpainting(request: CanvasInpaintingRequest): Promise<{ generationId: string }> {
+    const rateLimiter = getRateLimiter();
+
+    if (!this.isAvailable()) {
+      throw new AIError(
+        'Leonardo API key not configured',
+        'PROVIDER_UNAVAILABLE',
+        'leonardo'
+      );
+    }
+
+    // Check rate limit
+    if (!rateLimiter.tryAcquire('leonardo')) {
+      const status = rateLimiter.getStatus('leonardo');
+      throw new AIError(
+        'Rate limit exceeded for Leonardo API',
+        'RATE_LIMITED',
+        'leonardo',
+        429,
+        true,
+        status.resetAt - Date.now()
+      );
+    }
+
+    const { canvasInitId, canvasMaskId, prompt, initStrength = 0.15, width, height } = request;
+
+    // Canvas inpainting payload
+    // Note: Must use Leonardo Diffusion XL for inpainting - Lucide Origin doesn't support it
+    const payload = {
+      prompt,
+      modelId: LEONARDO_DIFFUSION_XL_MODEL_ID,
+      canvasRequest: true,
+      canvasRequestType: 'INPAINT',
+      canvasInitId,
+      canvasMaskId,
+      init_strength: initStrength,
+      width,
+      height,
+      num_images: 1,
+    };
+
+    console.log('[Leonardo] Canvas inpainting payload:', JSON.stringify(payload, null, 2));
+
+    const response = await fetch(`${BASE_URL}/generations`, {
+      method: 'POST',
+      headers: this.headers,
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      console.error('[Leonardo] Canvas inpainting error:', JSON.stringify(errorData, null, 2));
+      throw new AIError(
+        errorData.error || errorData.message || `Canvas inpainting failed: ${response.statusText}`,
+        this.mapHttpErrorCode(response.status),
+        'leonardo',
+        response.status,
+        response.status === 429 || response.status >= 500
+      );
+    }
+
+    const data = await response.json();
+    const generationId = data.sdGenerationJob?.generationId;
+
+    if (!generationId) {
+      console.error('[Leonardo] Could not extract generationId from inpainting response:', data);
+      throw new AIError(
+        `Failed to get generation ID from inpainting API. Response: ${JSON.stringify(data)}`,
+        'GENERATION_FAILED',
+        'leonardo'
+      );
+    }
+
+    console.log('[Leonardo] Canvas inpainting started, ID:', generationId);
+    return { generationId };
+  }
+
   /**
    * Normalize dimensions to Leonardo requirements
    */
@@ -663,15 +1022,21 @@ export class LeonardoProvider implements AIProvider {
     height: number,
     numImages: number
   ): Promise<string> {
+    // Apply truncation to prompts before sending to API
+    const truncatedPrompt = truncatePromptForLeonardo(prompt);
+    const truncatedNegative = negativePrompt
+      ? truncateNegativePrompt(negativePrompt)
+      : undefined;
+
     const payload = {
       alchemy: false,
       height,
       width,
       modelId: this.modelId,
       styleUUID: this.styleId,
-      prompt,
+      prompt: truncatedPrompt,
       num_images: Math.min(Math.max(numImages, 1), 4),
-      ...(negativePrompt && { negativePrompt }),
+      ...(truncatedNegative && { negativePrompt: truncatedNegative }),
     };
 
     const response = await fetch(`${BASE_URL}/generations`, {
@@ -842,4 +1207,57 @@ export async function checkVideoGenerationStatus(
 ): Promise<VideoGenerationResult> {
   const provider = getLeonardoProvider();
   return provider.checkVideoGeneration(generationId);
+}
+
+/**
+ * Convenience function to upload both init and mask images for canvas inpainting
+ * Uses the dedicated /canvas-init-image endpoint
+ */
+export async function uploadCanvasImagesForInpainting(
+  initBuffer: Buffer,
+  maskBuffer: Buffer,
+  initExtension?: string,
+  maskExtension?: string
+): Promise<{ initImageId: string; maskImageId: string }> {
+  const provider = getLeonardoProvider();
+  return provider.uploadCanvasImages(initBuffer, maskBuffer, initExtension, maskExtension);
+}
+
+/**
+ * @deprecated Use uploadCanvasImagesForInpainting instead
+ * Convenience function to upload a mask image for inpainting
+ */
+export async function uploadMaskForInpainting(
+  maskBuffer: Buffer,
+  extension?: string
+): Promise<string> {
+  const provider = getLeonardoProvider();
+  return provider.uploadMaskImage(maskBuffer, extension);
+}
+
+/**
+ * Convenience function to start canvas inpainting
+ */
+export async function startInpaintingWithLeonardo(
+  request: CanvasInpaintingRequest
+): Promise<string> {
+  const provider = getLeonardoProvider();
+  const response = await provider.startCanvasInpainting(request);
+  return response.generationId;
+}
+
+/**
+ * Convenience function to check inpainting generation status
+ * Reuses the standard generation check endpoint
+ */
+export async function checkInpaintingGenerationStatus(
+  generationId: string
+): Promise<CanvasInpaintingResult> {
+  const provider = getLeonardoProvider();
+  const result = await provider.checkGeneration(generationId);
+  return {
+    status: result.status,
+    imageUrl: result.images?.[0]?.url,
+    error: result.error,
+  };
 }

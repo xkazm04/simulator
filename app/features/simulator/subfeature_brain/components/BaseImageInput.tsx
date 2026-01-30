@@ -11,7 +11,7 @@
 
 import React, { useRef, useState, useCallback, useEffect } from 'react';
 import Image from 'next/image';
-import { Upload, X, ImageIcon, Loader2, Sparkles, AlertCircle } from 'lucide-react';
+import { Upload, X, ImageIcon, Loader2, Sparkles, AlertCircle, Undo2 } from 'lucide-react';
 import { stateClasses, semanticColors } from '../../lib/semanticColors';
 
 // File validation constants
@@ -28,6 +28,10 @@ interface BaseImageInputProps {
   isParsingImage?: boolean;
   parseError?: string | null;
   placeholder?: string;
+  /** Whether undo is available for the last parse */
+  canUndoParse?: boolean;
+  /** Callback to undo the last parse */
+  onUndoParse?: () => void;
 }
 
 export function BaseImageInput({
@@ -39,6 +43,8 @@ export function BaseImageInput({
   isParsingImage = false,
   parseError = null,
   placeholder = 'e.g., "RPG game like Baldur\'s Gate 3", "Anime film like Your Name"',
+  canUndoParse = false,
+  onUndoParse,
 }: BaseImageInputProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -165,6 +171,25 @@ export function BaseImageInput({
               data-testid="base-image-required-badge">
           required
         </span>
+        {/* Spacer */}
+        <div className="flex-1" />
+        {/* Undo Parse Button */}
+        {canUndoParse && onUndoParse && (
+          <button
+            onClick={onUndoParse}
+            disabled={isParsingImage}
+            className="flex items-center gap-1.5 px-2 py-1 rounded-md
+                      bg-amber-500/10 border border-amber-500/30
+                      text-amber-400 hover:bg-amber-500/20 hover:border-amber-500/50
+                      font-mono type-label uppercase tracking-wide
+                      transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Undo the last image parse and restore previous dimensions"
+            data-testid="undo-parse-btn"
+          >
+            <Undo2 size={12} />
+            <span>Undo Parse</span>
+          </button>
+        )}
       </div>
 
       {/* Content Row */}

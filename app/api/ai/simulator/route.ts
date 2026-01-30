@@ -49,11 +49,74 @@ async function callClaude(systemPrompt: string, userPrompt: string, feature: str
 }
 
 function parseJsonResponse(text: string): unknown {
-  const jsonMatch = text.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) {
-    throw new Error('Could not parse JSON from response');
+  // Log raw response for debugging
+  console.log('[parseJsonResponse] Raw response length:', text.length);
+
+  // Step 1: Strip markdown code blocks if present
+  let cleaned = text;
+
+  // Remove ```json ... ``` or ``` ... ``` blocks
+  const codeBlockMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (codeBlockMatch) {
+    cleaned = codeBlockMatch[1].trim();
   }
-  return JSON.parse(jsonMatch[0]);
+
+  // Step 2: Try to find JSON object with proper string handling
+  const startIdx = cleaned.indexOf('{');
+  if (startIdx === -1) {
+    console.error('[parseJsonResponse] No JSON found in:', cleaned.substring(0, 500));
+    throw new Error('Could not find JSON object in response');
+  }
+
+  // Find the matching closing brace, properly handling strings
+  let braceCount = 0;
+  let endIdx = -1;
+  let inString = false;
+  let escapeNext = false;
+
+  for (let i = startIdx; i < cleaned.length; i++) {
+    const char = cleaned[i];
+
+    if (escapeNext) {
+      escapeNext = false;
+      continue;
+    }
+
+    if (char === '\\' && inString) {
+      escapeNext = true;
+      continue;
+    }
+
+    if (char === '"') {
+      inString = !inString;
+      continue;
+    }
+
+    if (!inString) {
+      if (char === '{') braceCount++;
+      if (char === '}') braceCount--;
+      if (braceCount === 0) {
+        endIdx = i;
+        break;
+      }
+    }
+  }
+
+  if (endIdx === -1) {
+    console.error('[parseJsonResponse] Incomplete JSON. Brace count:', braceCount, 'Response preview:', cleaned.substring(0, 1000));
+    throw new Error(`Could not find complete JSON object in response (unclosed braces: ${braceCount})`);
+  }
+
+  const jsonStr = cleaned.substring(startIdx, endIdx + 1);
+
+  try {
+    return JSON.parse(jsonStr);
+  } catch (parseError) {
+    // Log the problematic JSON for debugging
+    console.error('[parseJsonResponse] Parse error:', parseError);
+    console.error('[parseJsonResponse] JSON string:', jsonStr.substring(0, 1000));
+    throw new Error(`Invalid JSON in response: ${parseError instanceof Error ? parseError.message : 'Unknown error'}`);
+  }
 }
 
 async function handleSmartBreakdown(body: SmartBreakdownRequest) {

@@ -27,6 +27,7 @@ import { getLeonardoProvider, LeonardoConfig } from './providers/leonardo';
 import { getCostTracker } from './cost-tracker';
 import { getAICache } from './cache';
 import { getRateLimiter } from './rate-limiter';
+import { getCircuitBreaker, getAllCircuitStatus, type CircuitStatus } from './circuit-breaker';
 
 // ============================================================================
 // CONFIGURATION
@@ -87,10 +88,17 @@ export class UnifiedAIProvider {
 
   /**
    * Check if a specific provider is available
+   * Considers both API key availability and circuit breaker state
    */
   isProviderAvailable(type: AIProviderType): boolean {
     const provider = this.providers.get(type);
-    return provider?.isAvailable() ?? false;
+    if (!provider?.isAvailable()) {
+      return false;
+    }
+
+    // Check circuit breaker - if circuit is open, provider is not available
+    const circuitBreaker = getCircuitBreaker(type);
+    return circuitBreaker.canExecute();
   }
 
   /**
@@ -174,10 +182,23 @@ export class UnifiedAIProvider {
       const provider = this.providers.get(providerType);
       if (!provider) continue;
 
+      const circuitBreaker = getCircuitBreaker(providerType);
+
+      // Double-check circuit breaker (state may have changed)
+      if (!circuitBreaker.canExecute()) {
+        console.warn(`Provider ${providerType} circuit is open, skipping...`);
+        continue;
+      }
+
       try {
         const response = await provider.execute(request);
+        // Record success with circuit breaker
+        circuitBreaker.recordSuccess();
         return response;
       } catch (error) {
+        // Record failure with circuit breaker
+        circuitBreaker.recordFailure();
+
         const aiError = error instanceof AIError
           ? error
           : new AIError(
@@ -189,7 +210,7 @@ export class UnifiedAIProvider {
         errors.push(aiError);
         console.warn(`Provider ${providerType} failed: ${aiError.message}, trying next...`);
 
-        // Don't try next provider for non-retryable errors
+        // Don't try next provider for non-retryable errors (except rate limit which may be transient)
         if (!aiError.retryable && aiError.code !== 'RATE_LIMITED') {
           break;
         }
@@ -236,6 +257,13 @@ export class UnifiedAIProvider {
       gemini: limiter.getStatus('gemini'),
       leonardo: limiter.getStatus('leonardo'),
     };
+  }
+
+  /**
+   * Get circuit breaker status for all providers
+   */
+  getCircuitBreakerStatus(): Record<AIProviderType, CircuitStatus> {
+    return getAllCircuitStatus();
   }
 
   /**

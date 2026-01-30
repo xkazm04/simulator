@@ -15,7 +15,7 @@
 import { PhysicsWorld, PhysicsBody, createPhysicsWorldForGameType } from './physicsWorld';
 import { InputManager, InputState, createInputManagerForGameType } from './inputManager';
 
-export type GameMechanicsType = 'platformer' | 'top-down' | 'puzzle' | 'shooter';
+export type GameMechanicsType = 'platformer' | 'top-down' | 'puzzle' | 'shooter' | 'fps' | 'third-person';
 
 export interface MechanicsConfig {
   /** Player movement speed */
@@ -457,6 +457,393 @@ const puzzleTemplate: MechanicsTemplate = {
 };
 
 // ============================================
+// FPS (First-Person Shooter) Template
+// ============================================
+
+const fpsTemplate: MechanicsTemplate = {
+  type: 'fps',
+  name: 'FPS',
+  description: 'First-person shooter with WASD movement and mouse look',
+  defaultConfig: {
+    moveSpeed: 5,
+    jumpForce: 0.01,
+    maxFallSpeed: 10,
+    doubleJump: false,
+    wallJump: false,
+    playerSize: { width: 30, height: 50 },
+    startPosition: { x: 400, y: 300 },
+    bounds: { width: 800, height: 600 },
+    debug: false,
+  },
+  initialize: (world: PhysicsWorld, config: MechanicsConfig) => {
+    // Create world boundaries
+    world.createBounds();
+
+    // Create player (represented as circle for FPS - camera position)
+    world.createCircle(
+      'player',
+      config.startPosition.x,
+      config.startPosition.y,
+      config.playerSize.width / 2,
+      'player'
+    );
+
+    // Create room layout with walls
+    world.createObstacle('wall_north', config.bounds.width / 2, 50, config.bounds.width - 100, 20, true);
+    world.createObstacle('wall_south', config.bounds.width / 2, config.bounds.height - 50, config.bounds.width - 100, 20, true);
+    world.createObstacle('wall_west', 50, config.bounds.height / 2, 20, config.bounds.height - 100, true);
+    world.createObstacle('wall_east', config.bounds.width - 50, config.bounds.height / 2, 20, config.bounds.height - 100, true);
+
+    // Create some cover objects
+    world.createObstacle('cover_1', 200, 200, 60, 40, true);
+    world.createObstacle('cover_2', 600, 400, 80, 40, true);
+    world.createObstacle('cover_3', 400, 300, 40, 80, true);
+
+    // Create target triggers
+    world.createTrigger('target_1', 700, 150, 30, 30);
+    world.createTrigger('target_2', 150, 450, 30, 30);
+    world.createTrigger('target_3', 500, 500, 30, 30);
+  },
+  update: (
+    world: PhysicsWorld,
+    input: InputState,
+    state: GameState,
+    deltaTime: number
+  ): GameState => {
+    const newState = { ...state };
+    const player = world.getBody('player');
+
+    if (!player || state.isPaused) {
+      return newState;
+    }
+
+    // FPS-style movement with strafing
+    const moveSpeed = 5;
+    const velocity = {
+      x: input.movement.x * moveSpeed,
+      y: input.movement.y * moveSpeed,
+    };
+
+    world.setVelocity('player', velocity);
+
+    // Update position in state
+    const position = world.getPosition('player');
+    if (position) {
+      newState.playerPosition = position;
+      newState.playerVelocity = velocity;
+    }
+
+    // Update time
+    newState.time += deltaTime / 1000;
+
+    return newState;
+  },
+  renderDebug: (ctx: CanvasRenderingContext2D, state: GameState, config: MechanicsConfig) => {
+    // Draw player hitbox (circle for FPS)
+    ctx.strokeStyle = '#00ff00';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(
+      state.playerPosition.x,
+      state.playerPosition.y,
+      config.playerSize.width / 2,
+      0,
+      Math.PI * 2
+    );
+    ctx.stroke();
+
+    // Draw crosshair
+    ctx.strokeStyle = '#ff0000';
+    ctx.lineWidth = 1;
+    const crosshairSize = 10;
+    const cx = config.bounds.width / 2;
+    const cy = config.bounds.height / 2;
+    ctx.beginPath();
+    ctx.moveTo(cx - crosshairSize, cy);
+    ctx.lineTo(cx + crosshairSize, cy);
+    ctx.moveTo(cx, cy - crosshairSize);
+    ctx.lineTo(cx, cy + crosshairSize);
+    ctx.stroke();
+
+    // Draw debug info
+    ctx.fillStyle = '#00ff00';
+    ctx.font = '12px monospace';
+    ctx.fillText(`Position: (${state.playerPosition.x.toFixed(0)}, ${state.playerPosition.y.toFixed(0)})`, 10, 20);
+    ctx.fillText(`Score: ${state.score}`, 10, 35);
+    ctx.fillText(`Time: ${state.time.toFixed(1)}s`, 10, 50);
+  },
+};
+
+// ============================================
+// Third-Person Template
+// ============================================
+
+const thirdPersonTemplate: MechanicsTemplate = {
+  type: 'third-person',
+  name: 'Third-Person',
+  description: 'Third-person camera with character controller',
+  defaultConfig: {
+    moveSpeed: 4,
+    jumpForce: 0.012,
+    maxFallSpeed: 12,
+    doubleJump: false,
+    wallJump: false,
+    playerSize: { width: 35, height: 50 },
+    startPosition: { x: 400, y: 400 },
+    bounds: { width: 800, height: 600 },
+    debug: false,
+  },
+  initialize: (world: PhysicsWorld, config: MechanicsConfig) => {
+    // Create world boundaries
+    world.createBounds();
+
+    // Create player (capsule-like for third-person)
+    world.createPlayer(
+      'player',
+      config.startPosition.x,
+      config.startPosition.y,
+      config.playerSize.width,
+      config.playerSize.height,
+      { friction: 0.002 }
+    );
+
+    // Create ground
+    world.createPlatform(
+      'ground',
+      config.bounds.width / 2,
+      config.bounds.height - 30,
+      config.bounds.width - 60,
+      20
+    );
+
+    // Create terrain features
+    world.createPlatform('hill_1', 200, config.bounds.height - 80, 150, 20);
+    world.createPlatform('hill_2', 450, config.bounds.height - 120, 120, 20);
+    world.createPlatform('hill_3', 650, config.bounds.height - 160, 100, 20);
+
+    // Create obstacles
+    world.createObstacle('rock_1', 300, config.bounds.height - 60, 40, 40, true);
+    world.createObstacle('tree_1', 550, config.bounds.height - 80, 20, 60, true);
+
+    // Create collectibles
+    world.createTrigger('coin_1', 200, config.bounds.height - 130, 20, 20);
+    world.createTrigger('coin_2', 450, config.bounds.height - 170, 20, 20);
+    world.createTrigger('coin_3', 650, config.bounds.height - 210, 20, 20);
+  },
+  update: (
+    world: PhysicsWorld,
+    input: InputState,
+    state: GameState,
+    deltaTime: number
+  ): GameState => {
+    const newState = { ...state };
+    const player = world.getBody('player');
+
+    if (!player || state.isPaused) {
+      return newState;
+    }
+
+    // Get current velocity
+    const velocity = world.getVelocity('player');
+    if (!velocity) return newState;
+
+    let newVelX = velocity.x;
+    let newVelY = velocity.y;
+
+    // Check grounded state
+    newState.isGrounded = world.isGrounded('player');
+
+    // Horizontal movement with acceleration/deceleration
+    const moveSpeed = 4;
+    const acceleration = 0.8;
+    const deceleration = 0.85;
+
+    if (input.movement.x !== 0) {
+      newVelX += input.movement.x * acceleration;
+      // Clamp to max speed
+      if (Math.abs(newVelX) > moveSpeed) {
+        newVelX = Math.sign(newVelX) * moveSpeed;
+      }
+    } else {
+      // Deceleration
+      newVelX *= deceleration;
+      if (Math.abs(newVelX) < 0.1) newVelX = 0;
+    }
+
+    // Jump
+    if (input.justPressed.has('jump') && newState.isGrounded) {
+      newVelY = -10;
+    }
+
+    // Clamp fall speed
+    if (newVelY > 12) {
+      newVelY = 12;
+    }
+
+    world.setVelocity('player', { x: newVelX, y: newVelY });
+
+    // Update position in state
+    const position = world.getPosition('player');
+    if (position) {
+      newState.playerPosition = position;
+      newState.playerVelocity = { x: newVelX, y: newVelY };
+    }
+
+    // Update time
+    newState.time += deltaTime / 1000;
+
+    return newState;
+  },
+  renderDebug: (ctx: CanvasRenderingContext2D, state: GameState, config: MechanicsConfig) => {
+    // Draw player hitbox (capsule approximation)
+    ctx.strokeStyle = '#00ff00';
+    ctx.lineWidth = 2;
+
+    const x = state.playerPosition.x;
+    const y = state.playerPosition.y;
+    const w = config.playerSize.width;
+    const h = config.playerSize.height;
+    const radius = w / 2;
+
+    // Draw capsule shape
+    ctx.beginPath();
+    // Top arc
+    ctx.arc(x, y - h / 2 + radius, radius, Math.PI, 0);
+    // Right side
+    ctx.lineTo(x + radius, y + h / 2 - radius);
+    // Bottom arc
+    ctx.arc(x, y + h / 2 - radius, radius, 0, Math.PI);
+    // Left side
+    ctx.lineTo(x - radius, y - h / 2 + radius);
+    ctx.closePath();
+    ctx.stroke();
+
+    // Draw facing direction indicator
+    ctx.fillStyle = '#00ffff';
+    ctx.beginPath();
+    ctx.arc(x, y - h / 2 + radius / 2, 4, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Draw debug info
+    ctx.fillStyle = '#00ff00';
+    ctx.font = '12px monospace';
+    ctx.fillText(`Grounded: ${state.isGrounded}`, 10, 20);
+    ctx.fillText(`Velocity: (${state.playerVelocity.x.toFixed(1)}, ${state.playerVelocity.y.toFixed(1)})`, 10, 35);
+    ctx.fillText(`Score: ${state.score}`, 10, 50);
+  },
+};
+
+// ============================================
+// Shooter Template (Enhanced)
+// ============================================
+
+const shooterTemplate: MechanicsTemplate = {
+  type: 'shooter',
+  name: 'Shooter',
+  description: 'Twin-stick style shooter with projectile combat',
+  defaultConfig: {
+    moveSpeed: 4.5,
+    jumpForce: 0,
+    maxFallSpeed: 0,
+    doubleJump: false,
+    wallJump: false,
+    playerSize: { width: 28, height: 28 },
+    startPosition: { x: 400, y: 300 },
+    bounds: { width: 800, height: 600 },
+    debug: false,
+  },
+  initialize: (world: PhysicsWorld, config: MechanicsConfig) => {
+    // Create world boundaries
+    world.createBounds();
+
+    // Create player
+    world.createCircle(
+      'player',
+      config.startPosition.x,
+      config.startPosition.y,
+      config.playerSize.width / 2,
+      'player'
+    );
+
+    // Create arena layout
+    world.createObstacle('wall_1', 200, 150, 100, 20, true);
+    world.createObstacle('wall_2', 600, 150, 100, 20, true);
+    world.createObstacle('wall_3', 200, 450, 100, 20, true);
+    world.createObstacle('wall_4', 600, 450, 100, 20, true);
+    world.createObstacle('pillar', 400, 300, 40, 40, true);
+
+    // Create enemies (as triggers for demo)
+    world.createTrigger('enemy_1', 150, 150, 25, 25);
+    world.createTrigger('enemy_2', 650, 150, 25, 25);
+    world.createTrigger('enemy_3', 150, 450, 25, 25);
+    world.createTrigger('enemy_4', 650, 450, 25, 25);
+  },
+  update: (
+    world: PhysicsWorld,
+    input: InputState,
+    state: GameState,
+    deltaTime: number
+  ): GameState => {
+    const newState = { ...state };
+    const player = world.getBody('player');
+
+    if (!player || state.isPaused) {
+      return newState;
+    }
+
+    // Twin-stick movement
+    const moveSpeed = 4.5;
+    const velocity = {
+      x: input.movement.x * moveSpeed,
+      y: input.movement.y * moveSpeed,
+    };
+
+    world.setVelocity('player', velocity);
+
+    // Update position in state
+    const position = world.getPosition('player');
+    if (position) {
+      newState.playerPosition = position;
+      newState.playerVelocity = velocity;
+    }
+
+    // Update time
+    newState.time += deltaTime / 1000;
+
+    return newState;
+  },
+  renderDebug: (ctx: CanvasRenderingContext2D, state: GameState, config: MechanicsConfig) => {
+    // Draw player
+    ctx.strokeStyle = '#00ff00';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(
+      state.playerPosition.x,
+      state.playerPosition.y,
+      config.playerSize.width / 2,
+      0,
+      Math.PI * 2
+    );
+    ctx.stroke();
+
+    // Draw aiming line
+    ctx.strokeStyle = '#ff0000';
+    ctx.setLineDash([5, 5]);
+    ctx.beginPath();
+    ctx.moveTo(state.playerPosition.x, state.playerPosition.y);
+    ctx.lineTo(state.playerPosition.x + 50, state.playerPosition.y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Draw debug info
+    ctx.fillStyle = '#00ff00';
+    ctx.font = '12px monospace';
+    ctx.fillText(`Position: (${state.playerPosition.x.toFixed(0)}, ${state.playerPosition.y.toFixed(0)})`, 10, 20);
+    ctx.fillText(`Score: ${state.score}`, 10, 35);
+  },
+};
+
+// ============================================
 // Template Registry
 // ============================================
 
@@ -464,7 +851,9 @@ export const MECHANICS_TEMPLATES: Record<GameMechanicsType, MechanicsTemplate> =
   platformer: platformerTemplate,
   'top-down': topDownTemplate,
   puzzle: puzzleTemplate,
-  shooter: topDownTemplate, // Use top-down as base for shooter
+  shooter: shooterTemplate,
+  fps: fpsTemplate,
+  'third-person': thirdPersonTemplate,
 };
 
 /**

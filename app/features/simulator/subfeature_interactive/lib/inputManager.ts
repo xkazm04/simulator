@@ -108,6 +108,244 @@ const DEFAULT_KEY_BINDINGS: KeyBinding[] = [
 ];
 
 /**
+ * Input scheme preset - a complete control configuration
+ */
+export interface InputSchemePreset {
+  id: string;
+  name: string;
+  description: string;
+  bindings: KeyBinding[];
+  gameTypes: Array<'platformer' | 'top-down' | 'puzzle' | 'shooter' | 'fps' | 'third-person'>;
+}
+
+/**
+ * Predefined input scheme presets for common control layouts
+ */
+export const INPUT_SCHEME_PRESETS: InputSchemePreset[] = [
+  {
+    id: 'wasd',
+    name: 'WASD Standard',
+    description: 'Classic WASD movement with arrow key alternatives',
+    bindings: DEFAULT_KEY_BINDINGS,
+    gameTypes: ['platformer', 'top-down', 'puzzle', 'shooter', 'fps', 'third-person'],
+  },
+  {
+    id: 'arrows',
+    name: 'Arrow Keys Only',
+    description: 'Arrow keys for movement, Z/X for actions',
+    bindings: [
+      { action: 'moveLeft', keys: ['ArrowLeft'] },
+      { action: 'moveRight', keys: ['ArrowRight'] },
+      { action: 'moveUp', keys: ['ArrowUp'] },
+      { action: 'moveDown', keys: ['ArrowDown'] },
+      { action: 'jump', keys: ['KeyZ', 'ArrowUp'] },
+      { action: 'action', keys: ['KeyX', 'KeyZ'] },
+      { action: 'secondary', keys: ['KeyC'] },
+      { action: 'pause', keys: ['Escape', 'Enter'] },
+      { action: 'reset', keys: ['KeyR'] },
+    ],
+    gameTypes: ['platformer', 'puzzle'],
+  },
+  {
+    id: 'esdf',
+    name: 'ESDF Layout',
+    description: 'ESDF movement - gives more keys on the left',
+    bindings: [
+      { action: 'moveLeft', keys: ['KeyS'] },
+      { action: 'moveRight', keys: ['KeyF'] },
+      { action: 'moveUp', keys: ['KeyE'] },
+      { action: 'moveDown', keys: ['KeyD'] },
+      { action: 'jump', keys: ['Space', 'KeyE'] },
+      { action: 'action', keys: ['KeyA', 'KeyG'] },
+      { action: 'secondary', keys: ['KeyQ', 'KeyW'] },
+      { action: 'pause', keys: ['Escape'] },
+      { action: 'reset', keys: ['KeyR'] },
+    ],
+    gameTypes: ['fps', 'third-person', 'shooter'],
+  },
+  {
+    id: 'vim',
+    name: 'Vim-style',
+    description: 'HJKL navigation for keyboard enthusiasts',
+    bindings: [
+      { action: 'moveLeft', keys: ['KeyH'] },
+      { action: 'moveRight', keys: ['KeyL'] },
+      { action: 'moveUp', keys: ['KeyK'] },
+      { action: 'moveDown', keys: ['KeyJ'] },
+      { action: 'jump', keys: ['Space', 'KeyK'] },
+      { action: 'action', keys: ['KeyI', 'Enter'] },
+      { action: 'secondary', keys: ['KeyU'] },
+      { action: 'pause', keys: ['Escape'] },
+      { action: 'reset', keys: ['KeyR'] },
+    ],
+    gameTypes: ['top-down', 'puzzle'],
+  },
+  {
+    id: 'gamepad-kb',
+    name: 'Gamepad Layout',
+    description: 'Mimics controller layout on keyboard',
+    bindings: [
+      { action: 'moveLeft', keys: ['KeyA', 'ArrowLeft'] },
+      { action: 'moveRight', keys: ['KeyD', 'ArrowRight'] },
+      { action: 'moveUp', keys: ['KeyW', 'ArrowUp'] },
+      { action: 'moveDown', keys: ['KeyS', 'ArrowDown'] },
+      { action: 'jump', keys: ['KeyK', 'Space'] },      // A button
+      { action: 'action', keys: ['KeyL'] },              // B button
+      { action: 'secondary', keys: ['KeyJ'] },           // X button
+      { action: 'pause', keys: ['Enter', 'Escape'] },    // Start
+      { action: 'reset', keys: ['Backspace'] },          // Select
+    ],
+    gameTypes: ['platformer', 'third-person', 'shooter'],
+  },
+];
+
+/**
+ * Get a preset by ID
+ */
+export function getInputSchemePreset(id: string): InputSchemePreset | undefined {
+  return INPUT_SCHEME_PRESETS.find(preset => preset.id === id);
+}
+
+/**
+ * Get presets suitable for a game type
+ */
+export function getPresetsForGameType(gameType: string): InputSchemePreset[] {
+  return INPUT_SCHEME_PRESETS.filter(preset =>
+    preset.gameTypes.includes(gameType as InputSchemePreset['gameTypes'][number])
+  );
+}
+
+/**
+ * Human-readable key name mapping
+ */
+export const KEY_DISPLAY_NAMES: Record<string, string> = {
+  ArrowUp: '↑',
+  ArrowDown: '↓',
+  ArrowLeft: '←',
+  ArrowRight: '→',
+  Space: 'Space',
+  Enter: 'Enter',
+  Escape: 'Esc',
+  ShiftLeft: 'Shift',
+  ShiftRight: 'Shift',
+  ControlLeft: 'Ctrl',
+  ControlRight: 'Ctrl',
+  AltLeft: 'Alt',
+  AltRight: 'Alt',
+  Backspace: 'Backspace',
+  Tab: 'Tab',
+  KeyA: 'A',
+  KeyB: 'B',
+  KeyC: 'C',
+  KeyD: 'D',
+  KeyE: 'E',
+  KeyF: 'F',
+  KeyG: 'G',
+  KeyH: 'H',
+  KeyI: 'I',
+  KeyJ: 'J',
+  KeyK: 'K',
+  KeyL: 'L',
+  KeyM: 'M',
+  KeyN: 'N',
+  KeyO: 'O',
+  KeyP: 'P',
+  KeyQ: 'Q',
+  KeyR: 'R',
+  KeyS: 'S',
+  KeyT: 'T',
+  KeyU: 'U',
+  KeyV: 'V',
+  KeyW: 'W',
+  KeyX: 'X',
+  KeyY: 'Y',
+  KeyZ: 'Z',
+  Digit0: '0',
+  Digit1: '1',
+  Digit2: '2',
+  Digit3: '3',
+  Digit4: '4',
+  Digit5: '5',
+  Digit6: '6',
+  Digit7: '7',
+  Digit8: '8',
+  Digit9: '9',
+};
+
+/**
+ * Get human-readable display name for a key code
+ */
+export function getKeyDisplayName(keyCode: string): string {
+  return KEY_DISPLAY_NAMES[keyCode] || keyCode.replace('Key', '').replace('Digit', '');
+}
+
+/**
+ * Action display names for UI
+ */
+export const ACTION_DISPLAY_NAMES: Record<InputAction, string> = {
+  moveLeft: 'Move Left',
+  moveRight: 'Move Right',
+  moveUp: 'Move Up',
+  moveDown: 'Move Down',
+  jump: 'Jump',
+  action: 'Action',
+  secondary: 'Secondary',
+  pause: 'Pause',
+  reset: 'Reset',
+};
+
+/**
+ * Serialize bindings to JSON for storage
+ */
+export function serializeBindings(bindings: KeyBinding[]): string {
+  return JSON.stringify(bindings);
+}
+
+/**
+ * Deserialize bindings from JSON storage
+ */
+export function deserializeBindings(json: string): KeyBinding[] | null {
+  try {
+    const parsed = JSON.parse(json);
+    if (Array.isArray(parsed) && parsed.every(b =>
+      typeof b.action === 'string' && Array.isArray(b.keys)
+    )) {
+      return parsed as KeyBinding[];
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Local storage key for saved bindings
+ */
+const BINDINGS_STORAGE_KEY = 'simulator_input_bindings';
+
+/**
+ * Save bindings to localStorage
+ */
+export function saveBindingsToStorage(bindings: KeyBinding[]): void {
+  if (typeof window !== 'undefined' && window.localStorage) {
+    localStorage.setItem(BINDINGS_STORAGE_KEY, serializeBindings(bindings));
+  }
+}
+
+/**
+ * Load bindings from localStorage
+ */
+export function loadBindingsFromStorage(): KeyBinding[] | null {
+  if (typeof window !== 'undefined' && window.localStorage) {
+    const saved = localStorage.getItem(BINDINGS_STORAGE_KEY);
+    if (saved) {
+      return deserializeBindings(saved);
+    }
+  }
+  return null;
+}
+
+/**
  * InputManager class - Handles all input sources uniformly
  */
 export class InputManager {
@@ -666,6 +904,136 @@ export class InputManager {
   }
 
   /**
+   * Get current key bindings as an array
+   */
+  getBindings(): KeyBinding[] {
+    const bindingsMap = new Map<InputAction, string[]>();
+
+    for (const [key, action] of this.keyBindings) {
+      if (!bindingsMap.has(action)) {
+        bindingsMap.set(action, []);
+      }
+      bindingsMap.get(action)!.push(key);
+    }
+
+    return Array.from(bindingsMap.entries()).map(([action, keys]) => ({
+      action,
+      keys,
+    }));
+  }
+
+  /**
+   * Remap a specific action to new keys
+   */
+  remapAction(action: InputAction, newKeys: string[]): void {
+    // Remove all existing bindings for this action
+    for (const [key, boundAction] of this.keyBindings) {
+      if (boundAction === action) {
+        this.keyBindings.delete(key);
+      }
+    }
+
+    // Add new bindings
+    for (const key of newKeys) {
+      this.keyBindings.set(key, action);
+    }
+  }
+
+  /**
+   * Add a single key to an action
+   */
+  addKeyToAction(key: string, action: InputAction): boolean {
+    // Check if key is already bound to another action
+    const existingAction = this.keyBindings.get(key);
+    if (existingAction && existingAction !== action) {
+      return false; // Key conflict
+    }
+
+    this.keyBindings.set(key, action);
+    return true;
+  }
+
+  /**
+   * Remove a single key from an action
+   */
+  removeKeyFromAction(key: string, action: InputAction): void {
+    if (this.keyBindings.get(key) === action) {
+      this.keyBindings.delete(key);
+    }
+  }
+
+  /**
+   * Check if a key is available (not bound)
+   */
+  isKeyAvailable(key: string): boolean {
+    return !this.keyBindings.has(key);
+  }
+
+  /**
+   * Get which action a key is bound to (if any)
+   */
+  getActionForKey(key: string): InputAction | null {
+    return this.keyBindings.get(key) || null;
+  }
+
+  /**
+   * Apply an input scheme preset
+   */
+  applyPreset(preset: InputSchemePreset): void {
+    this.setKeyBindings(preset.bindings);
+  }
+
+  /**
+   * Export bindings as JSON string
+   */
+  exportBindings(): string {
+    return serializeBindings(this.getBindings());
+  }
+
+  /**
+   * Import bindings from JSON string
+   */
+  importBindings(json: string): boolean {
+    const bindings = deserializeBindings(json);
+    if (bindings) {
+      this.setKeyBindings(bindings);
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Save current bindings to localStorage
+   */
+  saveBindings(): void {
+    saveBindingsToStorage(this.getBindings());
+  }
+
+  /**
+   * Load bindings from localStorage
+   */
+  loadBindings(): boolean {
+    const bindings = loadBindingsFromStorage();
+    if (bindings) {
+      this.setKeyBindings(bindings);
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Reset bindings to defaults for a game type
+   */
+  resetToDefaults(gameType?: 'platformer' | 'top-down' | 'puzzle' | 'shooter' | 'fps' | 'third-person'): void {
+    if (gameType) {
+      const bindings = getBindingsForGameType(gameType);
+      this.setKeyBindings(bindings);
+    } else {
+      this.setKeyBindings(DEFAULT_KEY_BINDINGS);
+    }
+  }
+
+  /**
    * Check if device supports touch
    */
   static isTouchDevice(): boolean {
@@ -681,52 +1049,86 @@ export function createInputManager(): InputManager {
 }
 
 /**
+ * Game type bindings registry
+ */
+const GAME_TYPE_BINDINGS: Record<string, KeyBinding[]> = {
+  platformer: [
+    { action: 'moveLeft', keys: ['ArrowLeft', 'KeyA'] },
+    { action: 'moveRight', keys: ['ArrowRight', 'KeyD'] },
+    { action: 'jump', keys: ['Space', 'ArrowUp', 'KeyW'] },
+    { action: 'action', keys: ['KeyE', 'ShiftLeft'] },
+    { action: 'pause', keys: ['Escape'] },
+    { action: 'reset', keys: ['KeyR'] },
+  ],
+  'top-down': [
+    { action: 'moveLeft', keys: ['ArrowLeft', 'KeyA'] },
+    { action: 'moveRight', keys: ['ArrowRight', 'KeyD'] },
+    { action: 'moveUp', keys: ['ArrowUp', 'KeyW'] },
+    { action: 'moveDown', keys: ['ArrowDown', 'KeyS'] },
+    { action: 'action', keys: ['Space', 'KeyE'] },
+    { action: 'secondary', keys: ['ShiftLeft', 'KeyQ'] },
+    { action: 'pause', keys: ['Escape'] },
+    { action: 'reset', keys: ['KeyR'] },
+  ],
+  puzzle: [
+    { action: 'moveLeft', keys: ['ArrowLeft', 'KeyA'] },
+    { action: 'moveRight', keys: ['ArrowRight', 'KeyD'] },
+    { action: 'moveUp', keys: ['ArrowUp', 'KeyW'] },
+    { action: 'moveDown', keys: ['ArrowDown', 'KeyS'] },
+    { action: 'action', keys: ['Space', 'KeyE', 'Enter'] },
+    { action: 'secondary', keys: ['KeyZ', 'Backspace'] }, // Undo
+    { action: 'pause', keys: ['Escape'] },
+    { action: 'reset', keys: ['KeyR'] },
+  ],
+  shooter: [
+    { action: 'moveLeft', keys: ['KeyA'] },
+    { action: 'moveRight', keys: ['KeyD'] },
+    { action: 'moveUp', keys: ['KeyW'] },
+    { action: 'moveDown', keys: ['KeyS'] },
+    { action: 'action', keys: ['Space'] }, // Shoot (also mouse)
+    { action: 'secondary', keys: ['KeyE', 'ShiftLeft'] }, // Special
+    { action: 'jump', keys: ['Space'] },
+    { action: 'pause', keys: ['Escape'] },
+    { action: 'reset', keys: ['KeyR'] },
+  ],
+  fps: [
+    { action: 'moveLeft', keys: ['KeyA'] },
+    { action: 'moveRight', keys: ['KeyD'] },
+    { action: 'moveUp', keys: ['KeyW'] },
+    { action: 'moveDown', keys: ['KeyS'] },
+    { action: 'action', keys: ['Space'] }, // Shoot
+    { action: 'secondary', keys: ['KeyE'] }, // Use/Interact
+    { action: 'jump', keys: ['Space'] },
+    { action: 'pause', keys: ['Escape'] },
+    { action: 'reset', keys: ['KeyR'] },
+  ],
+  'third-person': [
+    { action: 'moveLeft', keys: ['KeyA', 'ArrowLeft'] },
+    { action: 'moveRight', keys: ['KeyD', 'ArrowRight'] },
+    { action: 'moveUp', keys: ['KeyW', 'ArrowUp'] },
+    { action: 'moveDown', keys: ['KeyS', 'ArrowDown'] },
+    { action: 'jump', keys: ['Space'] },
+    { action: 'action', keys: ['KeyE', 'Enter'] },
+    { action: 'secondary', keys: ['KeyQ', 'ShiftLeft'] },
+    { action: 'pause', keys: ['Escape'] },
+    { action: 'reset', keys: ['KeyR'] },
+  ],
+};
+
+/**
+ * Get bindings for a specific game type
+ */
+export function getBindingsForGameType(
+  gameType: 'platformer' | 'top-down' | 'puzzle' | 'shooter' | 'fps' | 'third-person'
+): KeyBinding[] {
+  return GAME_TYPE_BINDINGS[gameType] || DEFAULT_KEY_BINDINGS;
+}
+
+/**
  * Create input manager for specific game type
  */
 export function createInputManagerForGameType(
-  gameType: 'platformer' | 'top-down' | 'puzzle' | 'shooter'
+  gameType: 'platformer' | 'top-down' | 'puzzle' | 'shooter' | 'fps' | 'third-person'
 ): InputManager {
-  const bindings: Record<string, KeyBinding[]> = {
-    platformer: [
-      { action: 'moveLeft', keys: ['ArrowLeft', 'KeyA'] },
-      { action: 'moveRight', keys: ['ArrowRight', 'KeyD'] },
-      { action: 'jump', keys: ['Space', 'ArrowUp', 'KeyW'] },
-      { action: 'action', keys: ['KeyE', 'ShiftLeft'] },
-      { action: 'pause', keys: ['Escape'] },
-      { action: 'reset', keys: ['KeyR'] },
-    ],
-    'top-down': [
-      { action: 'moveLeft', keys: ['ArrowLeft', 'KeyA'] },
-      { action: 'moveRight', keys: ['ArrowRight', 'KeyD'] },
-      { action: 'moveUp', keys: ['ArrowUp', 'KeyW'] },
-      { action: 'moveDown', keys: ['ArrowDown', 'KeyS'] },
-      { action: 'action', keys: ['Space', 'KeyE'] },
-      { action: 'secondary', keys: ['ShiftLeft', 'KeyQ'] },
-      { action: 'pause', keys: ['Escape'] },
-      { action: 'reset', keys: ['KeyR'] },
-    ],
-    puzzle: [
-      { action: 'moveLeft', keys: ['ArrowLeft', 'KeyA'] },
-      { action: 'moveRight', keys: ['ArrowRight', 'KeyD'] },
-      { action: 'moveUp', keys: ['ArrowUp', 'KeyW'] },
-      { action: 'moveDown', keys: ['ArrowDown', 'KeyS'] },
-      { action: 'action', keys: ['Space', 'KeyE', 'Enter'] },
-      { action: 'secondary', keys: ['KeyZ', 'Backspace'] }, // Undo
-      { action: 'pause', keys: ['Escape'] },
-      { action: 'reset', keys: ['KeyR'] },
-    ],
-    shooter: [
-      { action: 'moveLeft', keys: ['KeyA'] },
-      { action: 'moveRight', keys: ['KeyD'] },
-      { action: 'moveUp', keys: ['KeyW'] },
-      { action: 'moveDown', keys: ['KeyS'] },
-      { action: 'action', keys: ['Space'] }, // Shoot (also mouse)
-      { action: 'secondary', keys: ['KeyE', 'ShiftLeft'] }, // Special
-      { action: 'jump', keys: ['Space'] },
-      { action: 'pause', keys: ['Escape'] },
-      { action: 'reset', keys: ['KeyR'] },
-    ],
-  };
-
-  return new InputManager(bindings[gameType] || DEFAULT_KEY_BINDINGS);
+  return new InputManager(getBindingsForGameType(gameType));
 }

@@ -22,7 +22,7 @@ import {
   Settings,
   ChevronUp,
 } from 'lucide-react';
-import { GeneratedPrompt, GeneratedImage, DimensionPreset } from '../../types';
+import { GeneratedPrompt, GeneratedImage } from '../../types';
 import { MobilePromptCarousel } from '../mobile/MobilePromptCarousel';
 import { MobileDimensionSheet } from '../mobile/MobileDimensionSheet';
 import { Toast, useToast } from '@/app/components/ui';
@@ -32,7 +32,6 @@ import { useSimulatorContext } from '../../SimulatorContext';
 import { useBrainContext } from '../../subfeature_brain/BrainContext';
 import { useHapticFeedback, useProgressiveFeatures } from '../../hooks/useResponsive';
 import { semanticColors } from '../../lib/semanticColors';
-import { fadeIn, transitions } from '../../lib/motion';
 import { DEFAULT_DIMENSIONS } from '../../lib/defaultDimensions';
 
 export interface MobileLayoutProps {

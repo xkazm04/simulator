@@ -54,7 +54,7 @@ export interface CentralBrainProps {
   onSavePoster?: () => void;
   onCancelPosterGeneration?: () => void;
 
-  // Autoplay orchestrator props
+  // Autoplay orchestrator props (legacy single-mode)
   autoplay?: {
     isRunning: boolean;
     canStart: boolean;
@@ -68,6 +68,29 @@ export interface CentralBrainProps {
     onStart: (config: { targetSavedCount: number; maxIterations: number }) => void;
     onStop: () => void;
     onReset: () => void;
+  };
+
+  // Multi-phase autoplay props
+  multiPhaseAutoplay?: {
+    isRunning: boolean;
+    canStart: boolean;
+    canStartReason: string | null;
+    hasContent: boolean;
+    phase: string;
+    conceptProgress: { saved: number; target: number };
+    gameplayProgress: { saved: number; target: number };
+    posterSelected: boolean;
+    hudGenerated: number;
+    error?: string;
+    onStart: (config: import('../../types').ExtendedAutoplayConfig) => void;
+    onStop: () => void;
+    onReset: () => void;
+    // Event log for activity modal
+    eventLog?: {
+      textEvents: import('../../types').AutoplayLogEntry[];
+      imageEvents: import('../../types').AutoplayLogEntry[];
+      clearEvents: () => void;
+    };
   };
 }
 
@@ -83,6 +106,7 @@ function CentralBrainComponent({
   isGeneratingPoster,
   onGeneratePoster,
   autoplay,
+  multiPhaseAutoplay,
 }: CentralBrainProps) {
   // Get state and handlers from contexts
   const brain = useBrainContext();
@@ -198,6 +222,8 @@ function CentralBrainComponent({
           isGeneratingPoster={isGeneratingPoster}
           onGeneratePoster={onGeneratePoster}
           autoplay={autoplay}
+          multiPhaseAutoplay={multiPhaseAutoplay}
+          eventLog={multiPhaseAutoplay?.eventLog}
         />
       </div>
     </div>
@@ -236,6 +262,9 @@ function arePropsEqual(
 
   // Compare autoplay by reference
   if (prevProps.autoplay !== nextProps.autoplay) return false;
+
+  // Compare multiPhaseAutoplay by reference
+  if (prevProps.multiPhaseAutoplay !== nextProps.multiPhaseAutoplay) return false;
 
   return true;
 }

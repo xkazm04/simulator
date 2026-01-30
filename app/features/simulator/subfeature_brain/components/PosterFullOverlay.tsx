@@ -92,14 +92,15 @@ export function PosterFullOverlay({
     }
   }, [onUpload]);
 
-  // Handle save with animation
+  // Handle save with animation - expand selected poster first, then save
   const handleSave = useCallback(() => {
     if (selectedIndex === null) return;
     setShowSaveAnimation(true);
+    // Allow time for expansion animation before saving
     setTimeout(() => {
       onSave();
       setShowSaveAnimation(false);
-    }, 600);
+    }, 500);
   }, [selectedIndex, onSave]);
 
   // Determine what to show
@@ -118,7 +119,7 @@ export function PosterFullOverlay({
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.2 }}
-      className="absolute inset-0 z-20 bg-slate-950/95 backdrop-blur-md flex flex-col rounded-lg border border-white/10 shadow-floating overflow-hidden"
+      className="absolute inset-0 z-20 bg-surface-overlay backdrop-blur-md flex flex-col rounded-lg border border-slate-700 shadow-floating overflow-hidden"
     >
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800 shrink-0">
@@ -187,32 +188,39 @@ export function PosterFullOverlay({
             </div>
           </motion.div>
         ) : showGrid ? (
-          /* 2x2 Grid during generation */
-          <div className="w-full h-full flex flex-col">
-            <div className="flex-1 min-h-0 flex items-center justify-center">
-              <div className="grid grid-cols-2 gap-4 max-w-2xl w-full h-full max-h-full">
+          /* 2x2 Grid during generation - height-based sizing */
+          <div className="w-full h-full flex flex-col items-center justify-center">
+            {/* Grid sized by height: 2x2 grid of 2:3 items = overall 2:3 aspect ratio */}
+            <div
+              className="grid grid-cols-2 grid-rows-2 gap-3"
+              style={{ height: 'min(90%, 600px)', aspectRatio: '2/3' }}
+            >
+              <AnimatePresence mode="popLayout">
                 {posterGenerations.map((gen) => {
                   const isSelected = selectedIndex === gen.index;
-                  const isOther = selectedIndex !== null && !isSelected;
-                  const shouldFadeOut = showSaveAnimation && isOther;
                   const shouldExpand = showSaveAnimation && isSelected;
 
                   return (
                     <motion.div
                       key={gen.index}
-                      layout
+                      initial={{ opacity: 0, scale: 0.9 }}
                       animate={{
-                        opacity: shouldFadeOut ? 0 : 1,
-                        scale: shouldExpand ? 1.05 : 1,
+                        opacity: 1,
+                        scale: shouldExpand ? 2.05 : 1,
+                        zIndex: shouldExpand ? 50 : 1,
                       }}
-                      transition={{ duration: 0.4, ease: 'easeInOut' }}
-                      className={`relative aspect-[2/3] rounded-lg overflow-hidden border-2 transition-all duration-300 ${
+                      exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.15 } }}
+                      transition={{
+                        duration: shouldExpand ? 0.4 : 0.3,
+                        ease: [0.32, 0.72, 0, 1],
+                      }}
+                      className={`relative w-full h-full rounded-lg overflow-hidden border-2 transition-colors duration-200 ${
                         gen.status === 'complete'
                           ? isSelected
                             ? 'border-rose-500 shadow-lg shadow-rose-500/30 cursor-pointer'
                             : 'border-slate-700 hover:border-rose-500/50 cursor-pointer'
-                          : 'border-slate-700/50 bg-slate-900/50'
-                      } ${shouldFadeOut ? 'pointer-events-none' : ''}`}
+                          : 'border-slate-700/50 bg-surface-secondary'
+                      } ${showSaveAnimation && !isSelected ? 'pointer-events-none' : ''}`}
                       onClick={() => {
                         if (gen.status === 'complete' && !showSaveAnimation && !isSaving) {
                           onSelect(gen.index);
@@ -221,7 +229,7 @@ export function PosterFullOverlay({
                     >
                       {/* Loading state */}
                       {(gen.status === 'pending' || gen.status === 'generating') && (
-                        <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900/80">
+                        <div className="absolute inset-0 flex flex-col items-center justify-center bg-surface-secondary">
                           <Loader2 className="w-8 h-8 text-rose-400 animate-spin mb-2" />
                           <span className="font-mono text-xs text-slate-400">
                             {gen.status === 'pending' ? 'Queued...' : 'Generating...'}
@@ -231,7 +239,7 @@ export function PosterFullOverlay({
 
                       {/* Failed state */}
                       {gen.status === 'failed' && (
-                        <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900/80 p-4">
+                        <div className="absolute inset-0 flex flex-col items-center justify-center bg-surface-secondary p-4">
                           <X className="w-8 h-8 text-red-400 mb-2" />
                           <span className="font-mono text-xs text-red-400 text-center line-clamp-3">
                             {gen.error || 'Failed'}
@@ -282,17 +290,17 @@ export function PosterFullOverlay({
                     </motion.div>
                   );
                 })}
-              </div>
+              </AnimatePresence>
             </div>
 
-            {/* Save/Cancel buttons */}
+            {/* Save/Cancel buttons - centered below grid */}
             <AnimatePresence>
               {selectedIndex !== null && hasCompletePoster && allDone && !showSaveAnimation && (
                 <motion.div
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: 20 }}
-                  className="pt-4 flex justify-center gap-4 shrink-0"
+                  className="mt-6 flex justify-center gap-4 shrink-0"
                 >
                   <button
                     onClick={handleSave}
@@ -322,7 +330,7 @@ export function PosterFullOverlay({
               <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
-                className="pt-4 text-center shrink-0"
+                className="mt-6 text-center shrink-0"
               >
                 <p className="font-mono text-sm text-slate-500">
                   Click a poster to select it for saving
@@ -337,7 +345,7 @@ export function PosterFullOverlay({
             animate={{ opacity: 1, scale: 1 }}
             className="flex items-center justify-center h-full"
           >
-            <div className="relative h-full max-h-[70vh] aspect-[2/3] rounded-lg overflow-hidden border-2 border-rose-500/30 shadow-elevated shadow-rose-900/30">
+            <div className="relative h-full max-h-[70vh] aspect-[2/3] rounded-lg overflow-hidden border-2 border-rose-500/30 shadow-floating">
               <Image
                 src={poster.imageUrl}
                 alt="Project Poster"
@@ -360,7 +368,7 @@ export function PosterFullOverlay({
             animate={{ opacity: 1, scale: 1 }}
             className="flex flex-col items-center justify-center gap-6"
           >
-            <div className="p-6 rounded-full bg-slate-800/50 border border-slate-700/50">
+            <div className="p-6 rounded-full bg-surface-secondary border border-slate-700/50">
               <Film size={48} className="text-slate-600" />
             </div>
             <div className="text-center">

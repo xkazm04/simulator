@@ -1257,3 +1257,171 @@ export interface ImageEvaluation {
   /** What worked well (for preserving in next iteration) */
   strengths?: string[];
 }
+
+// ============================================
+// Multi-Phase Autoplay Types
+// ============================================
+
+/**
+ * ExtendedAutoplayConfig - Configuration for multi-phase autoplay
+ */
+export interface ExtendedAutoplayConfig {
+  /** Number of concept images to generate (1-4) */
+  conceptCount: number;
+  /** Number of gameplay images to generate (1-4) */
+  gameplayCount: number;
+  /** Whether to generate poster variations and auto-select best */
+  posterEnabled: boolean;
+  /** Whether to auto-generate HUD overlays for gameplay images */
+  hudEnabled: boolean;
+  /** Maximum iterations per image before moving to next (1-3) */
+  maxIterationsPerImage: number;
+  /** Optional starting prompt idea */
+  promptIdea?: string;
+}
+
+/**
+ * AutoplayPhase - Current phase of multi-phase autoplay
+ */
+export type AutoplayPhase =
+  | 'idle'
+  | 'concept'
+  | 'gameplay'
+  | 'poster'
+  | 'hud'
+  | 'complete'
+  | 'error';
+
+/**
+ * PhaseProgress - Progress tracking for a single phase
+ */
+export interface PhaseProgress {
+  /** Number of images saved in this phase */
+  saved: number;
+  /** Target number of images for this phase */
+  target: number;
+}
+
+/**
+ * MultiPhaseAutoplayState - Complete state for multi-phase autoplay
+ */
+export interface MultiPhaseAutoplayState {
+  /** Current phase of the multi-phase flow */
+  phase: AutoplayPhase;
+  /** Configuration for this autoplay session */
+  config: ExtendedAutoplayConfig;
+  /** Progress for concept phase */
+  conceptProgress: PhaseProgress;
+  /** Progress for gameplay phase */
+  gameplayProgress: PhaseProgress;
+  /** Whether poster has been auto-selected */
+  posterSelected: boolean;
+  /** Number of HUD overlays generated */
+  hudGenerated: number;
+  /** Error message if phase is 'error' */
+  error?: string;
+}
+
+/**
+ * MultiPhaseAutoplayAction - Actions for multi-phase autoplay reducer
+ */
+export type MultiPhaseAutoplayAction =
+  | { type: 'START'; config: ExtendedAutoplayConfig }
+  | { type: 'PHASE_COMPLETE'; phase: AutoplayPhase }
+  | { type: 'IMAGE_SAVED'; phase: 'concept' | 'gameplay' }
+  | { type: 'POSTER_SELECTED' }
+  | { type: 'HUD_GENERATED' }
+  | { type: 'ADVANCE_PHASE' }
+  | { type: 'ERROR'; error: string }
+  | { type: 'ABORT' }
+  | { type: 'RESET' };
+
+/**
+ * PosterSelectionCriteria - Criteria for LLM poster selection
+ */
+export interface PosterSelectionCriteria {
+  /** Project name for context */
+  projectName: string;
+  /** Vision/concept of the project */
+  projectVision: string;
+  /** Key themes/dimensions to consider */
+  themes: string[];
+}
+
+/**
+ * PosterSelectionResult - Result from LLM poster selection
+ */
+export interface PosterSelectionResult {
+  /** Index of the selected poster (0-3) */
+  selectedIndex: number;
+  /** Reasoning for the selection */
+  reasoning: string;
+  /** Confidence score (0-100) */
+  confidence: number;
+}
+
+/**
+ * HudGenerationResult - Result from HUD overlay generation
+ */
+export interface HudGenerationResult {
+  /** Original image URL */
+  originalUrl: string;
+  /** URL of image with HUD overlay */
+  hudUrl?: string;
+  /** Whether generation succeeded */
+  success: boolean;
+  /** Error message if failed */
+  error?: string;
+}
+
+// ============================================
+// Autoplay Event Logging Types
+// ============================================
+
+/**
+ * AutoplayEventType - Types of events that can occur during autoplay
+ */
+export type AutoplayEventType =
+  | 'phase_started'
+  | 'phase_completed'
+  | 'prompt_generated'
+  | 'dimension_adjusted'
+  | 'image_generating'
+  | 'image_complete'
+  | 'image_failed'
+  | 'image_approved'
+  | 'image_rejected'
+  | 'image_saved'
+  | 'feedback_applied'
+  | 'iteration_complete'
+  | 'poster_generating'
+  | 'poster_selected'
+  | 'hud_generating'
+  | 'hud_complete'
+  | 'error'
+  | 'timeout';
+
+/**
+ * AutoplayLogEntry - A single event in the autoplay activity log
+ */
+export interface AutoplayLogEntry {
+  id: string;
+  timestamp: Date;
+  type: AutoplayEventType;
+  /** Category determines which sidebar the event appears in */
+  category: 'text' | 'image';
+  message: string;
+  details?: {
+    phase?: AutoplayPhase;
+    promptId?: string;
+    imageUrl?: string;
+    score?: number;
+    approved?: boolean;
+    feedback?: string;
+    dimension?: {
+      type: string;
+      oldValue: string;
+      newValue: string;
+    };
+  };
+}

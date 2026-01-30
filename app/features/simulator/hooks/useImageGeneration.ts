@@ -44,9 +44,19 @@ interface PanelSlotsData {
   rightSlots: PanelSlot[];
 }
 
+/** Info about a saved panel image - for database sync */
+export interface SavedPanelImageInfo {
+  side: 'left' | 'right';
+  slotIndex: number;
+  imageUrl: string;
+  prompt: string;
+}
+
 interface UseImageGenerationOptions {
   /** Current project ID - used for project-scoped panel image storage */
   projectId: string | null;
+  /** Optional callback fired when an image is saved to panel - for database sync */
+  onImageSaved?: (info: SavedPanelImageInfo) => void;
 }
 
 interface UseImageGenerationReturn {
@@ -56,11 +66,15 @@ interface UseImageGenerationReturn {
   rightPanelSlots: PanelSlot[];
   generateImagesFromPrompts: (prompts: Array<{ id: string; prompt: string; negativePrompt?: string }>) => Promise<void>;
   saveImageToPanel: (promptId: string, promptText: string) => void;
+  /** Upload an external image URL to a specific panel slot */
+  uploadImageToPanel: (side: 'left' | 'right', slotIndex: number, imageUrl: string, prompt?: string) => void;
   removePanelImage: (imageId: string) => void;
   updatePanelImage: (imageId: string, newUrl: string) => void;
   updatePanelImageVideo: (imageId: string, videoUrl: string) => void;
   clearGeneratedImages: () => void;
   deleteAllGenerations: () => Promise<void>;
+  /** Delete a single generated image by prompt ID */
+  deleteGeneration: (promptId: string) => Promise<void>;
   clearPanelSlots: () => void;
 }
 
@@ -76,7 +90,7 @@ const initialPanelData: PanelSlotsData = {
 };
 
 export function useImageGeneration(options: UseImageGenerationOptions): UseImageGenerationReturn {
-  const { projectId } = options;
+  const { projectId, onImageSaved } = options;
   const [generatedImages, setGeneratedImages] = useState<GeneratedImage[]>([]);
   const [isGeneratingImages, setIsGeneratingImages] = useState(false);
 
@@ -86,6 +100,18 @@ export function useImageGeneration(options: UseImageGenerationOptions): UseImage
 
   // Track saved prompt IDs to prevent duplicates (ref for synchronous check)
   const savedPromptIdsRef = useRef<Set<string>>(new Set());
+
+  // Track pending slot allocations to prevent race conditions when saving multiple images
+  const pendingSlotsRef = useRef<{ left: Set<number>; right: Set<number> }>({
+    left: new Set(),
+    right: new Set(),
+  });
+
+  // Ref to always access current slot state (avoids stale closure issues with memoized callbacks)
+  const currentSlotsRef = useRef<{ left: PanelSlot[]; right: PanelSlot[] }>({
+    left: [],
+    right: [],
+  });
 
   // Use local persistence hook for panel slots (IndexedDB)
   // Storage key is project-scoped so each project has separate panel images
@@ -126,6 +152,11 @@ export function useImageGeneration(options: UseImageGenerationOptions): UseImage
     return slots;
   }, [panelStorage.data.rightSlots]);
 
+  // Keep ref in sync with current slot state (for use in callbacks that might be stale)
+  useEffect(() => {
+    currentSlotsRef.current = { left: leftPanelSlots, right: rightPanelSlots };
+  }, [leftPanelSlots, rightPanelSlots]);
+
   // Cleanup polling on unmount
   useEffect(() => {
     return () => {
@@ -133,6 +164,22 @@ export function useImageGeneration(options: UseImageGenerationOptions): UseImage
       pollingRef.current.clear();
     };
   }, []);
+
+  // Clear pending slots AFTER React state updates are processed
+  // Only clear slots that are ACTUALLY filled in state - keeps pending for in-flight saves
+  useEffect(() => {
+    // Clear pending for slots that now have images in state
+    panelStorage.data.leftSlots.forEach((slot, i) => {
+      if (slot.image) {
+        pendingSlotsRef.current.left.delete(i);
+      }
+    });
+    panelStorage.data.rightSlots.forEach((slot, i) => {
+      if (slot.image) {
+        pendingSlotsRef.current.right.delete(i);
+      }
+    });
+  }, [panelStorage.data]);
 
   /**
    * Poll for a single generation's completion
@@ -322,38 +369,69 @@ export function useImageGeneration(options: UseImageGenerationOptions): UseImage
 
   /**
    * Save a generated image to the next available panel slot
-   * Uses ref-based tracking to prevent duplicate saves
+   * Uses ref-based tracking to prevent duplicate saves and slot collisions
    */
   const saveImageToPanel = useCallback((promptId: string, promptText: string) => {
+    // Guard: Don't save while IndexedDB is still loading - slots would appear empty
+    if (!panelStorage.isInitialized) {
+      console.warn('[saveImageToPanel] Skipping save - panel data not yet loaded from IndexedDB');
+      return;
+    }
+
     // Check if already saved using ref (synchronous check)
     if (savedPromptIdsRef.current.has(promptId)) {
-      console.log('[saveImageToPanel] Already saved:', promptId);
       return;
     }
 
     // Find the generated image
     const image = generatedImages.find((img) => img.promptId === promptId);
     if (!image || image.status !== 'complete' || !image.url) {
-      console.log('[saveImageToPanel] Image not ready:', promptId, image?.status);
       return;
     }
 
-    // Determine which panel to save to BEFORE any state updates
-    const leftEmptyIndex = leftPanelSlots.findIndex((slot) => !slot.image);
-    const rightEmptyIndex = rightPanelSlots.findIndex((slot) => !slot.image);
+    // CRITICAL: Use ref to get CURRENT slot state, not stale closure values
+    // This fixes the issue where memoized callbacks have outdated slot data
+    const currentLeftSlots = currentSlotsRef.current.left;
+    const currentRightSlots = currentSlotsRef.current.right;
 
-    if (leftEmptyIndex === -1 && rightEmptyIndex === -1) {
-      console.log('[saveImageToPanel] No empty slots available');
-      return;
-    }
+    // Find AND claim first available slot atomically
+    // This prevents race conditions when saving multiple images rapidly
+    const findAndClaimSlot = (
+      slots: PanelSlot[],
+      pendingSet: Set<number>
+    ): number => {
+      for (let i = 0; i < slots.length; i++) {
+        if (!slots[i].image && !pendingSet.has(i)) {
+          // IMMEDIATELY claim this slot before returning
+          pendingSet.add(i);
+          return i;
+        }
+      }
+      return -1;
+    };
 
-    // Mark as saved IMMEDIATELY (before async state updates)
+    // Mark as saved IMMEDIATELY (before any async operations)
     savedPromptIdsRef.current.add(promptId);
-    console.log('[saveImageToPanel] Saving image:', promptId, 'url:', image.url?.substring(0, 50));
 
-    // Determine target panel
-    const targetPanel = leftEmptyIndex !== -1 ? 'left' : 'right';
-    const targetIndex = leftEmptyIndex !== -1 ? leftEmptyIndex : rightEmptyIndex;
+    // Try left panel first, then right - claiming slot atomically
+    let targetPanel: 'left' | 'right';
+    let targetIndex: number;
+
+    const leftEmptyIndex = findAndClaimSlot(currentLeftSlots, pendingSlotsRef.current.left);
+    if (leftEmptyIndex !== -1) {
+      targetPanel = 'left';
+      targetIndex = leftEmptyIndex;
+    } else {
+      const rightEmptyIndex = findAndClaimSlot(currentRightSlots, pendingSlotsRef.current.right);
+      if (rightEmptyIndex !== -1) {
+        targetPanel = 'right';
+        targetIndex = rightEmptyIndex;
+      } else {
+        // No slots available - undo the savedPromptIds claim
+        savedPromptIdsRef.current.delete(promptId);
+        return;
+      }
+    }
 
     // Create the saved image object
     const newImage: SavedPanelImage = {
@@ -365,8 +443,6 @@ export function useImageGeneration(options: UseImageGenerationOptions): UseImage
       slotIndex: targetIndex,
       createdAt: new Date().toISOString(),
     };
-
-    console.log('[saveImageToPanel] Saving to', targetPanel, 'slot:', targetIndex);
 
     // Update panel storage using the local persistence hook
     panelStorage.setData((prev) => {
@@ -386,7 +462,89 @@ export function useImageGeneration(options: UseImageGenerationOptions): UseImage
         };
       }
     });
-  }, [generatedImages, leftPanelSlots, rightPanelSlots, panelStorage]);
+    // NOTE: Don't clear pending here - it's cleared by useEffect after state updates
+
+    // Call callback for database sync (if provided)
+    if (onImageSaved) {
+      onImageSaved({
+        side: targetPanel,
+        slotIndex: targetIndex,
+        imageUrl: image.url,
+        prompt: promptText,
+      });
+    }
+  }, [generatedImages, panelStorage, onImageSaved]);
+  // Note: leftPanelSlots/rightPanelSlots removed - we use currentSlotsRef to avoid stale closures
+
+  /**
+   * Upload an external image URL to a specific panel slot
+   * Unlike saveImageToPanel, this takes a specific slot rather than finding the next available
+   */
+  const uploadImageToPanel = useCallback((
+    side: 'left' | 'right',
+    slotIndex: number,
+    imageUrl: string,
+    prompt: string = 'Uploaded image'
+  ) => {
+    // Guard: Don't save while IndexedDB is still loading - slots would appear empty
+    if (!panelStorage.isInitialized) {
+      console.warn('[uploadImageToPanel] Skipping upload - panel data not yet loaded from IndexedDB');
+      return;
+    }
+
+    // Validate slot index
+    if (slotIndex < 0 || slotIndex >= 5) {
+      console.warn('[uploadImageToPanel] Invalid slot index:', slotIndex);
+      return;
+    }
+
+    // Check if slot is already occupied
+    const slots = side === 'left' ? leftPanelSlots : rightPanelSlots;
+    if (slots[slotIndex]?.image) {
+      console.warn('[uploadImageToPanel] Slot is already occupied:', side, slotIndex);
+      return;
+    }
+
+    // Create the saved image object (no promptId since this is an external upload)
+    const newImage: SavedPanelImage = {
+      id: uuidv4(),
+      url: imageUrl,
+      prompt,
+      promptId: undefined, // External upload, no associated prompt
+      side,
+      slotIndex,
+      createdAt: new Date().toISOString(),
+    };
+
+    // Update panel storage
+    panelStorage.setData((prev) => {
+      if (side === 'left') {
+        return {
+          ...prev,
+          leftSlots: prev.leftSlots.map((slot, i) =>
+            i === slotIndex ? { ...slot, image: newImage } : slot
+          ),
+        };
+      } else {
+        return {
+          ...prev,
+          rightSlots: prev.rightSlots.map((slot, i) =>
+            i === slotIndex ? { ...slot, image: newImage } : slot
+          ),
+        };
+      }
+    });
+
+    // Call callback for database sync (if provided)
+    if (onImageSaved) {
+      onImageSaved({
+        side,
+        slotIndex,
+        imageUrl,
+        prompt,
+      });
+    }
+  }, [leftPanelSlots, rightPanelSlots, panelStorage, onImageSaved]);
 
   /**
    * Remove an image from a panel slot
@@ -500,10 +658,47 @@ export function useImageGeneration(options: UseImageGenerationOptions): UseImage
   }, [generatedImages]);
 
   /**
+   * Delete a single generated image by prompt ID
+   * Removes from local state and deletes from Leonardo API
+   */
+  const deleteGeneration = useCallback(async (promptId: string) => {
+    // Find the image to delete
+    const imageToDelete = generatedImages.find((img) => img.promptId === promptId);
+    if (!imageToDelete) return;
+
+    // Stop polling for this image if active
+    const pollTimeout = pollingRef.current.get(promptId);
+    if (pollTimeout) {
+      clearTimeout(pollTimeout);
+      pollingRef.current.delete(promptId);
+    }
+    pollAttemptsRef.current.delete(promptId);
+
+    // Remove from local state immediately for responsive UI
+    setGeneratedImages((prev) => prev.filter((img) => img.promptId !== promptId));
+
+    // Delete from Leonardo in background (don't block UI)
+    if (imageToDelete.generationId) {
+      try {
+        await fetch('/api/ai/generate-images', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ generationIds: [imageToDelete.generationId] }),
+        });
+      } catch (error) {
+        console.error('Failed to delete generation from Leonardo:', error);
+        // Continue even if deletion fails - local state is already cleared
+      }
+    }
+  }, [generatedImages]);
+
+  /**
    * Clear all panel slots (reset to empty)
    */
   const clearPanelSlots = useCallback(() => {
     savedPromptIdsRef.current.clear();
+    pendingSlotsRef.current.left.clear();
+    pendingSlotsRef.current.right.clear();
     panelStorage.setData(initialPanelData);
   }, [panelStorage]);
 
@@ -526,11 +721,13 @@ export function useImageGeneration(options: UseImageGenerationOptions): UseImage
     rightPanelSlots,
     generateImagesFromPrompts,
     saveImageToPanel,
+    uploadImageToPanel,
     removePanelImage,
     updatePanelImage,
     updatePanelImageVideo,
     clearGeneratedImages,
     deleteAllGenerations,
+    deleteGeneration,
     clearPanelSlots,
   };
 }

@@ -23,6 +23,8 @@ interface Project {
 interface ProjectState {
   basePrompt: string;
   baseImageFile: string | null;
+  visionSentence: string | null;
+  breakdown: { baseImage: { format: string; keyElements: string[] }; reasoning: string } | null;
   outputMode: OutputMode;
   dimensions: Dimension[];
   feedback: { positive: string; negative: string };
@@ -95,6 +97,10 @@ function parseProjectWithState(projectWithState: Record<string, unknown>): Proje
     ? {
         basePrompt: (rawState.base_prompt as string) || '',
         baseImageFile: (rawState.base_image_file as string) || null,
+        visionSentence: (rawState.vision_sentence as string) || null,
+        breakdown: rawState.breakdown_json
+          ? JSON.parse(rawState.breakdown_json as string)
+          : null,
         outputMode: ((rawState.output_mode as string) || 'gameplay') as OutputMode,
         dimensions: rawState.dimensions_json
           ? JSON.parse(rawState.dimensions_json as string)
@@ -245,9 +251,17 @@ export function useProject(): UseProjectReturn {
    * This needs custom handling for the complex state structure
    */
   const selectProject = useCallback(async (id: string): Promise<ProjectWithState | null> => {
+    console.log('[selectProject] Attempting to select project with id:', id, 'type:', typeof id);
+
+    if (!id || typeof id !== 'string') {
+      console.error('[selectProject] Invalid project ID:', id);
+      return null;
+    }
+
     try {
       const response = await fetch(`/api/projects/${id}`);
       const data = await response.json();
+      console.log('[selectProject] API response:', { success: data.success, hasProject: !!data.project, error: data.error });
 
       if (data.success) {
         const projectWithState = parseProjectWithState(data.project);
@@ -365,6 +379,7 @@ export function useProject(): UseProjectReturn {
             body: JSON.stringify({
               basePrompt: sourceProject.state.basePrompt,
               baseImageFile: sourceProject.state.baseImageFile,
+              visionSentence: sourceProject.state.visionSentence,
               outputMode: sourceProject.state.outputMode,
               dimensions: sourceProject.state.dimensions,
               feedback: sourceProject.state.feedback,

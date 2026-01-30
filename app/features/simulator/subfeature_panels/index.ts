@@ -10,6 +10,7 @@
 export { SidePanel } from './components/SidePanel';
 export { SidePanelSlot } from './components/SidePanelSlot';
 export { SavedImageModal } from './components/SavedImageModal';
+export { UploadImageModal } from './components/UploadImageModal';
 
 // Lib utilities
 export { regenerateImage, buildHudPrompt } from './lib';

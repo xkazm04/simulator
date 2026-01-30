@@ -1,6 +1,7 @@
 /**
  * Posters Gallery Page
  * Public gallery displaying all project posters
+ * Click on a poster to open full project showcase modal
  */
 
 'use client';
@@ -9,12 +10,12 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Film, ArrowLeft } from 'lucide-react';
 import { PosterGallery, GalleryPoster } from '../features/simulator/components/PosterGallery';
-import { PosterModal } from '../features/simulator/components/PosterModal';
+import { ProjectShowcaseModal } from './components';
 
 export default function PostersPage() {
   const [posters, setPosters] = useState<GalleryPoster[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [selectedPoster, setSelectedPoster] = useState<GalleryPoster | null>(null);
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
 
   // Fetch all posters on mount
   useEffect(() => {
@@ -85,15 +86,15 @@ export default function PostersPage() {
         <PosterGallery
           posters={posters}
           isLoading={isLoading}
-          onPosterClick={setSelectedPoster}
+          onPosterClick={(poster) => setSelectedProjectId(poster.project_id)}
         />
       </main>
 
-      {/* Modal */}
-      <PosterModal
-        poster={selectedPoster}
-        isOpen={!!selectedPoster}
-        onClose={() => setSelectedPoster(null)}
+      {/* Project Showcase Modal */}
+      <ProjectShowcaseModal
+        projectId={selectedProjectId}
+        isOpen={!!selectedProjectId}
+        onClose={() => setSelectedProjectId(null)}
       />
     </div>
   );

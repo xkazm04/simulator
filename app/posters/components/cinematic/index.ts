@@ -7,6 +7,8 @@ export { StatsBar } from './StatsBar';
 export { HeroZone } from './HeroZone';
 export { MediaSkeleton } from './MediaSkeleton';
 export { DimensionRibbon } from './DimensionRibbon';
+export { DimensionSpotlight } from './DimensionSpotlight';
+export { BasePromptBanner } from './BasePromptBanner';
 export { FloatingGallery } from './FloatingGallery';
 export { PromptNarrative } from './PromptNarrative';
 export { CinematicVideo } from './CinematicVideo';

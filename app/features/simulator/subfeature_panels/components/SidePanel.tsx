@@ -17,6 +17,8 @@ interface SidePanelProps {
   slots: PanelSlot[];
   onRemoveImage?: (imageId: string) => void;
   onViewImage?: (image: SavedPanelImage) => void;
+  /** Callback when empty slot is clicked - for upload functionality */
+  onEmptySlotClick?: (side: 'left' | 'right', slotIndex: number) => void;
 }
 
 export function SidePanel({
@@ -24,6 +26,7 @@ export function SidePanel({
   slots,
   onRemoveImage,
   onViewImage,
+  onEmptySlotClick,
 }: SidePanelProps) {
   // Ensure we always have 5 slots
   const normalizedSlots: PanelSlot[] = Array.from({ length: 5 }, (_, i) => {
@@ -41,6 +44,7 @@ export function SidePanel({
           side={side}
           onRemove={onRemoveImage}
           onView={onViewImage}
+          onEmptySlotClick={onEmptySlotClick}
         />
       ))}
     </div>

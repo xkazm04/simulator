@@ -20,7 +20,7 @@
 import React, { useCallback, memo } from 'react';
 import Image from 'next/image';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Copy, Check, Lock, Eye, Image as ImageIcon, Sparkles, Loader2, CheckCircle, Gamepad2, MousePointer2 } from 'lucide-react';
+import { Copy, Check, Lock, Eye, Image as ImageIcon, Sparkles, Loader2, CheckCircle, Gamepad2, MousePointer2, Trash2 } from 'lucide-react';
 import { GeneratedPrompt, PromptElement, GeneratedImage, InteractiveMode, InteractivePrototype } from '../../types';
 import { semanticColors } from '../../lib/semanticColors';
 import { scaleIn, useReducedMotion, getReducedMotionStaggeredTransition } from '../../lib/motion';
@@ -109,7 +109,9 @@ interface PromptCardProps {
   // Image generation props
   generatedImage?: GeneratedImage;
   onStartImage?: (promptId: string) => void;
+  onDeleteImage?: (promptId: string) => void;
   isSavedToPanel?: boolean;
+  allSlotsFull?: boolean;  // All panel slots are occupied
   // Interactive prototype props
   interactiveMode?: InteractiveMode;
   interactivePrototype?: InteractivePrototype;
@@ -142,7 +144,9 @@ function PromptCardComponent({
   index,
   generatedImage,
   onStartImage,
+  onDeleteImage,
   isSavedToPanel = false,
+  allSlotsFull = false,
   interactiveMode = 'static',
   interactivePrototype,
   onInteractiveClick,
@@ -181,6 +185,12 @@ function PromptCardComponent({
       onStartImage(prompt.id);
     }
   }, [prompt.id, prompt.locked, isComplete, isSavedToPanel, onLock, onStartImage]);
+
+  // Memoized delete handler for individual image deletion
+  const handleDeleteImage = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    onDeleteImage?.(prompt.id);
+  }, [prompt.id, onDeleteImage]);
 
   const lockedElementCount = prompt.elements.filter((e) => e.locked).length;
 
@@ -276,14 +286,25 @@ function PromptCardComponent({
 
           {/* Action buttons - semantic colors: green=locked, cyan=primary */}
           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-            {/* Lock & Save button - green for locked/saved state */}
+            {/* Lock & Save button - green for locked/saved, red for slots full */}
             <button
               onClick={handleLockWithSave}
               data-testid={`prompt-lock-${prompt.id}`}
-              className={`p-1 radius-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-green-500/50 focus-visible:ring-offset-1 focus-visible:ring-offset-slate-900 ${prompt.locked || isSavedToPanel
-                ? `${semanticColors.success.bgHover} ${semanticColors.success.text}`
-                : 'bg-slate-800/80 text-slate-400 hover:text-green-400'}`}
-              title={isSavedToPanel ? 'Saved' : prompt.locked ? 'Unlock' : isComplete ? 'Lock & Save' : 'Lock'}
+              className={`p-1 radius-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-green-500/50 focus-visible:ring-offset-1 focus-visible:ring-offset-slate-900 ${
+                prompt.locked || isSavedToPanel
+                  ? `${semanticColors.success.bgHover} ${semanticColors.success.text}`
+                  : allSlotsFull && isComplete && !isSavedToPanel
+                    ? 'bg-red-500/20 text-red-400 cursor-not-allowed'
+                    : 'bg-slate-800/80 text-slate-400 hover:text-green-400'
+              }`}
+              title={
+                isSavedToPanel ? 'Saved'
+                  : prompt.locked ? 'Unlock'
+                  : allSlotsFull && isComplete ? 'All slots full'
+                  : isComplete ? 'Lock & Save'
+                  : 'Lock'
+              }
+              disabled={allSlotsFull && isComplete && !isSavedToPanel && !prompt.locked}
             >
               <Lock size={12} />
             </button>
@@ -331,6 +352,18 @@ function PromptCardComponent({
             >
               <Eye size={12} />
             </button>
+
+            {/* Delete button - only show when image exists */}
+            {generatedImage && onDeleteImage && (
+              <button
+                onClick={handleDeleteImage}
+                data-testid={`prompt-delete-${prompt.id}`}
+                className="p-1 radius-sm bg-slate-800/80 text-slate-400 hover:text-red-400 hover:bg-red-500/20 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500/50 focus-visible:ring-offset-1 focus-visible:ring-offset-slate-900"
+                title="Delete image"
+              >
+                <Trash2 size={12} />
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -435,6 +468,7 @@ function arePropsEqual(prevProps: PromptCardProps, nextProps: PromptCardProps): 
 
   // Check other state flags
   if (prevProps.isSavedToPanel !== nextProps.isSavedToPanel) return false;
+  if (prevProps.allSlotsFull !== nextProps.allSlotsFull) return false;
   if (prevProps.interactiveMode !== nextProps.interactiveMode) return false;
   if (prevProps.interactivePrototype?.status !== nextProps.interactivePrototype?.status) return false;
   if (prevProps.index !== nextProps.index) return false;

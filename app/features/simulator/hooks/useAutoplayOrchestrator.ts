@@ -34,6 +34,8 @@ import {
   Dimension,
   ImageEvaluation,
   SmartBreakdownPersisted,
+  AutoplayEventType,
+  AutoplayLogEntry,
 } from '../types';
 import {
   evaluateImages,
@@ -73,6 +75,13 @@ export interface AutoplayOrchestratorDeps {
    * @param overrides - Optional overrides for feedback to avoid React state timing issues
    */
   onRegeneratePrompts: (overrides?: { feedback?: { positive: string; negative: string } }) => void;
+
+  // Event logging callback (optional)
+  onLogEvent?: (
+    type: AutoplayEventType,
+    message: string,
+    details?: AutoplayLogEntry['details']
+  ) => void;
 }
 
 export interface UseAutoplayOrchestratorReturn {
@@ -110,7 +119,19 @@ export function useAutoplayOrchestrator(
     visionSentence,
     breakdown,
     onRegeneratePrompts,
+    onLogEvent,
   } = deps;
+
+  // Helper to log events (no-op if callback not provided)
+  const logEvent = useCallback((
+    type: AutoplayEventType,
+    message: string,
+    details?: AutoplayLogEntry['details']
+  ) => {
+    if (onLogEvent) {
+      onLogEvent(type, message, details);
+    }
+  }, [onLogEvent]);
 
   // State machine
   const autoplay = useAutoplay();
@@ -155,10 +176,13 @@ export function useAutoplayOrchestrator(
             // New iteration started - trigger generation
             currentIterationRef.current = autoplay.state.currentIteration;
 
+            logEvent('image_generating', `Starting image generation (iteration ${autoplay.state.currentIteration})`);
+
             // For iteration > 1, we need to regenerate prompts
             // For iteration 1, prompts might already exist from user's Generate action,
             // OR we need to generate them if user started autoplay from base image directly
             if (autoplay.state.currentIteration > 1 || generatedPrompts.length === 0) {
+              logEvent('prompt_generated', 'Regenerating prompts with feedback');
               // Pass pending feedback directly to avoid React state timing issues
               const feedbackOverride = pendingFeedbackRef.current;
               pendingFeedbackRef.current = null; // Clear after using
@@ -176,9 +200,12 @@ export function useAutoplayOrchestrator(
 
           if (completedImages.length === 0) {
             // No images to evaluate at all - this is an error state
+            logEvent('error', 'No images to evaluate');
             autoplay.setError('No images to evaluate');
             return;
           }
+
+          logEvent('image_complete', `${completedImages.length} images generated, evaluating...`);
 
           // Build evaluation criteria from current state
           // Use vision sentence as the core project identity for evaluation, falling back to baseImage
@@ -211,6 +238,7 @@ export function useAutoplayOrchestrator(
           } catch (evalError) {
             // Evaluation API failed - mark all images as unapproved and continue
             console.error('Evaluation failed, continuing with unapproved results:', evalError);
+            logEvent('error', `Evaluation failed: ${evalError instanceof Error ? evalError.message : 'Unknown error'}`);
             evaluations = completedImages.map(img => ({
               promptId: img.promptId,
               approved: false,
@@ -219,6 +247,24 @@ export function useAutoplayOrchestrator(
               improvements: ['Retry evaluation'],
               strengths: [],
             }));
+          }
+
+          // Log individual evaluation results
+          for (const evaluation of evaluations) {
+            if (evaluation.approved) {
+              logEvent('image_approved', `Image approved (score: ${evaluation.score})`, {
+                promptId: evaluation.promptId,
+                score: evaluation.score,
+                approved: true,
+              });
+            } else {
+              logEvent('image_rejected', `Image rejected (score: ${evaluation.score}): ${evaluation.feedback?.slice(0, 80) || 'No feedback'}`, {
+                promptId: evaluation.promptId,
+                score: evaluation.score,
+                approved: false,
+                feedback: evaluation.feedback,
+              });
+            }
           }
 
           // Signal evaluation complete (even if all failed, we continue the loop)
@@ -282,12 +328,17 @@ export function useAutoplayOrchestrator(
           if (refinementFeedback.positive || refinementFeedback.negative) {
             pendingFeedbackRef.current = refinementFeedback;
             setFeedback(refinementFeedback);
+            logEvent('feedback_applied', `Feedback applied: ${refinementFeedback.negative.slice(0, 80) || refinementFeedback.positive.slice(0, 80)}`, {
+              feedback: refinementFeedback.negative || refinementFeedback.positive,
+            });
           }
 
           autoplay.onRefineComplete();
 
           // Small delay before completing iteration (allows state to settle)
           await new Promise(resolve => setTimeout(resolve, 100));
+
+          logEvent('iteration_complete', `Iteration ${autoplay.state.currentIteration} complete (${savedCount} saved)`);
           autoplay.onIterationComplete();
           break;
         }
@@ -311,6 +362,7 @@ export function useAutoplayOrchestrator(
     saveImageToPanel,
     setFeedback,
     onRegeneratePrompts,
+    logEvent,
   ]);
 
   /**
@@ -360,9 +412,10 @@ export function useAutoplayOrchestrator(
       autoplay.onGenerationComplete(promptIds);
     } else if (generatedImages.length > 0 && generatedImages.every(img => img.status === 'failed')) {
       // All generations failed
+      logEvent('image_failed', 'All image generations failed');
       autoplay.setError('All image generations failed');
     }
-  }, [autoplay, isGeneratingImages, generatedImages]);
+  }, [autoplay, isGeneratingImages, generatedImages, logEvent]);
 
   /**
    * Effect: Timeout safety net - abort if stuck in generating for too long
@@ -373,11 +426,12 @@ export function useAutoplayOrchestrator(
     const TIMEOUT_MS = 60000; // 60 seconds
     const timeoutId = setTimeout(() => {
       console.error('[Autoplay] Timeout: stuck in generating state for', TIMEOUT_MS / 1000, 'seconds');
+      logEvent('timeout', 'Generation timed out after 60 seconds');
       autoplay.setError('Generation timed out - please try again');
     }, TIMEOUT_MS);
 
     return () => clearTimeout(timeoutId);
-  }, [autoplay, autoplay.state.status, autoplay.state.currentIteration]);
+  }, [autoplay, autoplay.state.status, autoplay.state.currentIteration, logEvent]);
 
   /**
    * Start autoplay - validates prerequisites and kicks off the loop

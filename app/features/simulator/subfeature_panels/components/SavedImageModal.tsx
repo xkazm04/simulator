@@ -8,7 +8,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, ImageIcon, Trash2, RotateCcw, Check, Video } from 'lucide-react';
+import { X, ImageIcon, Trash2, RotateCcw, Check, Video, Brush } from 'lucide-react';
 import { SavedPanelImage } from '../../types';
 import { IconButton } from '@/app/components/ui';
 import { fadeIn, modalContent, transitions } from '../../lib/motion';
@@ -16,14 +16,17 @@ import {
   regenerateImage,
   generateVideo,
   checkVideoStatus,
+  generateInpainting,
+  checkInpaintingStatus,
   type RegenerationMode,
   type VideoDuration,
 } from '../lib';
 import { SavedImageComparison } from './SavedImageComparison';
 import { SavedImageRegeneration } from './SavedImageRegeneration';
 import { VideoCreation } from './VideoCreation';
+import { RegionalEdit } from './RegionalEdit';
 
-type ModalTab = 'image' | 'video';
+type ModalTab = 'image' | 'video' | 'regional';
 
 interface SavedImageModalProps {
   image: SavedPanelImage | null;
@@ -65,6 +68,19 @@ export function SavedImageModal({
   const [generatedVideoUrl, setGeneratedVideoUrl] = useState<string | null>(null);
   const [videoError, setVideoError] = useState<string | null>(null);
   const [videoProgress, setVideoProgress] = useState<string | undefined>();
+
+  // Regional edit (inpainting) state
+  const [editPrompt, setEditPrompt] = useState('');
+  const [brushSize, setBrushSize] = useState(20);
+  const [brushMode, setBrushMode] = useState<'brush' | 'eraser'>('brush');
+  const [inpaintStrength, setInpaintStrength] = useState(85);
+  const [maskDataUrl, setMaskDataUrl] = useState<string | null>(null);
+  const [isInpainting, setIsInpainting] = useState(false);
+  const [inpaintingGenerationId, setInpaintingGenerationId] = useState<string | null>(null);
+  const [inpaintedImageUrl, setInpaintedImageUrl] = useState<string | null>(null);
+  const [inpaintingError, setInpaintingError] = useState<string | null>(null);
+  const [inpaintingProgress, setInpaintingProgress] = useState<string | undefined>();
+  const [expandedInpaintImage, setExpandedInpaintImage] = useState<'original' | 'inpainted' | null>(null);
 
   // Poll for video completion
   const pollVideoStatus = useCallback(async (generationId: string) => {
@@ -109,10 +125,51 @@ export function SavedImageModal({
     setVideoGenerationId(null);
   }, [image, onUpdateImageVideo]);
 
+  // Poll for inpainting completion
+  const pollInpaintingStatus = useCallback(async (generationId: string) => {
+    const maxAttempts = 60; // ~2 minutes
+    const intervalMs = 2000;
+
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const result = await checkInpaintingStatus(generationId);
+
+      if (result.status === 'complete' && result.imageUrl) {
+        setInpaintedImageUrl(result.imageUrl);
+        setIsInpainting(false);
+        setInpaintingProgress(undefined);
+        setInpaintingGenerationId(null);
+        return;
+      }
+
+      if (result.status === 'failed' || result.error) {
+        setInpaintingError(result.error || 'Inpainting failed');
+        setIsInpainting(false);
+        setInpaintingProgress(undefined);
+        setInpaintingGenerationId(null);
+        return;
+      }
+
+      // Update progress
+      const progress = Math.round((attempt / maxAttempts) * 100);
+      setInpaintingProgress(`Inpainting... ${progress}%`);
+
+      // Wait before next poll
+      await new Promise(resolve => setTimeout(resolve, intervalMs));
+    }
+
+    setInpaintingError('Inpainting timed out');
+    setIsInpainting(false);
+    setInpaintingProgress(undefined);
+    setInpaintingGenerationId(null);
+  }, []);
+
   // Resume polling on mount if there's a pending generation
   useEffect(() => {
     if (videoGenerationId && isGeneratingVideo) {
       pollVideoStatus(videoGenerationId);
+    }
+    if (inpaintingGenerationId && isInpainting) {
+      pollInpaintingStatus(inpaintingGenerationId);
     }
   }, []);
 
@@ -126,6 +183,16 @@ export function SavedImageModal({
       setVideoError(null);
       setGeneratedVideoUrl(null);
       setVideoProgress(undefined);
+      // Reset regional edit state
+      setEditPrompt('');
+      setMaskDataUrl(null);
+      setInpaintedImageUrl(null);
+      setInpaintingError(null);
+      setInpaintingProgress(undefined);
+      setBrushSize(20);
+      setBrushMode('brush');
+      setInpaintStrength(85);
+      setExpandedInpaintImage(null);
     }
   }, [isOpen]);
 
@@ -176,9 +243,9 @@ export function SavedImageModal({
   const handleSaveRegenerated = () => {
     if (regeneratedUrl && onUpdateImage) {
       onUpdateImage(image.id, regeneratedUrl);
+      // Reset state to go back to editing view - modal stays open
       setRegeneratedUrl(null);
       setRegeneratePrompt('');
-      onClose();
     }
   };
 
@@ -213,6 +280,49 @@ export function SavedImageModal({
     }
   };
 
+  const handleGenerateInpainting = async () => {
+    if (!maskDataUrl || !editPrompt.trim() || isInpainting) return;
+
+    setIsInpainting(true);
+    setInpaintingError(null);
+    setInpaintedImageUrl(null);
+    setInpaintingProgress('Starting inpainting...');
+
+    const result = await generateInpainting({
+      sourceImageUrl: image.url,
+      maskDataUrl,
+      prompt: editPrompt.trim(),
+      inpaintStrength,
+    });
+
+    if (result.success && result.generationId) {
+      setInpaintingGenerationId(result.generationId);
+      // Start polling
+      pollInpaintingStatus(result.generationId);
+    } else {
+      setInpaintingError(result.error || 'Failed to start inpainting');
+      setIsInpainting(false);
+      setInpaintingProgress(undefined);
+    }
+  };
+
+  const handleSaveInpainted = () => {
+    if (inpaintedImageUrl && onUpdateImage) {
+      onUpdateImage(image.id, inpaintedImageUrl);
+      // Reset state to go back to editing view - modal stays open
+      setInpaintedImageUrl(null);
+      setEditPrompt('');
+      setMaskDataUrl(null);
+    }
+  };
+
+  const handleCancelInpainting = () => {
+    setInpaintedImageUrl(null);
+    setEditPrompt('');
+    setMaskDataUrl(null);
+    setInpaintingError(null);
+  };
+
   const slotLabel = `${image.side === 'left' ? 'L' : 'R'}${image.slotIndex + 1}`;
 
   return (
@@ -234,7 +344,7 @@ export function SavedImageModal({
           animate="animate"
           exit="exit"
           transition={transitions.normal}
-          className="relative w-full max-w-4xl bg-surface-primary border border-slate-700 radius-lg overflow-hidden flex flex-col max-h-[90vh] shadow-floating"
+          className="relative w-full max-w-4xl min-h-[70vh] bg-surface-primary border border-slate-700 radius-lg overflow-hidden flex flex-col max-h-[90vh] shadow-floating"
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header */}
@@ -285,39 +395,133 @@ export function SavedImageModal({
                 <Video size={14} />
                 Create Video
               </button>
+              <button
+                onClick={() => setActiveTab('regional')}
+                className={`flex items-center gap-1.5 px-4 py-2.5 font-mono text-sm font-medium transition-all rounded-t-md ${
+                  activeTab === 'regional'
+                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/50 border-b-0 relative after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-surface-primary'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 border border-transparent'
+                }`}
+              >
+                <Brush size={14} />
+                Regional Edit
+              </button>
             </div>
           </div>
 
           {/* Body */}
           <div className="flex-1 overflow-y-auto custom-scrollbar" data-testid="saved-image-modal-body">
             <div className="p-md space-y-md">
-              {activeTab === 'image' ? (
+              {activeTab === 'image' && (
                 <>
-                  {/* Image Comparison */}
-                  <SavedImageComparison
-                    originalUrl={image.url}
-                    regeneratedUrl={regeneratedUrl}
-                    isRegenerating={isRegenerating}
-                    slotLabel={slotLabel}
-                    expandedImage={expandedImage}
-                    onExpandImage={setExpandedImage}
-                  />
+                  {/* Show comparison only after regeneration, otherwise show single image */}
+                  {regeneratedUrl && !isRegenerating ? (
+                    <div className="space-y-md">
+                      {/* Success message */}
+                      <div className="flex items-center gap-2 px-4 py-3 bg-green-500/10 border border-green-500/30 radius-md">
+                        <Check size={16} className="text-green-400" />
+                        <span className="font-mono text-xs text-green-400">
+                          Regeneration complete! Compare and save below.
+                        </span>
+                      </div>
 
-                  {/* Regeneration Input & Original Prompt */}
-                  <SavedImageRegeneration
-                    prompt={image.prompt}
-                    regeneratePrompt={regeneratePrompt}
-                    isRegenerating={isRegenerating}
-                    regenerateError={regenerateError}
-                    hudEnabled={hudEnabled}
-                    onHudToggle={setHudEnabled}
-                    onPromptChange={setRegeneratePrompt}
-                    onGenerate={handleRegenerate}
-                    onCopy={onCopy}
-                  />
+                      {/* Image Comparison */}
+                      <SavedImageComparison
+                        originalUrl={image.url}
+                        regeneratedUrl={regeneratedUrl}
+                        isRegenerating={false}
+                        slotLabel={slotLabel}
+                        expandedImage={expandedImage}
+                        onExpandImage={setExpandedImage}
+                      />
+
+                      {/* Option to regenerate again */}
+                      <button
+                        onClick={() => setRegeneratedUrl(null)}
+                        className="w-full px-4 py-2 radius-md border border-slate-700 text-xs font-medium text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+                      >
+                        Regenerate Again
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      {/* Single image preview when no regeneration yet */}
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono type-label text-slate-500 uppercase">Saved Image</span>
+                            <span className="font-mono type-label text-amber-400">{slotLabel}</span>
+                          </div>
+                        </div>
+                        <div
+                          className="relative aspect-video radius-md overflow-hidden border border-slate-700 bg-slate-900/50 cursor-pointer hover:border-cyan-500/50 transition-colors group"
+                          onClick={() => setExpandedImage('original')}
+                        >
+                          <img
+                            src={image.url}
+                            alt={`Saved image ${slotLabel}`}
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Full-size Image Overlay for single image view */}
+                      <AnimatePresence>
+                        {expandedImage === 'original' && (
+                          <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            transition={{ duration: 0.2 }}
+                            className="fixed inset-0 z-[110] bg-black/95 flex items-center justify-center p-4 cursor-zoom-out"
+                            onClick={() => setExpandedImage(null)}
+                          >
+                            <motion.div
+                              initial={{ scale: 0.9, opacity: 0 }}
+                              animate={{ scale: 1, opacity: 1 }}
+                              exit={{ scale: 0.9, opacity: 0 }}
+                              transition={{ duration: 0.2 }}
+                              className="relative max-w-[95vw] max-h-[95vh]"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <img
+                                src={image.url}
+                                alt={`Saved image ${slotLabel}`}
+                                className="object-contain max-w-[95vw] max-h-[95vh] w-auto h-auto"
+                              />
+                              <button
+                                onClick={() => setExpandedImage(null)}
+                                className="absolute top-4 right-4 p-2 bg-black/50 hover:bg-black/70 radius-md transition-colors"
+                                title="Close preview"
+                              >
+                                <X size={20} className="text-white" />
+                              </button>
+                              <div className="absolute bottom-4 left-4 px-3 py-1.5 bg-black/50 radius-md">
+                                <span className="font-mono text-sm text-white">Original - {slotLabel}</span>
+                              </div>
+                            </motion.div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+
+                      {/* Regeneration Input & Original Prompt */}
+                      <SavedImageRegeneration
+                        prompt={image.prompt}
+                        regeneratePrompt={regeneratePrompt}
+                        isRegenerating={isRegenerating}
+                        regenerateError={regenerateError}
+                        hudEnabled={hudEnabled}
+                        onHudToggle={setHudEnabled}
+                        onPromptChange={setRegeneratePrompt}
+                        onGenerate={handleRegenerate}
+                        onCopy={onCopy}
+                      />
+                    </>
+                  )}
                 </>
-              ) : (
-                /* Video Creation Tab */
+              )}
+
+              {activeTab === 'video' && (
                 <VideoCreation
                   sourceImageUrl={image.url}
                   existingVideoUrl={generatedVideoUrl || undefined}
@@ -332,6 +536,61 @@ export function SavedImageModal({
                 />
               )}
 
+              {activeTab === 'regional' && (
+                <>
+                  {/* Show comparison when inpainting complete, otherwise show editor */}
+                  {inpaintedImageUrl && !isInpainting ? (
+                    <div className="space-y-md">
+                      {/* Success message */}
+                      <div className="flex items-center gap-2 px-4 py-3 bg-green-500/10 border border-green-500/30 radius-md">
+                        <Check size={16} className="text-green-400" />
+                        <span className="font-mono text-xs text-green-400">
+                          Inpainting complete! Compare and save below.
+                        </span>
+                      </div>
+
+                      {/* Image Comparison using same component as regenerate */}
+                      <SavedImageComparison
+                        originalUrl={image.url}
+                        regeneratedUrl={inpaintedImageUrl}
+                        isRegenerating={false}
+                        slotLabel={slotLabel}
+                        expandedImage={expandedInpaintImage === 'original' ? 'original' : expandedInpaintImage === 'inpainted' ? 'regenerated' : null}
+                        onExpandImage={(img) => setExpandedInpaintImage(img === 'original' ? 'original' : img === 'regenerated' ? 'inpainted' : null)}
+                      />
+
+                      {/* Option to edit again */}
+                      <button
+                        onClick={() => setInpaintedImageUrl(null)}
+                        className="w-full px-4 py-2 radius-md border border-slate-700 text-xs font-medium text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+                      >
+                        Edit Again
+                      </button>
+                    </div>
+                  ) : (
+                    <RegionalEdit
+                      sourceImageUrl={image.url}
+                      editPrompt={editPrompt}
+                      brushSize={brushSize}
+                      brushMode={brushMode}
+                      inpaintStrength={inpaintStrength}
+                      isGenerating={isInpainting}
+                      generationProgress={inpaintingProgress}
+                      generateError={inpaintingError}
+                      editedImageUrl={null}
+                      hasMask={!!maskDataUrl}
+                      onPromptChange={setEditPrompt}
+                      onBrushSizeChange={setBrushSize}
+                      onBrushModeChange={setBrushMode}
+                      onInpaintStrengthChange={setInpaintStrength}
+                      onMaskChange={setMaskDataUrl}
+                      onGenerate={handleGenerateInpainting}
+                      onClearMask={() => setMaskDataUrl(null)}
+                    />
+                  )}
+                </>
+              )}
+
               {/* Timestamp */}
               <div className="type-label font-mono text-slate-600">
                 Created: {new Date(image.createdAt).toLocaleString()}
@@ -342,7 +601,7 @@ export function SavedImageModal({
           {/* Footer Actions */}
           <div className="px-4 py-3 bg-slate-900/30 border-t border-slate-800 flex items-center justify-between gap-4">
             <div className="flex items-center gap-2">
-              {onRemove && !regeneratedUrl && (
+              {onRemove && !regeneratedUrl && !inpaintedImageUrl && (
                 <button
                   onClick={handleRemove}
                   className="flex items-center gap-1.5 px-3 py-1.5 radius-md border border-red-500/30 text-xs font-medium text-red-400 hover:bg-red-500/20 transition-colors"
@@ -360,25 +619,44 @@ export function SavedImageModal({
                   Cancel
                 </button>
               )}
+              {inpaintedImageUrl && (
+                <button
+                  onClick={handleCancelInpainting}
+                  className="flex items-center gap-1.5 px-3 py-1.5 radius-md border border-slate-700 text-xs font-medium text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+                >
+                  <RotateCcw size={14} />
+                  Cancel
+                </button>
+              )}
             </div>
 
             <div className="flex items-center gap-2">
-              {regeneratedUrl ? (
+              {/* Save button - only shown when there's a generated result */}
+              {regeneratedUrl && (
                 <button
                   onClick={handleSaveRegenerated}
                   className="flex items-center gap-1.5 px-4 py-1.5 radius-md bg-green-600 hover:bg-green-500 text-xs font-medium text-white transition-colors"
                 >
                   <Check size={14} />
-                  Replace with New Image
-                </button>
-              ) : (
-                <button
-                  onClick={onClose}
-                  className="px-4 py-1.5 radius-md border border-slate-700 text-xs font-medium text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
-                >
-                  Close
+                  Save
                 </button>
               )}
+              {inpaintedImageUrl && (
+                <button
+                  onClick={handleSaveInpainted}
+                  className="flex items-center gap-1.5 px-4 py-1.5 radius-md bg-green-600 hover:bg-green-500 text-xs font-medium text-white transition-colors"
+                >
+                  <Check size={14} />
+                  Save
+                </button>
+              )}
+              {/* Close button - always visible */}
+              <button
+                onClick={onClose}
+                className="px-4 py-1.5 radius-md border border-slate-700 text-xs font-medium text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+              >
+                Close
+              </button>
             </div>
           </div>
         </motion.div>

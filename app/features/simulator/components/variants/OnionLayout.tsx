@@ -82,7 +82,7 @@ export interface OnionLayoutProps {
   // Upload image to panel
   onUploadImageToPanel?: (side: 'left' | 'right', slotIndex: number, imageUrl: string, prompt?: string) => void;
 
-  // Autoplay orchestrator props
+  // Autoplay orchestrator props (legacy single-mode)
   autoplay?: {
     isRunning: boolean;
     canStart: boolean;
@@ -96,6 +96,29 @@ export interface OnionLayoutProps {
     onStart: (config: { targetSavedCount: number; maxIterations: number }) => void;
     onStop: () => void;
     onReset: () => void;
+  };
+
+  // Multi-phase autoplay props
+  multiPhaseAutoplay?: {
+    isRunning: boolean;
+    canStart: boolean;
+    canStartReason: string | null;
+    hasContent: boolean;
+    phase: string;
+    conceptProgress: { saved: number; target: number };
+    gameplayProgress: { saved: number; target: number };
+    posterSelected: boolean;
+    hudGenerated: number;
+    error?: string;
+    onStart: (config: import('../../types').ExtendedAutoplayConfig) => void;
+    onStop: () => void;
+    onReset: () => void;
+    // Event log for activity modal
+    eventLog?: {
+      textEvents: import('../../types').AutoplayLogEntry[];
+      imageEvents: import('../../types').AutoplayLogEntry[];
+      clearEvents: () => void;
+    };
   };
 }
 
@@ -138,6 +161,8 @@ function OnionLayoutComponent({
   onUploadImageToPanel,
   // Autoplay props
   autoplay,
+  // Multi-phase autoplay props
+  multiPhaseAutoplay,
 }: OnionLayoutProps) {
   // Get state from contexts
   const dimensions = useDimensionsContext();
@@ -312,6 +337,7 @@ function OnionLayoutComponent({
             onSavePoster={onSavePoster}
             onCancelPosterGeneration={onCancelPosterGeneration}
             autoplay={autoplay}
+            multiPhaseAutoplay={multiPhaseAutoplay}
           />
 
           {/* Right Dimensions Column */}

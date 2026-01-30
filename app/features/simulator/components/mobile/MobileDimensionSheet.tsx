@@ -12,13 +12,12 @@
 'use client';
 
 import React, { useState, useRef, useCallback, useMemo, useEffect } from 'react';
-import { motion, AnimatePresence, useDragControls, PanInfo } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useDrag } from '@use-gesture/react';
 import {
   ChevronDown,
   Plus,
   X,
-  GripHorizontal,
   Map,
   Users,
   Palette,
@@ -31,9 +30,9 @@ import {
   Clock,
   Theater,
 } from 'lucide-react';
-import { Dimension, DimensionPreset, DimensionType, DimensionFilterMode, DimensionTransformMode } from '../../types';
+import { Dimension, DimensionPreset, DimensionType } from '../../types';
 import { useHapticFeedback, useKeyboardHeight } from '../../hooks/useResponsive';
-import { snapToNearest, triggerHaptic, GESTURE_PRESETS } from '../../lib/gestureController';
+import { snapToNearest, GESTURE_PRESETS } from '../../lib/gestureController';
 import { semanticColors } from '../../lib/semanticColors';
 
 interface MobileDimensionSheetProps {

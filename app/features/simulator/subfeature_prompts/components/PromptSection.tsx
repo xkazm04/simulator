@@ -29,8 +29,12 @@ export interface PromptSectionProps {
   generatedImages: GeneratedImage[];
   /** Callback to start generating an image */
   onStartImage?: (promptId: string) => void;
+  /** Callback to delete a generated image */
+  onDeleteImage?: (promptId: string) => void;
   /** Set of prompt IDs that have been saved */
   savedPromptIds: Set<string>;
+  /** Whether all panel slots are full */
+  allSlotsFull?: boolean;
   /** Callback to open comparison view */
   onOpenComparison?: () => void;
   /** Starting slot number for placeholders (1 for top, 3 for bottom) */
@@ -47,7 +51,9 @@ export function PromptSection({
   onViewPrompt,
   generatedImages,
   onStartImage,
+  onDeleteImage,
   savedPromptIds,
+  allSlotsFull,
   onOpenComparison,
   startSlotNumber,
   isExpanded: controlledExpanded,
@@ -176,7 +182,9 @@ export function PromptSection({
                   onViewPrompt={onViewPrompt}
                   generatedImages={generatedImages}
                   onStartImage={onStartImage}
+                  onDeleteImage={onDeleteImage}
                   savedPromptIds={savedPromptIds}
+                  allSlotsFull={allSlotsFull}
                   onOpenComparison={onOpenComparison}
                   isGenerating={simulatorCtx.isGenerating}
                   skeletonCount={2}
