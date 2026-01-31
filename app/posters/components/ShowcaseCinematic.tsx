@@ -22,6 +22,7 @@ import { DimensionSpotlight } from './cinematic/DimensionSpotlight';
 import { BasePromptBanner } from './cinematic/BasePromptBanner';
 import { PromptNarrative } from './cinematic/PromptNarrative';
 import { CinematicVideo } from './cinematic/CinematicVideo';
+import { ShowcasePlayer } from './cinematic/ShowcasePlayer';
 import { AmbientEffects } from './cinematic/AmbientEffects';
 import { StatsBar } from './cinematic/StatsBar';
 
@@ -39,7 +40,7 @@ interface ShowcaseCinematicProps {
 }
 
 export function ShowcaseCinematic({ project, onImageClick }: ShowcaseCinematicProps) {
-  const [activeSection, setActiveSection] = useState<'gallery' | 'prompts' | 'video'>('gallery');
+  const [activeSection, setActiveSection] = useState<'showcase' | 'gallery' | 'prompts' | 'video'>('showcase');
   const [selectedDimension, setSelectedDimension] = useState<Dimension | null>(null);
 
   // Parse dimensions from JSON
@@ -136,13 +137,16 @@ export function ShowcaseCinematic({ project, onImageClick }: ShowcaseCinematicPr
             <div className="absolute bottom-0 left-0 right-0 z-20 overflow-hidden">
               {/* Section Tabs */}
               <div className="flex justify-center gap-2 mb-4">
-                {['gallery', 'prompts', 'video'].map((section) => {
+                {['showcase', 'gallery', 'prompts', 'video'].map((section) => {
                   const isActive = activeSection === section;
-                  const count = section === 'gallery' ? stats.images
+                  const count = section === 'showcase' ? allImages.length
+                    : section === 'gallery' ? stats.images
                     : section === 'prompts' ? stats.prompts
                     : stats.videos;
 
+                  // Hide video tab if no individual videos, hide showcase if no images
                   if (section === 'video' && count === 0) return null;
+                  if (section === 'showcase' && allImages.length === 0) return null;
 
                   return (
                     <button
@@ -165,6 +169,19 @@ export function ShowcaseCinematic({ project, onImageClick }: ShowcaseCinematicPr
 
               {/* Active Section Content */}
               <div className="h-[280px] overflow-hidden bg-gradient-to-t from-black via-black/95 to-transparent">
+                {activeSection === 'showcase' && (
+                  <div className="h-full flex items-center justify-center px-4">
+                    <ShowcasePlayer
+                      projectName={project.name}
+                      images={allImages.map(img => ({
+                        id: img.id,
+                        url: img.url,
+                        label: img.label,
+                      }))}
+                      className="w-full max-w-2xl"
+                    />
+                  </div>
+                )}
                 {activeSection === 'gallery' && (
                   <FloatingGallery
                     images={allImages}
