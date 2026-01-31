@@ -8,16 +8,16 @@ A "What If" image visualization tool that combines cultural references (games, m
 
 Transform fuzzy creative visions into concrete, curated AI-generated imagery through intelligent prompt building and automated refinement.
 
-## Current Milestone: v1.1 Refinement
+## Current Milestone: v1.2 Video Showcase
 
-**Goal:** Make Smart Breakdown the central source of truth and strengthen the distinction between Gameplay and Concept modes.
+**Goal:** Transform the project showcase into an automated video experience using Remotion, creating shareable cinematic presentations from project images.
 
 **Target features:**
-- Smart Breakdown autosave (persist format, keyElements, reasoning)
-- Autoplay uses Smart Breakdown context for evaluation
-- Stronger Gameplay mode (mechanics, UI/HUD focus)
-- Stronger Concept mode (artstyle, visualization focus)
-- Remove unused Presets system
+- Remotion integration for video composition
+- On-demand video generation from project images
+- Full-screen immersive video showcase (replaces static hero card)
+- MP4 export for sharing on social/portfolio
+- Cinematic transitions and effects between images
 
 ## Requirements
 
@@ -38,41 +38,45 @@ Transform fuzzy creative visions into concrete, curated AI-generated imagery thr
 
 ### Active
 
-<!-- v1.1 Refinement scope -->
+<!-- v1.2 Video Showcase scope -->
 
-- [ ] Smart Breakdown result autosave (format, keyElements, reasoning)
-- [ ] Autoplay evaluation uses Smart Breakdown context
-- [ ] Stronger Gameplay mode differentiation (mechanics, authentic UI/HUD)
-- [ ] Stronger Concept mode differentiation (artstyle, game visualization)
-- [ ] Delete Presets system (generationPresets.ts, PresetSelector.tsx)
+- [ ] Remotion integration for programmatic video generation
+- [ ] Video composition from project panel images
+- [ ] On-demand "Generate Video" button in showcase
+- [ ] Full-screen video player replacing static hero card
+- [ ] MP4 export functionality for sharing
+- [ ] Cinematic transitions between images
 
 ### Out of Scope
 
 - Poster mode changes — separate workflow, working as intended
 - Natural language goal input for autoplay — keeping number picker
-- New presets — removing presets entirely, not replacing them
-- Smart Breakdown UI changes — only persistence and integration
+- Live video streaming — pre-rendered videos only
+- User-customizable video templates — automated composition only for v1.2
+- Audio/music integration — visual-only for initial release
 
 ## Context
 
-**Smart Breakdown as core:**
-- Currently: SmartBreakdownResult metadata (format, keyElements, reasoning) is lost after "Apply to Simulator"
-- Goal: Persist full breakdown, use in autoplay evaluation for richer context
+**Current Showcase Architecture:**
+- `/posters` page with grid gallery of saved projects
+- `ProjectShowcaseModal` opens full-screen portal on click
+- `ShowcaseCinematic` renders hero zone, floating gallery, dimension ribbon
+- `MediaSkeleton` shows gray loading state before content
+- Existing `CinematicVideo` component for HTML5 video playback
+- `ShowcaseLightbox` for full-screen image viewing with navigation
 
-**Mode differentiation problem:**
-- Currently: Gameplay adds "game UI overlay", Concept adds "concept art" — too subtle
-- Goal: Gameplay = in-game feel, mechanics visible, authentic HUD; Concept = artistic interpretation, visual style exploration
-
-**Presets removal:**
-- 8 curated presets exist (Cinematic Epic, Cozy RPG, etc.) but add complexity
-- User preference: remove entirely, not simplify
+**Video Showcase Goal:**
+- Replace static hero card with dynamically generated video
+- Compose all project panel images into cinematic sequence
+- Use Remotion for programmatic video composition
+- Trigger: On-demand button (not automatic)
+- Output: Both in-app playback AND MP4 export
 
 **Key integration points:**
-- `subfeature_brain/components/SmartBreakdown.tsx` — breakdown UI
-- `hooks/useAutosave.ts` — persistence (needs breakdown support)
-- `hooks/useAutoplayOrchestrator.ts` — evaluation criteria builder
-- `subfeature_brain/lib/imageEvaluator.ts` — evaluation logic
-- `lib/promptBuilder.ts` — mode-specific prompt generation
+- `app/posters/components/ShowcaseCinematic.tsx` — main showcase view
+- `app/posters/components/cinematic/HeroZone.tsx` — will become video player
+- `app/posters/components/ProjectShowcaseModal.tsx` — modal wrapper
+- `app/api/projects/[id]/route.ts` — project data with panelImages
 
 ## Constraints
 
@@ -91,4 +95,4 @@ Transform fuzzy creative visions into concrete, curated AI-generated imagery thr
 | Smart Breakdown as source of truth | Richer evaluation context | — Pending |
 
 ---
-*Last updated: 2026-01-29 after v1.1 milestone initialization*
+*Last updated: 2026-01-31 after v1.2 milestone initialization*
