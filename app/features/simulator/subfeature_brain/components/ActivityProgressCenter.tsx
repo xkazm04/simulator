@@ -27,7 +27,7 @@ import { semanticColors } from '../../lib/semanticColors';
 
 export interface ActivityProgressCenterProps {
   currentPhase: AutoplayPhase;
-  conceptProgress: PhaseProgress;
+  sketchProgress: PhaseProgress;
   gameplayProgress: PhaseProgress;
   posterSelected: boolean;
   hudGenerated: number;
@@ -45,9 +45,9 @@ function getPhaseInfo(phase: AutoplayPhase): {
   color: string;
 } {
   switch (phase) {
-    case 'concept':
+    case 'sketch':
       return {
-        label: 'Concept Art',
+        label: 'Sketch Art',
         icon: <Image size={16} />,
         color: semanticColors.primary.text,
       };
@@ -197,7 +197,7 @@ function StatusIndicator({
 
 export function ActivityProgressCenter({
   currentPhase,
-  conceptProgress,
+  sketchProgress,
   gameplayProgress,
   posterSelected,
   hudGenerated,
@@ -206,11 +206,11 @@ export function ActivityProgressCenter({
 }: ActivityProgressCenterProps) {
   const phaseInfo = getPhaseInfo(currentPhase);
 
-  const totalSaved = conceptProgress.saved + gameplayProgress.saved;
-  const totalTarget = conceptProgress.target + gameplayProgress.target;
+  const totalSaved = sketchProgress.saved + gameplayProgress.saved;
+  const totalTarget = sketchProgress.target + gameplayProgress.target;
 
   // Determine phase states
-  const conceptComplete = conceptProgress.saved >= conceptProgress.target && conceptProgress.target > 0;
+  const sketchComplete = sketchProgress.saved >= sketchProgress.target && sketchProgress.target > 0;
   const gameplayComplete = gameplayProgress.saved >= gameplayProgress.target && gameplayProgress.target > 0;
 
   return (
@@ -249,13 +249,13 @@ export function ActivityProgressCenter({
 
       {/* Progress Bars */}
       <div className="space-y-3 flex-1">
-        {conceptProgress.target > 0 && (
+        {sketchProgress.target > 0 && (
           <ProgressBar
-            label="Concept Images"
+            label="Sketch Images"
             icon={<Image size={14} />}
-            progress={conceptProgress}
-            isActive={currentPhase === 'concept'}
-            isComplete={conceptComplete}
+            progress={sketchProgress}
+            isActive={currentPhase === 'sketch'}
+            isComplete={sketchComplete}
           />
         )}
 
@@ -276,7 +276,7 @@ export function ActivityProgressCenter({
             icon={<Frame size={14} />}
             isActive={currentPhase === 'poster'}
             isComplete={posterSelected}
-            isSkipped={currentPhase === 'complete' && !posterSelected && conceptComplete && gameplayComplete}
+            isSkipped={currentPhase === 'complete' && !posterSelected && sketchComplete && gameplayComplete}
           />
           <StatusIndicator
             label={`HUD (${hudGenerated}/${hudTarget})`}

@@ -36,12 +36,15 @@ import {
   AlertCircle,
   Square,
   RotateCcw,
+  Wand2,
 } from 'lucide-react';
 import {
   ExtendedAutoplayConfig,
   AutoplayPhase,
   PhaseProgress,
   AutoplayLogEntry,
+  DEFAULT_POLISH_CONFIG,
+  PolishConfig,
 } from '../../types';
 import { fadeIn, modalContent, transitions } from '../../lib/motion';
 import { semanticColors } from '../../lib/semanticColors';
@@ -78,12 +81,16 @@ export interface AutoplaySetupModalProps {
 }
 
 const DEFAULT_CONFIG: ExtendedAutoplayConfig = {
-  conceptCount: 2,
+  sketchCount: 2,
   gameplayCount: 2,
   posterEnabled: false,
   hudEnabled: false,
   maxIterationsPerImage: 2,
   promptIdea: '',
+  polish: {
+    rescueEnabled: DEFAULT_POLISH_CONFIG.rescueEnabled,
+    rescueFloor: DEFAULT_POLISH_CONFIG.rescueFloor,
+  },
 };
 
 interface CounterProps {
@@ -251,10 +258,10 @@ function SetupModeContent({
         <h3 className="text-sm font-medium text-slate-400 uppercase tracking-wider">Image Generation</h3>
 
         <Counter
-          value={config.conceptCount}
+          value={config.sketchCount}
           min={0}
           max={4}
-          onChange={(v) => setConfig({ ...config, conceptCount: v })}
+          onChange={(v) => setConfig({ ...config, sketchCount: v })}
           disabled={isRunning}
           label="Concept Images"
           icon={<Image size={16} className={semanticColors.primary.text} />}
@@ -282,6 +289,52 @@ function SetupModeContent({
           icon={<RefreshCw size={14} className={semanticColors.primary.text} />}
           description="Refinement attempts per image"
         />
+      </div>
+
+      {/* Image Enhancement Section */}
+      <div className="space-y-3">
+        <h3 className="text-sm font-medium text-slate-400 uppercase tracking-wider">Image Enhancement</h3>
+
+        <Toggle
+          enabled={config.polish?.rescueEnabled ?? true}
+          onChange={(v) => setConfig({
+            ...config,
+            polish: { ...config.polish, rescueEnabled: v }
+          })}
+          disabled={isRunning}
+          label="Gemini Polish"
+          icon={<Wand2 size={16} className={config.polish?.rescueEnabled ? 'text-green-400' : 'text-slate-400'} />}
+          description="Polish near-approval images (50-69 score) via Gemini"
+        />
+
+        {config.polish?.rescueEnabled && (
+          <div className="ml-4 p-3 bg-slate-900/30 border border-slate-800/50 radius-md space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-slate-400">Polish Threshold</span>
+              <span className="font-mono text-xs text-cyan-400">
+                {config.polish?.rescueFloor ?? 50}+
+              </span>
+            </div>
+            <input
+              type="range"
+              min={40}
+              max={65}
+              value={config.polish?.rescueFloor ?? 50}
+              onChange={(e) => setConfig({
+                ...config,
+                polish: { ...config.polish, rescueFloor: parseInt(e.target.value) }
+              })}
+              disabled={isRunning}
+              className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer
+                [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3
+                [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-cyan-400
+                [&::-webkit-slider-thumb]:cursor-pointer [&::-webkit-slider-thumb]:shadow-lg"
+            />
+            <p className="type-label text-slate-600">
+              Images scoring {config.polish?.rescueFloor ?? 50}-69 will be polished before rejection
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Optional Features Section */}
@@ -412,7 +465,7 @@ export function AutoplaySetupModal({
   const [isProcessingBreakdown, setIsProcessingBreakdown] = useState(false);
   const [breakdownError, setBreakdownError] = useState<string | null>(null);
 
-  const totalImages = config.conceptCount + config.gameplayCount;
+  const totalImages = config.sketchCount + config.gameplayCount;
   const hasGameplay = config.gameplayCount > 0;
 
   // Validation: need either existing content OR a prompt idea

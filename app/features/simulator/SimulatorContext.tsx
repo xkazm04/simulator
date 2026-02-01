@@ -120,7 +120,6 @@ export function SimulatorProvider({ children }: SimulatorProviderProps) {
           sceneNumber: p.sceneNumber,
           sceneType: p.sceneType,
           prompt: p.prompt,
-          negativePrompt: p.negativePrompt,
           copied: false,
           rating: null,
           locked: false,

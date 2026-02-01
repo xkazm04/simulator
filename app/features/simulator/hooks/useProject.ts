@@ -9,7 +9,7 @@
  * - Panel image management
  */
 
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { Dimension, OutputMode, SavedPanelImage, ProjectPoster, GeneratedPrompt, InteractivePrototype, InteractiveMode } from '../types';
 import { usePersistedEntity, SaveStatus } from './usePersistedEntity';
 
@@ -47,6 +47,11 @@ interface UseProjectReturn {
   // Save status for UI feedback
   saveStatus: SaveStatus;
   lastSavedAt: Date | null;
+
+  /** True when project state is being restored (prevents autosave race conditions) */
+  isRestoring: boolean;
+  /** Set restoration state - call with true before restoring, false after */
+  setIsRestoring: (value: boolean) => void;
 
   // CRUD operations
   loadProjects: () => Promise<void>;
@@ -90,24 +95,33 @@ function parseProject(data: unknown): Project {
 /**
  * Parse raw API response to ProjectWithState (for selectProject)
  */
+/**
+ * Helper to parse JSONB field - Supabase returns objects, but SQLite returned strings
+ */
+function parseJsonField<T>(value: unknown, fallback: T): T {
+  if (!value) return fallback;
+  if (typeof value === 'string') {
+    try {
+      return JSON.parse(value) as T;
+    } catch {
+      return fallback;
+    }
+  }
+  return value as T;
+}
+
 function parseProjectWithState(projectWithState: Record<string, unknown>): ProjectWithState {
-  // Parse JSON fields
+  // Parse JSON fields (handle both Supabase JSONB objects and SQLite TEXT strings)
   const rawState = projectWithState.state as Record<string, unknown> | null;
   const state: ProjectState | null = rawState
     ? {
         basePrompt: (rawState.base_prompt as string) || '',
         baseImageFile: (rawState.base_image_file as string) || null,
         visionSentence: (rawState.vision_sentence as string) || null,
-        breakdown: rawState.breakdown_json
-          ? JSON.parse(rawState.breakdown_json as string)
-          : null,
+        breakdown: parseJsonField(rawState.breakdown_json, null),
         outputMode: ((rawState.output_mode as string) || 'gameplay') as OutputMode,
-        dimensions: rawState.dimensions_json
-          ? JSON.parse(rawState.dimensions_json as string)
-          : [],
-        feedback: rawState.feedback_json
-          ? JSON.parse(rawState.feedback_json as string)
-          : { positive: '', negative: '' },
+        dimensions: parseJsonField(rawState.dimensions_json, []),
+        feedback: parseJsonField(rawState.feedback_json, { positive: '', negative: '' }),
       }
     : null;
 
@@ -172,8 +186,8 @@ function parseProjectWithState(projectWithState: Record<string, unknown>): Proje
     status: p.status,
     error: p.error || undefined,
     createdAt: p.created_at,
-    config: p.config_json ? JSON.parse(p.config_json) : null,
-    assets: p.assets_json ? JSON.parse(p.assets_json) : undefined,
+    config: parseJsonField(p.config_json, null),
+    assets: parseJsonField(p.assets_json, undefined),
   }));
 
   // Convert generated prompts (if exists)
@@ -182,11 +196,10 @@ function parseProjectWithState(projectWithState: Record<string, unknown>): Proje
     scene_number: number;
     scene_type: string;
     prompt: string;
-    negative_prompt: string | null;
-    copied: number;
+    copied: boolean | number;
     rating: 'up' | 'down' | null;
-    locked: number;
-    elements_json: string | null;
+    locked: boolean | number;
+    elements_json: unknown;
     created_at: string;
   }>;
   const generatedPrompts: GeneratedPrompt[] = rawGeneratedPrompts.map((p) => ({
@@ -194,11 +207,10 @@ function parseProjectWithState(projectWithState: Record<string, unknown>): Proje
     sceneNumber: p.scene_number,
     sceneType: p.scene_type,
     prompt: p.prompt,
-    negativePrompt: p.negative_prompt || undefined,
     copied: Boolean(p.copied),
     rating: p.rating,
     locked: Boolean(p.locked),
-    elements: p.elements_json ? JSON.parse(p.elements_json) : [],
+    elements: parseJsonField(p.elements_json, []),
   }));
 
   return {
@@ -217,6 +229,13 @@ function parseProjectWithState(projectWithState: Record<string, unknown>): Proje
 export function useProject(): UseProjectReturn {
   // Track currently selected project separately (for panel image operations)
   const [currentProject, setCurrentProject] = useState<Project | null>(null);
+
+  // Track when project state is being restored (to prevent autosave race conditions)
+  const [isRestoring, setIsRestoring] = useState(false);
+
+  // Refs for direct autosave (bypassing usePersistedEntity race condition)
+  const autosaveTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const pendingStateRef = useRef<Partial<ProjectState> | null>(null);
 
   // Use the generic persisted entity hook for core CRUD
   const projectEntity = usePersistedEntity<Project, { name: string }, Partial<ProjectState>>({
@@ -408,15 +427,47 @@ export function useProject(): UseProjectReturn {
   }, [projectEntity.create, projectEntity.setEntity]);
 
   /**
-   * Autosave state (uses the debounced update from usePersistedEntity)
+   * Autosave state with debouncing
+   * Directly calls API to avoid usePersistedEntity ref synchronization issues
    */
   const saveState = useCallback((state: Partial<ProjectState>) => {
-    if (!currentProject) return;
+    if (!currentProject) {
+      console.log('[useProject.saveState] No current project, skipping');
+      return;
+    }
 
-    // The usePersistedEntity.update handles debouncing
-    projectEntity.setEntity(currentProject);
-    projectEntity.update(state);
-  }, [currentProject, projectEntity.setEntity, projectEntity.update]);
+    console.log('[useProject.saveState] Saving state for project:', currentProject.id, state);
+
+    // Merge with pending state
+    pendingStateRef.current = { ...pendingStateRef.current, ...state };
+
+    // Clear existing timer
+    if (autosaveTimerRef.current) {
+      clearTimeout(autosaveTimerRef.current);
+    }
+
+    // Debounced save - directly call API
+    const projectId = currentProject.id;
+    autosaveTimerRef.current = setTimeout(async () => {
+      const pendingState = pendingStateRef.current;
+      pendingStateRef.current = null;
+
+      if (pendingState && projectId) {
+        console.log('[useProject.saveState] Making API call to save:', pendingState);
+        try {
+          const response = await fetch(`/api/projects/${projectId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(pendingState),
+          });
+          const result = await response.json();
+          console.log('[useProject.saveState] API response:', result);
+        } catch (err) {
+          console.error('[useProject] Autosave error:', err);
+        }
+      }
+    }, AUTOSAVE_DEBOUNCE);
+  }, [currentProject]);
 
   /**
    * Save a panel image
@@ -626,6 +677,15 @@ export function useProject(): UseProjectReturn {
     [currentProject]
   );
 
+  // Cleanup autosave timer on unmount
+  useEffect(() => {
+    return () => {
+      if (autosaveTimerRef.current) {
+        clearTimeout(autosaveTimerRef.current);
+      }
+    };
+  }, []);
+
   // Memoized return to prevent unnecessary re-renders
   return useMemo(() => ({
     projects: projectEntity.entities,
@@ -634,6 +694,8 @@ export function useProject(): UseProjectReturn {
     error: projectEntity.error,
     saveStatus: projectEntity.saveStatus,
     lastSavedAt: projectEntity.lastSavedAt,
+    isRestoring,
+    setIsRestoring,
     loadProjects,
     createProject,
     selectProject,
@@ -656,6 +718,7 @@ export function useProject(): UseProjectReturn {
     projectEntity.saveStatus,
     projectEntity.lastSavedAt,
     currentProject,
+    isRestoring,
     loadProjects,
     createProject,
     selectProject,

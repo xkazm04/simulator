@@ -5,6 +5,9 @@ import { defineConfig, devices } from '@playwright/test';
  *
  * Run with: npm run test:e2e
  */
+// Use a dedicated port for E2E tests to avoid conflicts with other apps
+const TEST_PORT = process.env.TEST_PORT || '3001';
+
 export default defineConfig({
   testDir: './e2e',
   fullyParallel: true,
@@ -17,7 +20,7 @@ export default defineConfig({
     timeout: 5000,
   },
   use: {
-    baseURL: 'http://localhost:3000',
+    baseURL: `http://localhost:${TEST_PORT}`,
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
     video: 'on-first-retry',
@@ -37,8 +40,8 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: 'npm run dev',
-    url: 'http://localhost:3000',
+    command: `npx next dev -p ${TEST_PORT}`,
+    url: `http://localhost:${TEST_PORT}`,
     reuseExistingServer: !process.env.CI,
     timeout: 120000,
   },

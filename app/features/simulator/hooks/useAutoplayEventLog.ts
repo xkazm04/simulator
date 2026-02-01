@@ -59,6 +59,12 @@ function getEventCategory(type: AutoplayEventType): 'text' | 'image' {
     case 'poster_selected':
     case 'hud_generating':
     case 'hud_complete':
+    // Polish events are image-related
+    case 'polish_started':
+    case 'image_polished':
+    case 'polish_no_improvement':
+    case 'polish_error':
+    case 'polish_skipped':
       return 'image';
 
     // Errors can appear in both, default to text

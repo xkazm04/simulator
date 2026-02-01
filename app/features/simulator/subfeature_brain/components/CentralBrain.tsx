@@ -7,13 +7,12 @@
  * Contains:
  * - Source Analysis section (SmartBreakdown + BaseImageInput)
  * - Director Control section (extracted to DirectorControl component)
- * - Poster mode toggle (actual poster display handled by PosterFullOverlay in OnionLayout)
+ * - Tab switcher for Command/Poster/WhatIf views
  */
 
 'use client';
 
-import React, { useCallback, memo } from 'react';
-import { Film } from 'lucide-react';
+import React, { useCallback, memo, useState, useEffect } from 'react';
 import {
   InteractiveMode,
   GeneratedImage,
@@ -23,9 +22,12 @@ import { PosterGeneration } from '../../hooks/usePoster';
 import { BaseImageInput } from './BaseImageInput';
 import { SmartBreakdown } from './SmartBreakdown';
 import { DirectorControl } from './DirectorControl';
+import { BrainTabSwitcher, BrainTab } from './BrainTabSwitcher';
+import { WhatIfPanel } from './WhatIfPanel';
 import { useBrainContext } from '../BrainContext';
 import { useDimensionsContext } from '../../subfeature_dimensions/DimensionsContext';
 import { useSimulatorContext } from '../../SimulatorContext';
+import { useProjectContext } from '../../contexts';
 
 export interface CentralBrainProps {
   // Interactive mode props (passed from layout since they're project-level concerns)
@@ -113,6 +115,31 @@ function CentralBrainComponent({
   const brain = useBrainContext();
   const dimensions = useDimensionsContext();
   const simulator = useSimulatorContext();
+  const project = useProjectContext();
+
+  // Content mode: 'command' (default) or 'whatif' (replaces Source Analysis section only)
+  // Poster is handled as an overlay, not a content mode
+  const [contentMode, setContentMode] = useState<'command' | 'whatif'>('command');
+
+  // Derive active tab from contentMode and showPosterOverlay
+  const activeTab: BrainTab = showPosterOverlay ? 'poster' : contentMode;
+
+  // Handle tab changes
+  const handleTabChange = useCallback((tab: BrainTab) => {
+    if (tab === 'poster') {
+      // Poster shows as overlay on top of current content
+      if (!showPosterOverlay && onTogglePosterOverlay) {
+        onTogglePosterOverlay();
+      }
+    } else {
+      // Close poster overlay if open
+      if (showPosterOverlay && onTogglePosterOverlay) {
+        onTogglePosterOverlay();
+      }
+      // Switch content mode
+      setContentMode(tab as 'command' | 'whatif');
+    }
+  }, [showPosterOverlay, onTogglePosterOverlay]);
 
   // Smart breakdown handler - bridges brain to dimensions (memoized)
   const handleSmartBreakdownApply = useCallback(
@@ -168,45 +195,46 @@ function CentralBrainComponent({
           <div className="mb-md flex items-center justify-between gap-4">
             <span className="text-md uppercase tracking-widest text-white font-medium flex items-center gap-2 drop-shadow-[0_0_8px_rgba(255,255,255,0.4)]">
               <div className="w-2 h-2 rounded-full bg-cyan-500 shadow-[0_0_8px_rgba(6,182,212,0.6)]" />
-              Source Analysis
+              {contentMode === 'command' && 'Source Analysis'}
+              {contentMode === 'whatif' && 'What If'}
             </span>
 
-            {/* Poster toggle button - always visible */}
-            {onTogglePosterOverlay && (
-              <button
-                onClick={onTogglePosterOverlay}
-                data-testid="poster-toggle-btn"
-                className={`px-6 py-1.5 text-md font-mono radius-sm transition-colors flex items-center gap-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/50 focus-visible:ring-offset-1 focus-visible:ring-offset-slate-900 min-w-[140px] justify-center ${showPosterOverlay
-                    ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
-                    : 'text-slate-400 hover:text-slate-200 border border-slate-700 hover:border-slate-600'
-                  }`}
-              >
-                <Film size={14} />
-                {showPosterOverlay ? 'INPUTS' : 'POSTER'}
-              </button>
-            )}
-          </div>
-
-          {/* Source Analysis Content - always visible */}
-          <SmartBreakdown
-            onApply={handleSmartBreakdownApply}
-            initialVisionSentence={brain.visionSentence}
-            isDisabled={simulator.isGenerating}
-          />
-
-          <div className="mt-lg">
-            <BaseImageInput
-              value={brain.baseImage}
-              onChange={brain.setBaseImage}
-              imageFile={brain.baseImageFile}
-              onImageChange={brain.setBaseImageFile}
-              onImageParse={handleImageParse}
-              isParsingImage={brain.isParsingImage}
-              parseError={brain.imageParseError}
-              canUndoParse={brain.canUndoParse}
-              onUndoParse={handleUndoParse}
+            {/* Tab Switcher */}
+            <BrainTabSwitcher
+              activeTab={activeTab}
+              onTabChange={handleTabChange}
             />
           </div>
+
+          {/* Content Area - always shows based on contentMode (poster is overlay) */}
+          {contentMode === 'command' && (
+            <>
+              {/* Source Analysis Content */}
+              <SmartBreakdown
+                onApply={handleSmartBreakdownApply}
+                initialVisionSentence={brain.visionSentence}
+                isDisabled={simulator.isGenerating}
+              />
+
+              <div className="mt-lg">
+                <BaseImageInput
+                  value={brain.baseImage}
+                  onChange={brain.setBaseImage}
+                  imageFile={brain.baseImageFile}
+                  onImageChange={brain.setBaseImageFile}
+                  onImageParse={handleImageParse}
+                  isParsingImage={brain.isParsingImage}
+                  parseError={brain.imageParseError}
+                  canUndoParse={brain.canUndoParse}
+                  onUndoParse={handleUndoParse}
+                />
+              </div>
+            </>
+          )}
+
+          {contentMode === 'whatif' && (
+            <WhatIfPanel projectId={project.currentProject?.id || null} />
+          )}
         </div>
 
         {/* Divider */}

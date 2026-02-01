@@ -64,7 +64,6 @@ export interface MultiImageVisionRequest extends BaseAIRequest {
 export interface ImageGenerationRequest extends BaseAIRequest {
   type: 'image-generation';
   prompt: string;
-  negativePrompt?: string;
   width?: number;
   height?: number;
   numImages?: number;

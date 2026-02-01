@@ -1279,29 +1279,7 @@ export async function generateSmartSuggestions(
     }
   }
 
-  // Suggestion 3: Recommend negative prompts based on avoid list
-  const avoidPrefs = profile.preferences.filter((p) => p.category === 'avoid' && p.strength >= 40);
-  if (avoidPrefs.length > 0) {
-    const negativePrompt = avoidPrefs
-      .slice(0, 5)
-      .map((p) => p.value)
-      .join(', ');
-
-    suggestions.push({
-      id: uuidv4(),
-      type: 'negative_prompt',
-      suggestion: `Add negative prompt: "${negativePrompt}"`,
-      reason: `Based on elements you've rated negatively`,
-      confidence: 0.8,
-      data: {
-        negativePrompt,
-      },
-      shown: false,
-      createdAt: new Date().toISOString(),
-    });
-  }
-
-  // Suggestion 4: Output mode based on history
+  // Suggestion 3: Output mode based on history
   if (sessions.length >= 5) {
     const modeCount: Record<string, number> = {};
     for (const session of sessions) {
@@ -1406,11 +1384,6 @@ export async function buildEnhancedLearnedContext(
     }
   }
 
-  // Generate negative prompts from avoid preferences
-  const suggestedNegativePrompts = profile.preferences
-    .filter((p) => p.category === 'avoid' && p.strength >= 40)
-    .map((p) => p.value);
-
   // Identify elements to auto-lock based on high-strength preferences
   const autoLockElements = profile.preferences
     .filter((p) => p.category !== 'avoid' && p.strength >= 80)
@@ -1424,7 +1397,6 @@ export async function buildEnhancedLearnedContext(
 
   return {
     ...baseContext,
-    suggestedNegativePrompts,
     recommendedWeights,
     autoLockElements,
     confidence,
@@ -1434,15 +1406,3 @@ export async function buildEnhancedLearnedContext(
   };
 }
 
-/**
- * Get personalized negative prompts based on user history
- */
-export async function getPersonalizedNegativePrompts(): Promise<string[]> {
-  const profile = await getPreferenceProfile();
-
-  return profile.preferences
-    .filter((p) => p.category === 'avoid' && p.strength >= 30)
-    .sort((a, b) => b.strength - a.strength)
-    .slice(0, 10)
-    .map((p) => p.value);
-}

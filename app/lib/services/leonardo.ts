@@ -13,7 +13,6 @@ export interface LeonardoGenerateRequest {
   width?: number;
   height?: number;
   numImages?: number;
-  negativePrompt?: string;
 }
 
 export interface LeonardoImage {
@@ -135,7 +134,6 @@ export class LeonardoService {
       styleUUID: LUCIDE_ORIGIN_STYLE_ID,
       prompt: request.prompt,
       num_images: Math.min(Math.max(request.numImages || 1, 1), 4),
-      ...(request.negativePrompt && { negativePrompt: request.negativePrompt }),
     };
 
     // Start generation
@@ -189,7 +187,6 @@ export class LeonardoService {
       styleUUID: LUCIDE_ORIGIN_STYLE_ID,
       prompt: request.prompt,
       num_images: 1,
-      ...(request.negativePrompt && { negativePrompt: request.negativePrompt }),
     };
 
     const generateResponse = await fetch(`${this.baseUrl}/generations`, {

@@ -34,6 +34,7 @@ export async function fetchProject(
 
 /**
  * Fetch full project with all related data
+ * Handles missing related records gracefully
  */
 export async function fetchProjectWithState(
   supabase: SupabaseClient,
@@ -42,21 +43,22 @@ export async function fetchProjectWithState(
   const project = await fetchProject(supabase, id);
   if (!project) return null;
 
-  const [state, panelImages, poster, prototypes, generatedPrompts] = await Promise.all([
-    supabase.from(TABLES.projectState).select('*').eq('project_id', id).single(),
+  // Use maybeSingle() instead of single() to handle missing records gracefully
+  const [stateResult, panelImagesResult, posterResult, prototypesResult, promptsResult] = await Promise.all([
+    supabase.from(TABLES.projectState).select('*').eq('project_id', id).maybeSingle(),
     supabase.from(TABLES.panelImages).select('*').eq('project_id', id).order('side').order('slot_index'),
-    supabase.from(TABLES.projectPosters).select('*').eq('project_id', id).single(),
+    supabase.from(TABLES.projectPosters).select('*').eq('project_id', id).maybeSingle(),
     supabase.from(TABLES.interactivePrototypes).select('*').eq('project_id', id),
     supabase.from(TABLES.generatedPrompts).select('*').eq('project_id', id).order('scene_number'),
   ]);
 
   return {
     ...project,
-    state: (state.data as DbProjectState) || null,
-    panelImages: (panelImages.data as DbPanelImage[]) || [],
-    poster: (poster.data as DbProjectPoster) || null,
-    prototypes: (prototypes.data as DbInteractivePrototype[]) || [],
-    generatedPrompts: (generatedPrompts.data as DbGeneratedPrompt[]) || [],
+    state: (stateResult.data as DbProjectState) || null,
+    panelImages: (panelImagesResult.data as DbPanelImage[]) || [],
+    poster: (posterResult.data as DbProjectPoster) || null,
+    prototypes: (prototypesResult.data as DbInteractivePrototype[]) || [],
+    generatedPrompts: (promptsResult.data as DbGeneratedPrompt[]) || [],
   };
 }
 
@@ -76,12 +78,19 @@ export function buildStateUpdate(body: Record<string, unknown>): Record<string, 
     breakdown: 'breakdown_json',
   };
 
+  console.log('[buildStateUpdate] Input body keys:', Object.keys(body));
+  console.log('[buildStateUpdate] Input body:', body);
+
   for (const [key, dbField] of Object.entries(fieldMap)) {
     if (body[key] !== undefined) {
       stateUpdate[dbField] = body[key];
+      console.log(`[buildStateUpdate] Mapping ${key} -> ${dbField}:`, body[key]);
+    } else {
+      console.log(`[buildStateUpdate] Skipping ${key} (undefined)`);
     }
   }
 
+  console.log('[buildStateUpdate] Final stateUpdate:', stateUpdate);
   return stateUpdate;
 }
 
@@ -93,4 +102,31 @@ export async function touchProject(supabase: SupabaseClient, id: string): Promis
     .from(TABLES.projects)
     .update({ updated_at: new Date().toISOString() })
     .eq('id', id);
+}
+
+/**
+ * Ensure project state exists (create if missing)
+ */
+export async function ensureProjectState(
+  supabase: SupabaseClient,
+  projectId: string
+): Promise<boolean> {
+  const { data: existing } = await supabase
+    .from(TABLES.projectState)
+    .select('project_id')
+    .eq('project_id', projectId)
+    .maybeSingle();
+
+  if (existing) return true;
+
+  const { error } = await supabase.from(TABLES.projectState).insert({
+    project_id: projectId,
+    base_prompt: '',
+    output_mode: 'gameplay',
+    dimensions_json: [],
+    feedback_json: { positive: '', negative: '' },
+    updated_at: new Date().toISOString(),
+  });
+
+  return !error;
 }

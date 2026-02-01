@@ -293,7 +293,11 @@ export function SmartBreakdown({ onApply, initialVisionSentence, isDisabled }: S
                     <span className={`font-mono type-label px-2 py-0.5 rounded-sm ${
                       result.suggestedOutputMode === 'gameplay'
                         ? 'bg-purple-500/20 text-purple-400'
-                        : 'bg-amber-500/20 text-amber-400'
+                        : result.suggestedOutputMode === 'sketch'
+                        ? 'bg-amber-500/20 text-amber-400'
+                        : result.suggestedOutputMode === 'trailer'
+                        ? 'bg-cyan-500/20 text-cyan-400'
+                        : 'bg-rose-500/20 text-rose-400'
                     }`}>
                       {result.suggestedOutputMode}
                     </span>

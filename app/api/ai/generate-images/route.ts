@@ -16,7 +16,6 @@ interface GenerateRequest {
   prompts: Array<{
     id: string;  // Prompt ID to track which prompt this is for
     text: string;
-    negativePrompt?: string;  // Negative prompt for elements to avoid
   }>;
   width?: number;
   height?: number;
@@ -63,7 +62,6 @@ export async function POST(request: NextRequest) {
           width,
           height,
           numImages: 1,
-          negativePrompt: prompt.negativePrompt,
           metadata: { feature: 'generate-images', promptId: prompt.id },
         });
 

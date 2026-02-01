@@ -23,6 +23,7 @@ import {
   Image,
   RefreshCw,
   Zap,
+  Wand2,
 } from 'lucide-react';
 import { AutoplayLogEntry, AutoplayEventType } from '../../types';
 import { fadeIn, transitions } from '../../lib/motion';
@@ -51,6 +52,7 @@ function getEventColors(type: AutoplayEventType): {
     case 'poster_selected':
     case 'hud_complete':
     case 'phase_completed':
+    case 'image_polished': // Polish success
       return {
         icon: semanticColors.success.text,
         text: 'text-green-300',
@@ -62,6 +64,7 @@ function getEventColors(type: AutoplayEventType): {
     case 'image_rejected':
     case 'error':
     case 'timeout':
+    case 'polish_error': // Polish failure
       return {
         icon: semanticColors.error.text,
         text: 'text-red-300',
@@ -72,6 +75,7 @@ function getEventColors(type: AutoplayEventType): {
     case 'image_generating':
     case 'poster_generating':
     case 'hud_generating':
+    case 'polish_started': // Polish in progress
       return {
         icon: semanticColors.processing.text,
         text: 'text-purple-300',
@@ -82,6 +86,7 @@ function getEventColors(type: AutoplayEventType): {
     case 'prompt_generated':
     case 'phase_started':
     case 'iteration_complete':
+    case 'polish_skipped': // Polish skipped (neutral)
       return {
         icon: semanticColors.primary.text,
         text: 'text-cyan-300',
@@ -91,6 +96,7 @@ function getEventColors(type: AutoplayEventType): {
     // Warning/change events (amber)
     case 'dimension_adjusted':
     case 'feedback_applied':
+    case 'polish_no_improvement': // Polish didn't help (warning)
       return {
         icon: semanticColors.warning.text,
         text: 'text-amber-300',
@@ -116,11 +122,13 @@ function getEventIcon(type: AutoplayEventType) {
     case 'phase_completed':
     case 'poster_selected':
     case 'hud_complete':
+    case 'image_polished': // Polish success
       return CheckCircle;
 
     case 'image_failed':
     case 'image_rejected':
     case 'error':
+    case 'polish_error': // Polish failure
       return XCircle;
 
     case 'timeout':
@@ -141,6 +149,12 @@ function getEventIcon(type: AutoplayEventType) {
     case 'dimension_adjusted':
     case 'feedback_applied':
       return Zap;
+
+    // Polish events
+    case 'polish_started':
+    case 'polish_no_improvement':
+    case 'polish_skipped':
+      return Wand2;
 
     default:
       return AlertCircle;

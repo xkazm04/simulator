@@ -84,7 +84,11 @@ Available dimension types and their purposes:
 2. Dimensions describe what REPLACES the original content
 3. Only include dimensions that are clearly indicated or strongly implied
 4. Confidence should reflect how explicitly the user mentioned this aspect
-5. suggestedOutputMode: "gameplay" if describing a game screenshot, "concept" for art/cinematic
+5. suggestedOutputMode options:
+   - "gameplay": Game screenshot with HUD/UI elements (default for game references)
+   - "sketch": Hand-drawn concept art with visible linework (for artistic/concept mentions)
+   - "trailer": Cinematic movie scene for video/animation (for action/movie references)
+   - "poster": Key art poster composition (only for explicit poster mentions)
 
 Respond ONLY with valid JSON matching the specified structure.`;
 
@@ -108,7 +112,7 @@ Respond with JSON matching this exact structure:
       "confidence": 0.0-1.0
     }
   ],
-  "suggestedOutputMode": "gameplay|concept",
+  "suggestedOutputMode": "gameplay|sketch|trailer|poster",
   "reasoning": "Brief explanation of how you interpreted the user's vision"
 }
 
@@ -271,11 +275,12 @@ export function validateSmartBreakdownResponse(response: unknown): response is S
   if (typeof response !== 'object' || response === null) return false;
   const r = response as Record<string, unknown>;
 
+  const validModes = ['gameplay', 'sketch', 'trailer', 'poster'];
   return (
     typeof r.success === 'boolean' &&
     typeof r.baseImage === 'object' &&
     Array.isArray(r.dimensions) &&
-    (r.suggestedOutputMode === 'gameplay' || r.suggestedOutputMode === 'concept')
+    validModes.includes(r.suggestedOutputMode as string)
   );
 }
 

@@ -10,14 +10,15 @@ Transform fuzzy creative visions into concrete, curated AI-generated imagery thr
 
 ## Current Milestone: v1.2 Video Showcase
 
-**Goal:** Transform the project showcase into an automated video experience using Remotion, creating shareable cinematic presentations from project images.
+**Goal:** Transform the project showcase into an automated video experience using Remotion, with client-side rendering and no server infrastructure.
 
 **Target features:**
-- Remotion integration for video composition
+- Remotion integration for video composition (client-side)
+- Poster image as default, video on button click
 - On-demand video generation from project images
-- Full-screen immersive video showcase (replaces static hero card)
-- MP4 export for sharing on social/portfolio
-- Cinematic transitions and effects between images
+- Full-screen video player in showcase modal
+- MP4 download to user's device (no server storage)
+- Cinematic transitions between images (fade, slide, clockWipe)
 
 ## Requirements
 
@@ -49,11 +50,12 @@ Transform fuzzy creative visions into concrete, curated AI-generated imagery thr
 
 ### Out of Scope
 
-- Poster mode changes — separate workflow, working as intended
-- Natural language goal input for autoplay — keeping number picker
-- Live video streaming — pre-rendered videos only
-- User-customizable video templates — automated composition only for v1.2
-- Audio/music integration — visual-only for initial release
+- Server-side video storage — client-only for v1.2
+- AWS Lambda rendering — keeping it simple with browser rendering
+- Video persistence/history — no database storage needed
+- Auto-play on showcase open — poster first, user triggers video
+- Background music — licensing complexity, defer to v2+
+- Custom video templates UI — automated composition only
 
 ## Context
 
@@ -66,11 +68,12 @@ Transform fuzzy creative visions into concrete, curated AI-generated imagery thr
 - `ShowcaseLightbox` for full-screen image viewing with navigation
 
 **Video Showcase Goal:**
-- Replace static hero card with dynamically generated video
-- Compose all project panel images into cinematic sequence
-- Use Remotion for programmatic video composition
-- Trigger: On-demand button (not automatic)
-- Output: Both in-app playback AND MP4 export
+- Poster image displays by default when opening showcase
+- "Generate Video" button triggers video composition
+- Compose project panel images into cinematic sequence
+- Use Remotion Player for preview, WebCodecs for export
+- Client-side only: no server storage, no AWS infrastructure
+- Output: In-app playback + MP4 download to user's device
 
 **Key integration points:**
 - `app/posters/components/ShowcaseCinematic.tsx` — main showcase view

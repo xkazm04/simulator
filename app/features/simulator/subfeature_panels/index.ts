@@ -7,7 +7,7 @@
  */
 
 // Components
-export { SidePanel } from './components/SidePanel';
+export { SidePanel, SLOTS_PER_COLUMN, SLOTS_PER_SIDE } from './components/SidePanel';
 export { SidePanelSlot } from './components/SidePanelSlot';
 export { SavedImageModal } from './components/SavedImageModal';
 export { UploadImageModal } from './components/UploadImageModal';

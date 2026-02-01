@@ -18,11 +18,10 @@
 'use client';
 
 import { motion, AnimatePresence } from 'framer-motion';
-import { Lock, Sparkles, RefreshCw, Wand2, Loader2, MonitorPlay, Palette, Film, ChevronDown, ChevronUp, Brain, BarChart3, Undo2, Redo2 } from 'lucide-react';
-import { Dimension, OutputMode, PromptElement, createDimensionWithDefaults, InteractiveMode, NegativePromptItem } from '../../types';
+import { Lock, Sparkles, RefreshCw, Wand2, Loader2, MonitorPlay, Pencil, Clapperboard, Film, ChevronDown, ChevronUp, Brain, BarChart3, Undo2, Redo2 } from 'lucide-react';
+import { Dimension, OutputMode, PromptElement, createDimensionWithDefaults, InteractiveMode } from '../../types';
 import { ElementToDimensionButton } from '../../components/ElementToDimensionButton';
 import { InteractiveModeToggle } from '../../subfeature_interactive';
-import { NegativePromptInput } from '../../components/NegativePromptInput';
 import { FeedbackAnalyticsPanel } from '../../components/FeedbackAnalytics';
 import { useState, useEffect, useCallback } from 'react';
 import { semanticColors } from '../../lib/semanticColors';
@@ -46,9 +45,6 @@ interface FeedbackPanelProps {
   interactiveMode?: InteractiveMode;
   availableInteractiveModes?: InteractiveMode[];
   onInteractiveModeChange?: (mode: InteractiveMode) => void;
-  // Negative prompt props
-  negativePrompts?: NegativePromptItem[];
-  onNegativePromptsChange?: (negatives: NegativePromptItem[]) => void;
   dimensions?: Dimension[];
   // Prompt history props
   promptHistory?: {
@@ -77,8 +73,6 @@ export function FeedbackPanel({
   interactiveMode = 'static',
   availableInteractiveModes = ['static'],
   onInteractiveModeChange,
-  negativePrompts = [],
-  onNegativePromptsChange,
   dimensions = [],
   promptHistory,
   onPromptUndo,
@@ -292,17 +286,6 @@ export function FeedbackPanel({
               </div>
             </div>
 
-            {/* Negative Prompts Section */}
-            {onNegativePromptsChange && (
-              <div className="mt-md pt-md border-t border-slate-800/50">
-                <NegativePromptInput
-                  negativePrompts={negativePrompts}
-                  onNegativePromptsChange={onNegativePromptsChange}
-                  dimensions={dimensions}
-                  isGenerating={isAnyGenerating}
-                />
-              </div>
-            )}
           </motion.div>
         )}
       </AnimatePresence>
@@ -322,40 +305,52 @@ export function FeedbackPanel({
               />
             )}
 
-            {/* Output Mode Toggle - 50% width */}
+            {/* Output Mode Toggle - 4 modes */}
             <div className="flex-1 flex radius-md border border-slate-800 bg-slate-900/50 overflow-hidden">
-              <button
-                onClick={() => onOutputModeChange('concept')}
-                data-testid="output-mode-concept"
-                className={`flex-1 py-1.5 flex items-center justify-center gap-1.5 type-label font-mono uppercase tracking-wide transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/50 focus-visible:ring-offset-1 focus-visible:ring-offset-slate-900
-                            ${outputMode === 'concept'
-                              ? 'bg-amber-500/20 text-amber-400 border-r border-amber-500/30'
-                              : 'text-slate-500 hover:text-slate-300 border-r border-slate-800'}`}
-                title="Concept Art Mode"
-              >
-                <Palette size={12} />
-                <span>Concept</span>
-              </button>
               <button
                 onClick={() => onOutputModeChange('gameplay')}
                 data-testid="output-mode-gameplay"
-                className={`flex-1 py-1.5 flex items-center justify-center gap-1.5 type-label font-mono uppercase tracking-wide transition-colors border-r focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-500/50 focus-visible:ring-offset-1 focus-visible:ring-offset-slate-900
+                className={`flex-1 py-1.5 flex items-center justify-center gap-1 type-label font-mono uppercase tracking-wide transition-colors border-r focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-500/50 focus-visible:ring-offset-1 focus-visible:ring-offset-slate-900
                             ${outputMode === 'gameplay'
                               ? 'bg-purple-500/20 text-purple-400 border-purple-500/30'
                               : 'text-slate-500 hover:text-slate-300 border-slate-800'}`}
-                title="Gameplay Screenshot Mode"
+                title="Gameplay Screenshot with HUD/UI"
               >
                 <MonitorPlay size={12} />
-                <span>Gameplay</span>
+                <span>Game</span>
+              </button>
+              <button
+                onClick={() => onOutputModeChange('sketch')}
+                data-testid="output-mode-sketch"
+                className={`flex-1 py-1.5 flex items-center justify-center gap-1 type-label font-mono uppercase tracking-wide transition-colors border-r focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/50 focus-visible:ring-offset-1 focus-visible:ring-offset-slate-900
+                            ${outputMode === 'sketch'
+                              ? 'bg-amber-500/20 text-amber-400 border-amber-500/30'
+                              : 'text-slate-500 hover:text-slate-300 border-slate-800'}`}
+                title="Hand-drawn Concept Sketch"
+              >
+                <Pencil size={12} />
+                <span>Sketch</span>
+              </button>
+              <button
+                onClick={() => onOutputModeChange('trailer')}
+                data-testid="output-mode-trailer"
+                className={`flex-1 py-1.5 flex items-center justify-center gap-1 type-label font-mono uppercase tracking-wide transition-colors border-r focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/50 focus-visible:ring-offset-1 focus-visible:ring-offset-slate-900
+                            ${outputMode === 'trailer'
+                              ? 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30'
+                              : 'text-slate-500 hover:text-slate-300 border-slate-800'}`}
+                title="Cinematic Trailer Scene"
+              >
+                <Clapperboard size={12} />
+                <span>Trailer</span>
               </button>
               <button
                 onClick={() => onOutputModeChange('poster')}
                 data-testid="output-mode-poster"
-                className={`flex-1 py-1.5 flex items-center justify-center gap-1.5 type-label font-mono uppercase tracking-wide transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-500/50 focus-visible:ring-offset-1 focus-visible:ring-offset-slate-900
+                className={`flex-1 py-1.5 flex items-center justify-center gap-1 type-label font-mono uppercase tracking-wide transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-500/50 focus-visible:ring-offset-1 focus-visible:ring-offset-slate-900
                             ${outputMode === 'poster'
                               ? 'bg-rose-500/20 text-rose-400'
                               : 'text-slate-500 hover:text-slate-300'}`}
-                title="Generate Key Art Poster"
+                title="Key Art Poster"
               >
                 <Film size={12} />
                 <span>Poster</span>

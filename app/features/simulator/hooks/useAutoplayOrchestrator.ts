@@ -36,18 +36,25 @@ import {
   SmartBreakdownPersisted,
   AutoplayEventType,
   AutoplayLogEntry,
+  AutoplayIteration,
+  DEFAULT_POLISH_CONFIG,
 } from '../types';
 import {
   evaluateImages,
   extractRefinementFeedback,
   EvaluationCriteria,
 } from '../subfeature_brain/lib/imageEvaluator';
+import {
+  decidePolishAction,
+  polishImageWithTimeout,
+  PolishRequest,
+} from '../subfeature_brain/lib/imagePolisher';
 
 export interface AutoplayOrchestratorDeps {
   // From useImageGeneration
   generatedImages: GeneratedImage[];
   isGeneratingImages: boolean;
-  generateImagesFromPrompts: (prompts: Array<{ id: string; prompt: string; negativePrompt?: string }>) => Promise<void>;
+  generateImagesFromPrompts: (prompts: Array<{ id: string; prompt: string }>) => Promise<void>;
   saveImageToPanel: (promptId: string, promptText: string) => void;
 
   // From useBrain
@@ -148,6 +155,16 @@ export function useAutoplayOrchestrator(
   const generatedPromptsRef = useRef(generatedPrompts);
   generatedPromptsRef.current = generatedPrompts;
 
+  // Track generated images via ref for polish phase
+  const generatedImagesRef = useRef(generatedImages);
+  generatedImagesRef.current = generatedImages;
+
+  // Track polish attempts per prompt (prevents re-polishing same image)
+  const polishAttemptsRef = useRef<Map<string, number>>(new Map());
+
+  // Store evaluation criteria for use in polish phase
+  const evaluationCriteriaRef = useRef<EvaluationCriteria | null>(null);
+
   // Create state key for deduplication
   const stateKey = `${autoplay.state.status}-${autoplay.state.currentIteration}-${autoplay.state.totalSaved}`;
 
@@ -223,6 +240,9 @@ export function useAutoplayOrchestrator(
             } : undefined,
           };
 
+          // Store criteria for polish phase
+          evaluationCriteriaRef.current = criteria;
+
           // Evaluate all completed images with error handling
           // If evaluation fails, continue with all images marked unapproved
           let evaluations: ImageEvaluation[];
@@ -249,7 +269,10 @@ export function useAutoplayOrchestrator(
             }));
           }
 
-          // Log individual evaluation results
+          // Identify polish candidates (score 50-69, not yet polished)
+          const polishCandidates: NonNullable<AutoplayIteration['polishCandidates']> = [];
+
+          // Log individual evaluation results and identify polish candidates
           for (const evaluation of evaluations) {
             if (evaluation.approved) {
               logEvent('image_approved', `Image approved (score: ${evaluation.score})`, {
@@ -264,11 +287,37 @@ export function useAutoplayOrchestrator(
                 approved: false,
                 feedback: evaluation.feedback,
               });
+
+              // Check if this is a polish candidate
+              const polishAttempts = polishAttemptsRef.current.get(evaluation.promptId) || 0;
+              if (polishAttempts < DEFAULT_POLISH_CONFIG.maxPolishAttempts) {
+                const decision = decidePolishAction(
+                  evaluation,
+                  DEFAULT_POLISH_CONFIG,
+                  outputMode as 'gameplay' | 'concept',
+                  70 // approval threshold
+                );
+
+                if (decision.action === 'polish' && decision.polishPrompt) {
+                  const image = completedImages.find(img => img.promptId === evaluation.promptId);
+                  if (image?.url) {
+                    polishCandidates.push({
+                      promptId: evaluation.promptId,
+                      imageUrl: image.url,
+                      originalScore: evaluation.score,
+                      polishPrompt: decision.polishPrompt,
+                    });
+                    logEvent('polish_started', `Queued for polish (score: ${evaluation.score})`, {
+                      promptId: evaluation.promptId,
+                      score: evaluation.score,
+                    });
+                  }
+                }
+              }
             }
           }
 
-          // Signal evaluation complete (even if all failed, we continue the loop)
-          // Pass full evaluation data including improvements/strengths for feedback extraction
+          // Signal evaluation complete with polish candidates
           autoplay.onEvaluationComplete(
             evaluations.map(e => ({
               promptId: e.promptId,
@@ -277,8 +326,98 @@ export function useAutoplayOrchestrator(
               score: e.score,
               improvements: e.improvements,
               strengths: e.strengths,
-            }))
+            })),
+            polishCandidates.length > 0 ? polishCandidates : undefined
           );
+          break;
+        }
+
+        case 'polishing': {
+          // Get current iteration's polish candidates
+          const currentIter = autoplay.currentIteration;
+          if (!currentIter?.polishCandidates || currentIter.polishCandidates.length === 0) {
+            // No candidates, skip to refining
+            autoplay.onPolishComplete([]);
+            return;
+          }
+
+          const criteria = evaluationCriteriaRef.current;
+          if (!criteria) {
+            logEvent('error', 'No evaluation criteria available for polish');
+            autoplay.onPolishComplete([]);
+            return;
+          }
+
+          logEvent('polish_started', `Starting polish for ${currentIter.polishCandidates.length} image(s)`);
+
+          const polishResults: NonNullable<AutoplayIteration['polishResults']> = [];
+
+          for (const candidate of currentIter.polishCandidates) {
+            // Track polish attempt
+            const currentAttempts = polishAttemptsRef.current.get(candidate.promptId) || 0;
+            polishAttemptsRef.current.set(candidate.promptId, currentAttempts + 1);
+
+            try {
+              const request: PolishRequest = {
+                imageUrl: candidate.imageUrl,
+                promptId: candidate.promptId,
+                polishPrompt: candidate.polishPrompt,
+                criteria,
+                aspectRatio: '16:9',
+                polishType: 'rescue',
+                minScoreImprovement: DEFAULT_POLISH_CONFIG.minScoreImprovement,
+                originalScore: candidate.originalScore,
+              };
+
+              const result = await polishImageWithTimeout(
+                request,
+                DEFAULT_POLISH_CONFIG.polishTimeoutMs,
+                autoplay.abortController?.signal
+              );
+
+              if (result.improved && result.polishedUrl && result.reEvaluation) {
+                logEvent('image_polished', `Polish improved score: ${candidate.originalScore} → ${result.reEvaluation.score}`, {
+                  promptId: candidate.promptId,
+                  score: result.reEvaluation.score,
+                  approved: result.reEvaluation.approved,
+                });
+
+                polishResults.push({
+                  promptId: candidate.promptId,
+                  improved: true,
+                  newScore: result.reEvaluation.score,
+                  polishedUrl: result.polishedUrl,
+                });
+
+                // TODO: Update the generated image URL with polished version
+                // This would require a callback to useImageGeneration
+              } else {
+                logEvent('polish_no_improvement', `Polish did not improve (delta: ${result.scoreDelta ?? 0})`, {
+                  promptId: candidate.promptId,
+                  score: candidate.originalScore,
+                });
+
+                polishResults.push({
+                  promptId: candidate.promptId,
+                  improved: false,
+                  newScore: result.reEvaluation?.score,
+                });
+              }
+            } catch (error) {
+              console.error('[Autoplay] Polish error for', candidate.promptId, error);
+              logEvent('error', `Polish failed: ${error instanceof Error ? error.message : 'Unknown error'}`, {
+                promptId: candidate.promptId,
+              });
+
+              polishResults.push({
+                promptId: candidate.promptId,
+                improved: false,
+              });
+            }
+          }
+
+          // Signal polish complete
+          autoplay.onPolishComplete(polishResults);
           break;
         }
 
@@ -390,7 +529,6 @@ export function useAutoplayOrchestrator(
       currentPrompts.map(p => ({
         id: p.id,
         prompt: p.prompt,
-        negativePrompt: p.negativePrompt,
       }))
     );
   }, [autoplay.state.status, isGeneratingImages, generatedImages, generateImagesFromPrompts, generatedPrompts]);

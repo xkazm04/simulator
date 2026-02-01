@@ -79,17 +79,62 @@ function autoplayReducer(state: AutoplayState, action: AutoplayAction): Autoplay
     case 'EVALUATION_COMPLETE': {
       if (state.status !== 'evaluating') return state;
 
-      // Store evaluation results
+      // Store evaluation results and polish candidates
       const updatedIterations = [...state.iterations];
       const currentIdx = updatedIterations.length - 1;
       updatedIterations[currentIdx] = {
         ...updatedIterations[currentIdx],
         evaluations: action.evaluations,
+        polishCandidates: action.polishCandidates,
       };
 
-      // Check if any images were approved - if so, transition to saving phase
-      // The actual saving happens externally, we just track it
-      // Either way, go to refining to decide next step
+      // If there are polish candidates, transition to polishing phase
+      // Otherwise, skip directly to refining
+      const nextStatus = action.polishCandidates && action.polishCandidates.length > 0
+        ? 'polishing'
+        : 'refining';
+
+      return {
+        ...state,
+        status: nextStatus,
+        iterations: updatedIterations,
+      };
+    }
+
+    case 'POLISH_COMPLETE': {
+      if (state.status !== 'polishing') return state;
+
+      // Store polish results
+      const updatedIterations = [...state.iterations];
+      const currentIdx = updatedIterations.length - 1;
+      updatedIterations[currentIdx] = {
+        ...updatedIterations[currentIdx],
+        polishResults: action.results,
+      };
+
+      // Update evaluations with polished results
+      // If an image was improved by polish, update its approval status
+      const currentEvals = updatedIterations[currentIdx].evaluations;
+      const updatedEvals = currentEvals.map(eval_ => {
+        const polishResult = action.results.find(r => r.promptId === eval_.promptId);
+        if (polishResult?.improved && polishResult.newScore !== undefined) {
+          // Polish improved the image - update approval based on new score
+          const newApproved = polishResult.newScore >= 70; // Approval threshold
+          return {
+            ...eval_,
+            approved: newApproved,
+            score: polishResult.newScore,
+          };
+        }
+        return eval_;
+      });
+
+      updatedIterations[currentIdx] = {
+        ...updatedIterations[currentIdx],
+        evaluations: updatedEvals,
+      };
+
+      // Transition to refining
       return {
         ...state,
         status: 'refining',
@@ -234,8 +279,13 @@ export interface UseAutoplayReturn {
   start: (config: AutoplayConfig) => void;
   /** Signal that generation phase completed */
   onGenerationComplete: (promptIds: string[]) => void;
-  /** Signal that evaluation phase completed */
-  onEvaluationComplete: (evaluations: AutoplayIteration['evaluations']) => void;
+  /** Signal that evaluation phase completed (with optional polish candidates) */
+  onEvaluationComplete: (
+    evaluations: AutoplayIteration['evaluations'],
+    polishCandidates?: AutoplayIteration['polishCandidates']
+  ) => void;
+  /** Signal that polish phase completed */
+  onPolishComplete: (results: NonNullable<AutoplayIteration['polishResults']>) => void;
   /** Signal that images were saved */
   onImagesSaved: (count: number) => void;
   /** Signal that refinement (feedback application) completed */
@@ -287,8 +337,15 @@ export function useAutoplay(): UseAutoplayReturn {
     dispatch({ type: 'GENERATION_COMPLETE', promptIds });
   }, []);
 
-  const onEvaluationComplete = useCallback((evaluations: AutoplayIteration['evaluations']) => {
-    dispatch({ type: 'EVALUATION_COMPLETE', evaluations });
+  const onEvaluationComplete = useCallback((
+    evaluations: AutoplayIteration['evaluations'],
+    polishCandidates?: AutoplayIteration['polishCandidates']
+  ) => {
+    dispatch({ type: 'EVALUATION_COMPLETE', evaluations, polishCandidates });
+  }, []);
+
+  const onPolishComplete = useCallback((results: NonNullable<AutoplayIteration['polishResults']>) => {
+    dispatch({ type: 'POLISH_COMPLETE', results });
   }, []);
 
   const onImagesSaved = useCallback((count: number) => {
@@ -328,6 +385,7 @@ export function useAutoplay(): UseAutoplayReturn {
     start,
     onGenerationComplete,
     onEvaluationComplete,
+    onPolishComplete,
     onImagesSaved,
     onRefineComplete,
     onIterationComplete,

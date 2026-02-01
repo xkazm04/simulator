@@ -13,12 +13,15 @@ export { BrainProvider, useBrainContext } from './BrainContext';
 
 // Hooks
 export { useBrain } from './hooks/useBrain';
+export { useWhatif } from './hooks/useWhatif';
+export type { WhatifPair } from './hooks/useWhatif';
 
 // Lib
 export * from './lib/simulatorAI';
 export * from './lib/llmPrompts';
 export * from './lib/visionExamples';
 export * from './lib/posterEvaluator';
+export * from './lib/imagePolisher';
 
 // Components
 export { CentralBrain } from './components/CentralBrain';
@@ -28,6 +31,9 @@ export { BaseImageInput } from './components/BaseImageInput';
 export { FeedbackPanel } from './components/FeedbackPanel';
 export { PosterOverlay } from './components/PosterOverlay';
 export { PosterFullOverlay } from './components/PosterFullOverlay';
+export { BrainTabSwitcher, ViewModeSwitcher } from './components/BrainTabSwitcher';
+export type { BrainTab } from './components/BrainTabSwitcher';
+export { WhatIfPanel } from './components/WhatIfPanel';
 export { AutoplayControls } from './components/AutoplayControls';
 export type { AutoplayControlsProps } from './components/AutoplayControls';
 export { AutoplaySetupModal } from './components/AutoplaySetupModal';

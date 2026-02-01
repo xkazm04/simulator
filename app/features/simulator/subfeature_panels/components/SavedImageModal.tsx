@@ -91,6 +91,7 @@ export function SavedImageModal({
       const result = await checkVideoStatus(generationId);
 
       if (result.status === 'complete' && result.videoUrl) {
+        console.log('[SavedImageModal] Video generation complete:', { videoUrl: result.videoUrl.substring(0, 50), imageId: image?.id });
         setGeneratedVideoUrl(result.videoUrl);
         setIsGeneratingVideo(false);
         setVideoProgress(undefined);
@@ -98,7 +99,10 @@ export function SavedImageModal({
 
         // Auto-save video URL if callback provided
         if (onUpdateImageVideo && image) {
+          console.log('[SavedImageModal] Calling onUpdateImageVideo to persist...');
           onUpdateImageVideo(image.id, result.videoUrl);
+        } else {
+          console.warn('[SavedImageModal] Cannot persist video URL - missing callback or image:', { hasCallback: !!onUpdateImageVideo, hasImage: !!image });
         }
         return;
       }

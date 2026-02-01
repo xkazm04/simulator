@@ -69,7 +69,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     if (prompts.length > 0) {
       const promptsToInsert = prompts.map((p: Record<string, unknown>) => ({
         id: p.id, project_id: id, scene_number: p.sceneNumber, scene_type: p.sceneType,
-        prompt: p.prompt, negative_prompt: p.negativePrompt || null,
+        prompt: p.prompt, negative_prompt: null,
         copied: p.copied || false, rating: p.rating || null, locked: p.locked || false,
         elements_json: p.elements || null, created_at: now,
       }));

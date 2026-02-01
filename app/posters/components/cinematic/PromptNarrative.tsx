@@ -138,18 +138,6 @@ export function PromptNarrative({ prompts }: PromptNarrativeProps) {
               "{currentPrompt.prompt}"
             </p>
 
-            {/* Negative prompt */}
-            {currentPrompt.negative_prompt && (
-              <div className="mt-4 pt-4 border-t border-white/5">
-                <span className="text-[10px] font-mono text-red-400/60 uppercase tracking-wider">
-                  Negative:
-                </span>
-                <p className="text-xs text-slate-500 mt-1">
-                  {currentPrompt.negative_prompt}
-                </p>
-              </div>
-            )}
-
             {/* Decorative corners */}
             <div className="absolute top-0 right-0 w-16 h-16 border-t border-r border-white/5 rounded-tr-xl" />
             <div className="absolute bottom-0 left-0 w-16 h-16 border-b border-l border-white/5 rounded-bl-xl" />

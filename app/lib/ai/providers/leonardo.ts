@@ -20,7 +20,7 @@ import {
 import { getRateLimiter } from '../rate-limiter';
 import { getCostTracker } from '../cost-tracker';
 import { withRetry } from '../retry';
-import { truncatePromptForLeonardo, truncateNegativePrompt } from '../promptTruncation';
+import { truncatePromptForLeonardo } from '../promptTruncation';
 
 // Leonardo model constants
 const LUCIDE_ORIGIN_MODEL_ID = '7b592283-e8a7-4c5a-9ba6-d18c31f258b9';
@@ -165,7 +165,7 @@ export class LeonardoProvider implements AIProvider {
 
     // Start generation with retry
     const generationId = await withRetry(
-      () => this.startGenerationAPI(request.prompt, request.negativePrompt, width, height, request.numImages || 1),
+      () => this.startGenerationAPI(request.prompt, width, height, request.numImages || 1),
       'leonardo',
       {
         maxRetries: 2,
@@ -235,7 +235,6 @@ export class LeonardoProvider implements AIProvider {
 
     const generationId = await this.startGenerationAPI(
       request.prompt,
-      request.negativePrompt,
       width,
       height,
       request.numImages || 1
@@ -1017,16 +1016,12 @@ export class LeonardoProvider implements AIProvider {
    */
   private async startGenerationAPI(
     prompt: string,
-    negativePrompt: string | undefined,
     width: number,
     height: number,
     numImages: number
   ): Promise<string> {
-    // Apply truncation to prompts before sending to API
+    // Apply truncation to prompt before sending to API
     const truncatedPrompt = truncatePromptForLeonardo(prompt);
-    const truncatedNegative = negativePrompt
-      ? truncateNegativePrompt(negativePrompt)
-      : undefined;
 
     const payload = {
       alchemy: false,
@@ -1036,7 +1031,6 @@ export class LeonardoProvider implements AIProvider {
       styleUUID: this.styleId,
       prompt: truncatedPrompt,
       num_images: Math.min(Math.max(numImages, 1), 4),
-      ...(truncatedNegative && { negativePrompt: truncatedNegative }),
     };
 
     const response = await fetch(`${BASE_URL}/generations`, {

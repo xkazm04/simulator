@@ -13,7 +13,7 @@
 
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Loader2, AlertCircle } from 'lucide-react';
@@ -33,6 +33,7 @@ interface PanelImage {
   image_url: string;
   video_url: string | null;
   prompt: string | null;
+  type: 'gameplay' | 'trailer' | 'sketch' | 'poster' | null;
   created_at: string;
 }
 
@@ -59,13 +60,21 @@ interface GeneratedPrompt {
   created_at: string;
 }
 
+interface Dimension {
+  id: string;
+  type: string;
+  label: string;
+  reference: string;
+  weight?: number;
+}
+
 interface ProjectState {
   project_id: string;
   base_prompt: string | null;
   base_image_file: string | null;
   output_mode: string;
-  dimensions_json: string;
-  feedback_json: string;
+  dimensions_json: Dimension[] | string | null;
+  feedback_json: Record<string, unknown> | string | null;
   updated_at: string;
 }
 
@@ -218,6 +227,37 @@ export function ProjectShowcaseModal({ projectId, isOpen, onClose }: ProjectShow
     );
   }, [lightboxImages.length]);
 
+  // Parse dimensions from state (handles both array and stringified JSON)
+  const parsedDimensions = useMemo((): Dimension[] => {
+    if (!project?.state?.dimensions_json) return [];
+    const raw = project.state.dimensions_json;
+    // If already an array, use directly
+    if (Array.isArray(raw)) return raw;
+    // If string, parse it
+    if (typeof raw === 'string') {
+      try {
+        return JSON.parse(raw);
+      } catch {
+        return [];
+      }
+    }
+    return [];
+  }, [project?.state?.dimensions_json]);
+
+  // Calculate stats for header
+  const stats = useMemo(() => {
+    if (!project) return undefined;
+    const imagesWithVideos = project.panelImages.filter(img => img.video_url);
+    const sketchImages = project.panelImages.filter(img => img.type === 'sketch');
+    return {
+      images: project.panelImages.length,
+      dimensions: parsedDimensions.filter(d => d.reference).length,
+      prompts: project.generatedPrompts.length,
+      videos: imagesWithVideos.length,
+      sketches: sketchImages.length,
+    };
+  }, [project, parsedDimensions]);
+
   // Don't render portal until client-side mount (SSR safety)
   if (!mounted) return null;
 
@@ -257,6 +297,7 @@ export function ProjectShowcaseModal({ projectId, isOpen, onClose }: ProjectShow
               projectName={project?.name || 'Loading...'}
               createdAt={project?.created_at}
               onClose={onClose}
+              stats={stats}
             />
 
             {/* Content Area - Full height */}

@@ -15,6 +15,7 @@ import {
   ActivitySparkline,
   generateActivityData,
 } from '../../components/ActivitySparkline';
+import { ViewModeSwitcher } from '../../subfeature_brain/components/BrainTabSwitcher';
 
 export interface Project {
   id: string;
@@ -178,10 +179,12 @@ export function SimulatorHeader({
             )}
           </div>
 
-          {/* Center: Activity Sparkline */}
-          <div className="flex-1 flex items-center justify-center gap-3">
+          {/* Center: View Mode Switcher + Activity Sparkline */}
+          <div className="flex-1 flex items-center justify-center gap-4">
+            <ViewModeSwitcher />
             {activityData.length > 0 && (
               <>
+                <div className="w-px h-4 bg-slate-700" />
                 <span className="font-mono text-[10px] text-slate-600 uppercase tracking-wider">Activity</span>
                 <ActivitySparkline
                   data={activityData}

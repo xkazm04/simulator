@@ -16,7 +16,7 @@ export { usePrompts } from './hooks/usePrompts';
 export { usePromptHistory } from './hooks/usePromptHistory';
 
 // Lib
-export { buildMockPromptWithElements, buildNegativePrompt, generateSmartNegatives } from './lib/promptBuilder';
+export { buildMockPromptWithElements } from './lib/promptBuilder';
 
 // Components
 export { PromptSection } from './components/PromptSection';

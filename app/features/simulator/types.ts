@@ -263,8 +263,6 @@ export interface GeneratedPrompt {
   sceneNumber: number;
   sceneType: string;
   prompt: string;
-  /** Negative prompt for elements to avoid in generation */
-  negativePrompt?: string;
   copied: boolean;
   rating: 'up' | 'down' | null;
   locked: boolean;
@@ -299,20 +297,24 @@ export const SCENE_TYPES = [
   'Key Art Poster',
 ];
 
-export type OutputMode = 'gameplay' | 'concept' | 'poster';
+export type OutputMode = 'gameplay' | 'sketch' | 'trailer' | 'poster';
 
 export const OUTPUT_MODES: Record<OutputMode, { label: string; description: string }> = {
   gameplay: {
-    label: 'gameplay',
-    description: 'Output includes game UI/HUD elements for authenticity',
+    label: 'Gameplay',
+    description: 'Authentic game screenshot with HUD/UI elements',
   },
-  concept: {
-    label: 'concept',
-    description: 'Clean concept art without any UI overlays',
+  sketch: {
+    label: 'Sketch',
+    description: 'Artistic hand-drawn concept sketch, rough linework',
+  },
+  trailer: {
+    label: 'Trailer',
+    description: 'Cinematic scene optimized for video/animation',
   },
   poster: {
-    label: 'poster',
-    description: 'Generate key art / game cover poster',
+    label: 'Poster',
+    description: 'Key art / game cover poster composition',
   },
 };
 
@@ -322,116 +324,6 @@ export interface SimulationFeedback {
   positive: string;
   negative: string;
 }
-
-// ============================================
-// Negative Prompt Types
-// ============================================
-
-/**
- * NegativePromptItem - A single negative prompt entry
- */
-export interface NegativePromptItem {
-  id: string;
-  /** The negative prompt text */
-  text: string;
-  /** Whether this negative applies globally or per-prompt */
-  scope: 'global' | 'prompt';
-  /** Reference to specific prompt ID if scope is 'prompt' */
-  promptId?: string;
-  /** Whether this was auto-suggested based on dimensions */
-  isAutoSuggested?: boolean;
-}
-
-/**
- * NegativePromptSuggestion - Auto-suggested negative based on dimension choices
- */
-export interface NegativePromptSuggestion {
-  text: string;
-  reason: string;
-  dimensionType: DimensionType;
-}
-
-/**
- * Common negative prompts organized by category
- * Used for auto-suggestions and quick-add functionality
- */
-export const COMMON_NEGATIVES: Record<string, string[]> = {
-  quality: [
-    'blurry',
-    'low quality',
-    'pixelated',
-    'jpeg artifacts',
-    'noise',
-    'grainy',
-    'oversaturated',
-    'overexposed',
-    'underexposed',
-  ],
-  anatomy: [
-    'deformed',
-    'disfigured',
-    'bad anatomy',
-    'extra limbs',
-    'missing limbs',
-    'mutated hands',
-    'extra fingers',
-    'fused fingers',
-  ],
-  composition: [
-    'cropped',
-    'out of frame',
-    'poorly framed',
-    'bad composition',
-    'cluttered',
-    'watermark',
-    'signature',
-    'text',
-    'logo',
-  ],
-  style: [
-    'ugly',
-    'amateur',
-    'poorly drawn',
-    'bad proportions',
-    'cartoon',
-    'anime',
-    'unrealistic',
-  ],
-  ui: [
-    'no game UI',
-    'no HUD',
-    'no interface elements',
-    'no health bars',
-    'no menus',
-  ],
-};
-
-/**
- * Dimension-based negative suggestions
- * Maps dimension types to relevant negative prompts to auto-suggest
- */
-export const DIMENSION_NEGATIVE_SUGGESTIONS: Partial<Record<DimensionType, NegativePromptSuggestion[]>> = {
-  artStyle: [
-    { text: 'photorealistic', reason: 'When using artistic styles', dimensionType: 'artStyle' },
-    { text: '3D render', reason: 'When using 2D art styles', dimensionType: 'artStyle' },
-  ],
-  characters: [
-    { text: 'bad anatomy', reason: 'Character-focused scenes', dimensionType: 'characters' },
-    { text: 'deformed face', reason: 'Character-focused scenes', dimensionType: 'characters' },
-    { text: 'extra limbs', reason: 'Character-focused scenes', dimensionType: 'characters' },
-  ],
-  environment: [
-    { text: 'indoor', reason: 'When outdoor environment specified', dimensionType: 'environment' },
-    { text: 'outdoor', reason: 'When indoor environment specified', dimensionType: 'environment' },
-  ],
-  gameUI: [
-    { text: 'clean image', reason: 'When game UI is desired', dimensionType: 'gameUI' },
-  ],
-  mood: [
-    { text: 'happy', reason: 'When dark mood specified', dimensionType: 'mood' },
-    { text: 'dark', reason: 'When bright mood specified', dimensionType: 'mood' },
-  ],
-};
 
 // Panel image saved to side panel slot
 export interface SavedPanelImage {
@@ -997,9 +889,6 @@ export interface SimulatorLayoutProps {
   onViewInteractivePrototype?: (promptId: string) => void;
   // Comparison props
   onOpenComparison?: () => void;
-  // Negative prompt props
-  negativePrompts?: NegativePromptItem[];
-  onNegativePromptsChange?: (negatives: NegativePromptItem[]) => void;
   // Prompt history props
   promptHistory?: {
     canUndo: boolean;
@@ -1097,7 +986,7 @@ export interface StylePreference {
 export interface SmartSuggestion {
   id: string;
   /** Type of suggestion */
-  type: 'dimension' | 'weight' | 'element_lock' | 'negative_prompt' | 'output_mode';
+  type: 'dimension' | 'weight' | 'element_lock' | 'output_mode';
   /** What is being suggested */
   suggestion: string;
   /** Why this is being suggested */
@@ -1110,7 +999,6 @@ export interface SmartSuggestion {
     dimensionReference?: string;
     weight?: number;
     elementId?: string;
-    negativePrompt?: string;
     outputMode?: OutputMode;
   };
   /** Was this suggestion shown to user? */
@@ -1125,8 +1013,6 @@ export interface SmartSuggestion {
  * EnhancedLearnedContext - Extended context for adaptive generation
  */
 export interface EnhancedLearnedContext extends LearnedContext {
-  /** Suggested negative prompts based on history */
-  suggestedNegativePrompts: string[];
   /** Recommended weights for dimensions */
   recommendedWeights: Record<DimensionType, number>;
   /** Elements that should be auto-locked */
@@ -1155,8 +1041,6 @@ export interface FeedbackLearningConfig {
   maxSuggestionsToShow: number;
   /** Whether to track time-to-satisfaction */
   trackTimeMetrics: boolean;
-  /** Whether to auto-suggest negative prompts */
-  autoSuggestNegatives: boolean;
 }
 
 // ============================================
@@ -1170,8 +1054,10 @@ export type AutoplayStatus =
   | 'idle'           // Not running
   | 'generating'     // Waiting for image generation
   | 'evaluating'     // Sending image to Gemini for evaluation
+  | 'polishing'      // Polishing near-approval images via Gemini
   | 'refining'       // Applying feedback, preparing next iteration
   | 'complete'       // Target met or max iterations reached
+  | 'error'          // Error state
   | 'error';         // Failed state
 
 /**
@@ -1206,6 +1092,20 @@ export interface AutoplayIteration {
   startedAt: string;
   /** Timestamp when iteration completed */
   completedAt?: string;
+  /** Polish candidates identified during evaluation (score 50-69) */
+  polishCandidates?: Array<{
+    promptId: string;
+    imageUrl: string;
+    originalScore: number;
+    polishPrompt: string;
+  }>;
+  /** Results of polish operations */
+  polishResults?: Array<{
+    promptId: string;
+    improved: boolean;
+    newScore?: number;
+    polishedUrl?: string;
+  }>;
 }
 
 /**
@@ -1232,7 +1132,8 @@ export interface AutoplayState {
 export type AutoplayAction =
   | { type: 'START'; config: AutoplayConfig }
   | { type: 'GENERATION_COMPLETE'; promptIds: string[] }
-  | { type: 'EVALUATION_COMPLETE'; evaluations: AutoplayIteration['evaluations'] }
+  | { type: 'EVALUATION_COMPLETE'; evaluations: AutoplayIteration['evaluations']; polishCandidates?: AutoplayIteration['polishCandidates'] }
+  | { type: 'POLISH_COMPLETE'; results: NonNullable<AutoplayIteration['polishResults']> }
   | { type: 'IMAGES_SAVED'; count: number }
   | { type: 'REFINE_COMPLETE' }
   | { type: 'ITERATION_COMPLETE' }
@@ -1256,6 +1157,89 @@ export interface ImageEvaluation {
   improvements?: string[];
   /** What worked well (for preserving in next iteration) */
   strengths?: string[];
+  /** Granular score: technical quality (artifacts, blur, deformations) */
+  technicalScore?: number;
+  /** Granular score: how well image matches prompt/vision */
+  goalFitScore?: number;
+  /** Granular score: composition, lighting, color harmony */
+  aestheticScore?: number;
+  /** Whether image correctly includes/excludes UI based on mode */
+  modeCompliance?: boolean;
+}
+
+// ============================================
+// Gemini Polish Types
+// ============================================
+
+/**
+ * PolishConfig - Configuration for Gemini polish optimization
+ */
+export interface PolishConfig {
+  /** Enable rescue polish for near-approval images (50-69 range) */
+  rescueEnabled: boolean;
+  /** Minimum score to attempt rescue polish (below = reject outright) */
+  rescueFloor: number;
+  /** Enable excellence polish for approved images (70-89 range) */
+  excellenceEnabled: boolean;
+  /** Minimum score for excellence polish (must be >= approval threshold) */
+  excellenceFloor: number;
+  /** Maximum score for excellence polish (above = already excellent) */
+  excellenceCeiling: number;
+  /** Intensity of excellence polish: 'subtle' preserves more, 'creative' transforms more */
+  excellenceIntensity: 'subtle' | 'creative';
+  /** Maximum polish attempts per image (prevents infinite loops) */
+  maxPolishAttempts: number;
+  /** Timeout for polish operation in milliseconds */
+  polishTimeoutMs: number;
+  /** Minimum score improvement required to use polished result */
+  minScoreImprovement: number;
+}
+
+/**
+ * Default polish configuration
+ */
+export const DEFAULT_POLISH_CONFIG: PolishConfig = {
+  rescueEnabled: true,
+  rescueFloor: 50,
+  excellenceEnabled: true,
+  excellenceFloor: 70,
+  excellenceCeiling: 90,
+  excellenceIntensity: 'creative',
+  maxPolishAttempts: 1,
+  polishTimeoutMs: 30000,
+  minScoreImprovement: 5,
+};
+
+/**
+ * PolishDecision - Result of polish decision logic
+ */
+export interface PolishDecision {
+  /** Action to take: save, polish, or reject */
+  action: 'save' | 'polish' | 'reject';
+  /** Human-readable reason for the decision */
+  reason: string;
+  /** Polish prompt (only if action === 'polish') */
+  polishPrompt?: string;
+  /** Type of polish: rescue (50-69) or excellence (70-89) */
+  polishType?: 'rescue' | 'excellence';
+}
+
+/**
+ * PolishResult - Result from a polish operation
+ */
+export interface PolishResult {
+  /** Whether polish was successful */
+  success: boolean;
+  /** Polished image URL (base64 data URL) */
+  polishedUrl?: string;
+  /** Re-evaluation of polished image */
+  reEvaluation?: ImageEvaluation;
+  /** Whether polish improved the score */
+  improved: boolean;
+  /** Score change (positive = improvement) */
+  scoreDelta?: number;
+  /** Error message if polish failed */
+  error?: string;
 }
 
 // ============================================
@@ -1266,8 +1250,8 @@ export interface ImageEvaluation {
  * ExtendedAutoplayConfig - Configuration for multi-phase autoplay
  */
 export interface ExtendedAutoplayConfig {
-  /** Number of concept images to generate (1-4) */
-  conceptCount: number;
+  /** Number of sketch images to generate (1-4) */
+  sketchCount: number;
   /** Number of gameplay images to generate (1-4) */
   gameplayCount: number;
   /** Whether to generate poster variations and auto-select best */
@@ -1278,6 +1262,8 @@ export interface ExtendedAutoplayConfig {
   maxIterationsPerImage: number;
   /** Optional starting prompt idea */
   promptIdea?: string;
+  /** Optional Gemini polish configuration (uses defaults if not specified) */
+  polish?: Partial<PolishConfig>;
 }
 
 /**
@@ -1285,7 +1271,7 @@ export interface ExtendedAutoplayConfig {
  */
 export type AutoplayPhase =
   | 'idle'
-  | 'concept'
+  | 'sketch'
   | 'gameplay'
   | 'poster'
   | 'hud'
@@ -1310,8 +1296,8 @@ export interface MultiPhaseAutoplayState {
   phase: AutoplayPhase;
   /** Configuration for this autoplay session */
   config: ExtendedAutoplayConfig;
-  /** Progress for concept phase */
-  conceptProgress: PhaseProgress;
+  /** Progress for sketch phase */
+  sketchProgress: PhaseProgress;
   /** Progress for gameplay phase */
   gameplayProgress: PhaseProgress;
   /** Whether poster has been auto-selected */
@@ -1328,7 +1314,7 @@ export interface MultiPhaseAutoplayState {
 export type MultiPhaseAutoplayAction =
   | { type: 'START'; config: ExtendedAutoplayConfig }
   | { type: 'PHASE_COMPLETE'; phase: AutoplayPhase }
-  | { type: 'IMAGE_SAVED'; phase: 'concept' | 'gameplay' }
+  | { type: 'IMAGE_SAVED'; phase: 'sketch' | 'gameplay' }
   | { type: 'POSTER_SELECTED' }
   | { type: 'HUD_GENERATED' }
   | { type: 'ADVANCE_PHASE' }
@@ -1398,6 +1384,11 @@ export type AutoplayEventType =
   | 'poster_selected'
   | 'hud_generating'
   | 'hud_complete'
+  | 'polish_started'
+  | 'image_polished'
+  | 'polish_no_improvement'
+  | 'polish_error'
+  | 'polish_skipped'
   | 'error'
   | 'timeout';
 

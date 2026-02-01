@@ -13,6 +13,7 @@ import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { GeneratedImage, SavedPanelImage, PanelSlot } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 import { useLocalPersistedEntity } from './useLocalPersistedEntity';
+import { SLOTS_PER_SIDE } from '../subfeature_panels/components/SidePanel';
 
 const STORAGE_KEY_PREFIX = 'panel_images';
 
@@ -46,10 +47,12 @@ interface PanelSlotsData {
 
 /** Info about a saved panel image - for database sync */
 export interface SavedPanelImageInfo {
+  id: string;
   side: 'left' | 'right';
   slotIndex: number;
   imageUrl: string;
   prompt: string;
+  type?: 'gameplay' | 'trailer' | 'sketch' | 'poster' | null;
 }
 
 interface UseImageGenerationOptions {
@@ -57,6 +60,8 @@ interface UseImageGenerationOptions {
   projectId: string | null;
   /** Optional callback fired when an image is saved to panel - for database sync */
   onImageSaved?: (info: SavedPanelImageInfo) => void;
+  /** Current output mode - saved with panel images for filtering */
+  outputMode?: 'gameplay' | 'trailer' | 'sketch' | 'poster';
 }
 
 interface UseImageGenerationReturn {
@@ -64,13 +69,13 @@ interface UseImageGenerationReturn {
   isGeneratingImages: boolean;
   leftPanelSlots: PanelSlot[];
   rightPanelSlots: PanelSlot[];
-  generateImagesFromPrompts: (prompts: Array<{ id: string; prompt: string; negativePrompt?: string }>) => Promise<void>;
+  generateImagesFromPrompts: (prompts: Array<{ id: string; prompt: string }>) => Promise<void>;
   saveImageToPanel: (promptId: string, promptText: string) => void;
   /** Upload an external image URL to a specific panel slot */
   uploadImageToPanel: (side: 'left' | 'right', slotIndex: number, imageUrl: string, prompt?: string) => void;
   removePanelImage: (imageId: string) => void;
-  updatePanelImage: (imageId: string, newUrl: string) => void;
-  updatePanelImageVideo: (imageId: string, videoUrl: string) => void;
+  updatePanelImage: (imageId: string, newUrl: string) => Promise<void>;
+  updatePanelImageVideo: (imageId: string, videoUrl: string) => Promise<void>;
   clearGeneratedImages: () => void;
   deleteAllGenerations: () => Promise<void>;
   /** Delete a single generated image by prompt ID */
@@ -82,7 +87,7 @@ const POLL_INTERVAL = 2000; // 2 seconds
 const MAX_POLL_ATTEMPTS = 60; // 2 minutes max
 
 const createEmptySlots = (): PanelSlot[] =>
-  Array.from({ length: 5 }, (_, i) => ({ index: i, image: null }));
+  Array.from({ length: SLOTS_PER_SIDE }, (_, i) => ({ index: i, image: null }));
 
 const initialPanelData: PanelSlotsData = {
   leftSlots: createEmptySlots(),
@@ -90,7 +95,7 @@ const initialPanelData: PanelSlotsData = {
 };
 
 export function useImageGeneration(options: UseImageGenerationOptions): UseImageGenerationReturn {
-  const { projectId, onImageSaved } = options;
+  const { projectId, onImageSaved, outputMode } = options;
   const [generatedImages, setGeneratedImages] = useState<GeneratedImage[]>([]);
   const [isGeneratingImages, setIsGeneratingImages] = useState(false);
 
@@ -137,16 +142,16 @@ export function useImageGeneration(options: UseImageGenerationOptions): UseImage
 
   // Extract panel slots with proper padding
   const leftPanelSlots = useMemo(() => {
-    const slots = panelStorage.data.leftSlots.slice(0, 5);
-    while (slots.length < 5) {
+    const slots = panelStorage.data.leftSlots.slice(0, SLOTS_PER_SIDE);
+    while (slots.length < SLOTS_PER_SIDE) {
       slots.push({ index: slots.length, image: null });
     }
     return slots;
   }, [panelStorage.data.leftSlots]);
 
   const rightPanelSlots = useMemo(() => {
-    const slots = panelStorage.data.rightSlots.slice(0, 5);
-    while (slots.length < 5) {
+    const slots = panelStorage.data.rightSlots.slice(0, SLOTS_PER_SIDE);
+    while (slots.length < SLOTS_PER_SIDE) {
       slots.push({ index: slots.length, image: null });
     }
     return slots;
@@ -268,7 +273,7 @@ export function useImageGeneration(options: UseImageGenerationOptions): UseImage
    * Generate images from an array of prompts
    */
   const generateImagesFromPrompts = useCallback(
-    async (prompts: Array<{ id: string; prompt: string; negativePrompt?: string }>) => {
+    async (prompts: Array<{ id: string; prompt: string }>) => {
       if (prompts.length === 0) return;
 
       // Step 1: Delete previous generations from Leonardo
@@ -294,7 +299,6 @@ export function useImageGeneration(options: UseImageGenerationOptions): UseImage
             prompts: prompts.map((p) => ({
               id: p.id,
               text: p.prompt,
-              negativePrompt: p.negativePrompt,
             })),
             width: 1344,  // 16:9 aspect ratio (1344/768 = 1.75)
             height: 768,
@@ -445,18 +449,31 @@ export function useImageGeneration(options: UseImageGenerationOptions): UseImage
     };
 
     // Update panel storage using the local persistence hook
+    // NOTE: We must ensure slots array has SLOTS_PER_SIDE elements to support indices 0-9
+    // Old data from IndexedDB may only have 5 slots
     panelStorage.setData((prev) => {
+      // Helper to normalize slots array to SLOTS_PER_SIDE length
+      const normalizeSlots = (slots: PanelSlot[]): PanelSlot[] => {
+        const result: PanelSlot[] = [];
+        for (let i = 0; i < SLOTS_PER_SIDE; i++) {
+          result.push(slots[i] || { index: i, image: null });
+        }
+        return result;
+      };
+
       if (targetPanel === 'left') {
+        const normalizedSlots = normalizeSlots(prev.leftSlots);
         return {
           ...prev,
-          leftSlots: prev.leftSlots.map((slot, i) =>
+          leftSlots: normalizedSlots.map((slot, i) =>
             i === targetIndex ? { ...slot, image: newImage } : slot
           ),
         };
       } else {
+        const normalizedSlots = normalizeSlots(prev.rightSlots);
         return {
           ...prev,
-          rightSlots: prev.rightSlots.map((slot, i) =>
+          rightSlots: normalizedSlots.map((slot, i) =>
             i === targetIndex ? { ...slot, image: newImage } : slot
           ),
         };
@@ -467,13 +484,15 @@ export function useImageGeneration(options: UseImageGenerationOptions): UseImage
     // Call callback for database sync (if provided)
     if (onImageSaved) {
       onImageSaved({
+        id: newImage.id,
         side: targetPanel,
         slotIndex: targetIndex,
         imageUrl: image.url,
         prompt: promptText,
+        type: outputMode || null,
       });
     }
-  }, [generatedImages, panelStorage, onImageSaved]);
+  }, [generatedImages, panelStorage, onImageSaved, outputMode]);
   // Note: leftPanelSlots/rightPanelSlots removed - we use currentSlotsRef to avoid stale closures
 
   /**
@@ -493,7 +512,7 @@ export function useImageGeneration(options: UseImageGenerationOptions): UseImage
     }
 
     // Validate slot index
-    if (slotIndex < 0 || slotIndex >= 5) {
+    if (slotIndex < 0 || slotIndex >= SLOTS_PER_SIDE) {
       console.warn('[uploadImageToPanel] Invalid slot index:', slotIndex);
       return;
     }
@@ -517,18 +536,29 @@ export function useImageGeneration(options: UseImageGenerationOptions): UseImage
     };
 
     // Update panel storage
+    // NOTE: Normalize slots to SLOTS_PER_SIDE to handle old data with only 5 slots
     panelStorage.setData((prev) => {
+      const normalizeSlots = (slots: PanelSlot[]): PanelSlot[] => {
+        const result: PanelSlot[] = [];
+        for (let i = 0; i < SLOTS_PER_SIDE; i++) {
+          result.push(slots[i] || { index: i, image: null });
+        }
+        return result;
+      };
+
       if (side === 'left') {
+        const normalizedSlots = normalizeSlots(prev.leftSlots);
         return {
           ...prev,
-          leftSlots: prev.leftSlots.map((slot, i) =>
+          leftSlots: normalizedSlots.map((slot, i) =>
             i === slotIndex ? { ...slot, image: newImage } : slot
           ),
         };
       } else {
+        const normalizedSlots = normalizeSlots(prev.rightSlots);
         return {
           ...prev,
-          rightSlots: prev.rightSlots.map((slot, i) =>
+          rightSlots: normalizedSlots.map((slot, i) =>
             i === slotIndex ? { ...slot, image: newImage } : slot
           ),
         };
@@ -538,6 +568,7 @@ export function useImageGeneration(options: UseImageGenerationOptions): UseImage
     // Call callback for database sync (if provided)
     if (onImageSaved) {
       onImageSaved({
+        id: newImage.id,
         side,
         slotIndex,
         imageUrl,
@@ -576,8 +607,10 @@ export function useImageGeneration(options: UseImageGenerationOptions): UseImage
 
   /**
    * Update an image's URL (for Gemini regeneration)
+   * Updates both local state and persists to database
    */
-  const updatePanelImage = useCallback((imageId: string, newUrl: string) => {
+  const updatePanelImage = useCallback(async (imageId: string, newUrl: string) => {
+    // Update local state immediately for responsive UI
     panelStorage.setData((prev) => ({
       leftSlots: prev.leftSlots.map((slot) =>
         slot.image?.id === imageId
@@ -590,12 +623,29 @@ export function useImageGeneration(options: UseImageGenerationOptions): UseImage
           : slot
       ),
     }));
-  }, [panelStorage]);
+
+    // Persist to database if we have a project ID
+    if (projectId) {
+      try {
+        await fetch(`/api/projects/${projectId}/images`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ imageId, imageUrl: newUrl }),
+        });
+      } catch (err) {
+        console.error('[useImageGeneration] Failed to persist image update:', err);
+      }
+    }
+  }, [panelStorage, projectId]);
 
   /**
    * Update an image's video URL (for Seedance video generation)
+   * Updates both local state and persists to database
    */
-  const updatePanelImageVideo = useCallback((imageId: string, videoUrl: string) => {
+  const updatePanelImageVideo = useCallback(async (imageId: string, videoUrl: string) => {
+    console.log('[useImageGeneration] updatePanelImageVideo called:', { imageId, videoUrl: videoUrl?.substring(0, 50), projectId });
+
+    // Update local state immediately for responsive UI
     panelStorage.setData((prev) => ({
       leftSlots: prev.leftSlots.map((slot) =>
         slot.image?.id === imageId
@@ -608,7 +658,28 @@ export function useImageGeneration(options: UseImageGenerationOptions): UseImage
           : slot
       ),
     }));
-  }, [panelStorage]);
+
+    // Persist to database if we have a project ID
+    if (projectId) {
+      try {
+        console.log('[useImageGeneration] Saving video URL to database...');
+        const response = await fetch(`/api/projects/${projectId}/images`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ imageId, videoUrl }),
+        });
+        const result = await response.json();
+        console.log('[useImageGeneration] Video URL save result:', result);
+        if (!result.success) {
+          console.error('[useImageGeneration] Video URL save failed:', result.error);
+        }
+      } catch (err) {
+        console.error('[useImageGeneration] Failed to persist video URL update:', err);
+      }
+    } else {
+      console.warn('[useImageGeneration] No projectId - video URL not saved to database');
+    }
+  }, [panelStorage, projectId]);
 
   /**
    * Clear all generated images

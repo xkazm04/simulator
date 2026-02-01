@@ -3,7 +3,7 @@
 /**
  * ShowcasePlayer - Remotion Player wrapper for in-browser video preview
  *
- * Wraps @remotion/player to display the ShowcaseVideo composition.
+ * Plays: Cover image (poster) → Project videos in sequence
  * CRITICAL: Uses useMemo for inputProps to prevent re-render cascade.
  *
  * Key patterns:
@@ -15,27 +15,28 @@
 import React, { useMemo } from 'react';
 import { Player } from '@remotion/player';
 import { ShowcaseVideo } from '@/remotion/compositions/ShowcaseVideo';
-import { ShowcaseVideoProps, SHOWCASE_VIDEO_DEFAULTS } from '@/remotion/types';
+import { ShowcaseVideoProps, ShowcaseVideoItem, SHOWCASE_VIDEO_DEFAULTS } from '@/remotion/types';
 
 export interface ShowcasePlayerProps {
   projectName: string;
-  images: Array<{
-    id: string;
-    url: string;
-    label: string;
-  }>;
+  /** Cover/poster image URL */
+  coverUrl: string | null;
+  /** Videos to play after cover */
+  videos: ShowcaseVideoItem[];
   className?: string;
+  /** Auto-play on mount */
+  autoPlay?: boolean;
 }
 
 /**
- * Empty state placeholder when no images available
+ * Empty state placeholder when no videos available
  */
 function EmptyPlaceholder() {
   return (
     <div className="w-full aspect-video bg-slate-900 rounded-lg flex items-center justify-center">
       <div className="text-center text-slate-500">
-        <div className="text-lg font-mono mb-2">No images to preview</div>
-        <div className="text-sm">Add images to your project to generate a video</div>
+        <div className="text-lg font-mono mb-2">No videos to preview</div>
+        <div className="text-sm">Generate videos for your project images first</div>
       </div>
     </div>
   );
@@ -45,31 +46,72 @@ function EmptyPlaceholder() {
  * ShowcasePlayer component
  *
  * Renders Remotion Player with ShowcaseVideo composition.
- * Handles empty state gracefully.
+ * Plays cover image followed by project videos.
  */
 export function ShowcasePlayer({
   projectName,
-  images,
+  coverUrl,
+  videos,
   className,
+  autoPlay = true,
 }: ShowcasePlayerProps) {
-  const { fps, width, height, durationPerImage } = SHOWCASE_VIDEO_DEFAULTS;
+  const {
+    fps,
+    width,
+    height,
+    coverDuration,
+    estimatedVideoDuration,
+    transitionDuration,
+  } = SHOWCASE_VIDEO_DEFAULTS;
 
-  // Calculate total duration based on number of images
-  const durationInFrames = images.length * durationPerImage;
+  // Calculate total duration for TransitionSeries
+  // TransitionSeries overlaps scenes during transitions, so:
+  // Total = sum(sequences) - sum(transitions)
+  const durationInFrames = useMemo(() => {
+    if (videos.length === 0) {
+      return coverUrl ? coverDuration : 1;
+    }
+
+    // Sum of all sequence durations
+    let totalSequenceDuration = 0;
+
+    // Cover sequence
+    if (coverUrl) {
+      totalSequenceDuration += coverDuration;
+    }
+
+    // Video sequences
+    totalSequenceDuration += videos.length * estimatedVideoDuration;
+
+    // Count transitions (overlap reduces total duration)
+    // - 1 transition from cover to first video (if cover exists)
+    // - (videos.length - 1) transitions between videos
+    const numTransitions = (coverUrl ? 1 : 0) + Math.max(0, videos.length - 1);
+    const transitionOverlap = numTransitions * transitionDuration;
+
+    return Math.max(1, totalSequenceDuration - transitionOverlap);
+  }, [
+    coverUrl,
+    coverDuration,
+    videos.length,
+    estimatedVideoDuration,
+    transitionDuration,
+  ]);
 
   // CRITICAL: Memoize inputProps to prevent Player re-render cascade
   // Without this, Player re-renders thousands of times causing 200-800ms overhead
   const inputProps: ShowcaseVideoProps = useMemo(
     () => ({
       projectName,
-      images,
-      durationPerImage,
+      coverUrl,
+      videos,
+      coverDuration,
     }),
-    [projectName, images, durationPerImage]
+    [projectName, coverUrl, videos, coverDuration]
   );
 
-  // Handle empty state - don't render Player with no content
-  if (!images || images.length === 0) {
+  // Handle empty state - need at least cover or videos
+  if (!coverUrl && (!videos || videos.length === 0)) {
     return <EmptyPlaceholder />;
   }
 
@@ -87,7 +129,7 @@ export function ShowcasePlayer({
           aspectRatio: '16/9',
         }}
         controls
-        autoPlay={false}
+        autoPlay={autoPlay}
         loop
       />
     </div>

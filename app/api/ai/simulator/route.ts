@@ -37,12 +37,12 @@ import {
  * - POST ?action=refine-feedback - Refine based on change input
  */
 
-async function callClaude(systemPrompt: string, userPrompt: string, feature: string): Promise<string> {
+async function callClaude(systemPrompt: string, userPrompt: string, feature: string, maxTokens: number = 2000): Promise<string> {
   const provider = getUnifiedProvider();
   const response = await provider.generateText({
     systemPrompt,
     userPrompt,
-    maxTokens: 2000,
+    maxTokens,
     metadata: { feature },
   }, 'claude');
   return response.text;
@@ -187,10 +187,12 @@ async function handleGenerateWithFeedback(body: GenerateWithFeedbackRequest) {
     return createErrorResponse('Base image description is required', HTTP_STATUS.BAD_REQUEST);
   }
 
+  // Use higher token limit for generation (4 prompts + dimension adjustments)
   const response = await callClaude(
     GENERATE_WITH_FEEDBACK_SYSTEM_PROMPT,
     createGenerateWithFeedbackPrompt(body),
-    'generate-with-feedback'
+    'generate-with-feedback',
+    4000 // Higher limit for 4 full prompts + adjustments
   );
 
   const parsed = parseJsonResponse(response) as {

@@ -17,6 +17,7 @@ import {
   Check,
   Play,
   ExternalLink,
+  Copy,
 } from 'lucide-react';
 import { fadeIn, transitions } from '@/app/features/simulator/lib/motion';
 import { LightboxImage } from './ProjectShowcaseModal';
@@ -41,6 +42,7 @@ export function ShowcaseLightbox({
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadSuccess, setDownloadSuccess] = useState(false);
   const [showVideo, setShowVideo] = useState(false);
+  const [promptCopied, setPromptCopied] = useState(false);
 
   const isOpen = currentIndex !== null;
   const currentImage = isOpen ? images[currentIndex] : null;
@@ -110,6 +112,19 @@ export function ShowcaseLightbox({
       setIsDownloading(false);
     }
   }, [currentImage, projectName, isDownloading]);
+
+  // Copy prompt handler
+  const handleCopyPrompt = useCallback(async () => {
+    if (!currentImage?.prompt) return;
+
+    try {
+      await navigator.clipboard.writeText(currentImage.prompt);
+      setPromptCopied(true);
+      setTimeout(() => setPromptCopied(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy prompt:', err);
+    }
+  }, [currentImage?.prompt]);
 
   // Touch swipe support
   const [touchStart, setTouchStart] = useState<number | null>(null);
@@ -233,18 +248,38 @@ export function ShowcaseLightbox({
             </button>
           </div>
 
-          {/* Info Panel */}
-          <div className="px-4 py-4 border-t border-slate-800/50">
-            <div className="max-w-3xl mx-auto">
-              {/* Prompt */}
+          {/* Info Panel - Extended height for prompt display */}
+          <div className="px-4 py-6 border-t border-slate-800/50 bg-gradient-to-t from-black/80 to-transparent">
+            <div className="max-w-4xl mx-auto">
+              {/* Prompt Section - Expanded */}
               {currentImage.prompt && (
-                <div className="mb-3">
-                  <span className="text-[10px] font-mono text-slate-500 uppercase tracking-wider">
-                    Generation Prompt
-                  </span>
-                  <p className="text-sm text-slate-300 mt-1 line-clamp-2">
-                    "{currentImage.prompt}"
-                  </p>
+                <div className="mb-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[10px] font-mono text-slate-500 uppercase tracking-wider">
+                      Generation Prompt
+                    </span>
+                    <button
+                      onClick={handleCopyPrompt}
+                      className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-mono text-slate-400 hover:text-cyan-400 bg-slate-800/80 hover:bg-slate-700 border border-slate-700 hover:border-cyan-500/30 rounded-md transition-all"
+                    >
+                      {promptCopied ? (
+                        <>
+                          <Check size={12} className="text-green-400" />
+                          <span className="text-green-400">Copied!</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy size={12} />
+                          <span>Copy</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                  <div className="p-4 bg-slate-900/60 border border-slate-800 rounded-lg">
+                    <p className="text-sm text-slate-300 leading-relaxed line-clamp-4">
+                      "{currentImage.prompt}"
+                    </p>
+                  </div>
                 </div>
               )}
 

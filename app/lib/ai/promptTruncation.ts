@@ -6,14 +6,10 @@
  *
  * Limits:
  * - Leonardo prompt: 1500 characters
- * - Leonardo negative prompt: 500 characters
  */
 
-/** Maximum characters for Leonardo positive prompt */
+/** Maximum characters for Leonardo prompt */
 export const LEONARDO_MAX_PROMPT_LENGTH = 1500;
-
-/** Maximum characters for Leonardo negative prompt */
-export const LEONARDO_MAX_NEGATIVE_PROMPT_LENGTH = 500;
 
 /**
  * Truncate a prompt for Leonardo AI with smart boundary detection.
@@ -44,7 +40,7 @@ export function truncatePromptForLeonardo(
 
   if (lastComma > commaThreshold) {
     const result = truncated.substring(0, lastComma).trim();
-    logTruncation('prompt', prompt.length, result.length, 'comma');
+    logTruncation(prompt.length, result.length, 'comma');
     return result;
   }
 
@@ -55,58 +51,13 @@ export function truncatePromptForLeonardo(
 
   if (lastSpace > spaceThreshold) {
     const result = truncated.substring(0, lastSpace).trim();
-    logTruncation('prompt', prompt.length, result.length, 'space');
+    logTruncation(prompt.length, result.length, 'space');
     return result;
   }
 
   // Hard truncate as last resort
   const result = truncated.trim();
-  logTruncation('prompt', prompt.length, result.length, 'hard');
-  return result;
-}
-
-/**
- * Truncate a negative prompt for Leonardo AI.
- *
- * Uses the same smart truncation strategy as positive prompts
- * but with a 500 character limit.
- *
- * @param prompt - The negative prompt text to truncate
- * @param maxLength - Maximum length (defaults to 500)
- * @returns Truncated negative prompt
- */
-export function truncateNegativePrompt(
-  prompt: string,
-  maxLength: number = LEONARDO_MAX_NEGATIVE_PROMPT_LENGTH
-): string {
-  if (!prompt) return '';
-  if (prompt.length <= maxLength) return prompt;
-
-  const truncated = prompt.substring(0, maxLength);
-
-  // Comma-aware truncation
-  const commaThreshold = maxLength * 0.7;
-  const lastComma = truncated.lastIndexOf(',');
-
-  if (lastComma > commaThreshold) {
-    const result = truncated.substring(0, lastComma).trim();
-    logTruncation('negative', prompt.length, result.length, 'comma');
-    return result;
-  }
-
-  // Word boundary fallback
-  const spaceThreshold = maxLength * 0.8;
-  const lastSpace = truncated.lastIndexOf(' ');
-
-  if (lastSpace > spaceThreshold) {
-    const result = truncated.substring(0, lastSpace).trim();
-    logTruncation('negative', prompt.length, result.length, 'space');
-    return result;
-  }
-
-  // Hard truncate
-  const result = truncated.trim();
-  logTruncation('negative', prompt.length, result.length, 'hard');
+  logTruncation(prompt.length, result.length, 'hard');
   return result;
 }
 
@@ -114,13 +65,12 @@ export function truncateNegativePrompt(
  * Log truncation events for debugging/monitoring
  */
 function logTruncation(
-  type: 'prompt' | 'negative',
   originalLength: number,
   truncatedLength: number,
   method: 'comma' | 'space' | 'hard'
 ): void {
   console.warn(
-    `[Leonardo] ${type === 'prompt' ? 'Prompt' : 'Negative prompt'} truncated: ` +
+    `[Leonardo] Prompt truncated: ` +
     `${originalLength} -> ${truncatedLength} chars (${method} boundary)`
   );
 }

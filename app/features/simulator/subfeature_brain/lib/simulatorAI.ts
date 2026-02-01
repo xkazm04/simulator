@@ -77,7 +77,6 @@ export interface GenerateWithFeedbackResult {
     sceneNumber: number;
     sceneType: string;
     prompt: string;
-    negativePrompt?: string;
     elements: Array<{
       id: string;
       text: string;

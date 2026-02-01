@@ -48,7 +48,7 @@ Return JSON:
   "dimensions": [
     {"type": "environment|artStyle|characters|etc", "reference": "detailed description", "confidence": 0.0-1.0}
   ],
-  "suggestedOutputMode": "gameplay|concept",
+  "suggestedOutputMode": "gameplay|sketch|trailer|poster",
   "reasoning": "brief interpretation"
 }`;
 }

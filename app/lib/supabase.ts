@@ -15,6 +15,7 @@ export const TABLES = {
   projectState: 'simulator_project_state',
   panelImages: 'simulator_panel_images',
   projectPosters: 'simulator_project_posters',
+  projectWhatifs: 'simulator_project_whatifs',
   interactivePrototypes: 'simulator_interactive_prototypes',
   generatedPrompts: 'simulator_generated_prompts',
   projectMetadata: 'simulator_project_metadata',
@@ -105,6 +106,7 @@ export interface DbPanelImage {
   image_url: string;
   video_url: string | null;
   prompt: string | null;
+  type: 'gameplay' | 'trailer' | 'sketch' | 'poster' | null;
   created_at: string;
 }
 
@@ -115,6 +117,18 @@ export interface DbProjectPoster {
   prompt: string | null;
   dimensions_json: Record<string, unknown>[] | null;
   created_at: string;
+}
+
+export interface DbProjectWhatif {
+  id: string;
+  project_id: string;
+  before_image_url: string | null;
+  before_caption: string | null;
+  after_image_url: string | null;
+  after_caption: string | null;
+  display_order: number;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface DbInteractivePrototype {

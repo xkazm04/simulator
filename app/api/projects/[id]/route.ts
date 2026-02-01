@@ -9,7 +9,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb, TABLES } from '@/app/lib/supabase';
-import { fetchProject, fetchProjectWithState, buildStateUpdate, touchProject } from './helpers';
+import { fetchProject, fetchProjectWithState, buildStateUpdate, touchProject, ensureProjectState } from './helpers';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -53,11 +53,14 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
   try {
     const { id } = await params;
     const body = await request.json();
+    console.log('[API PUT /projects/:id] Received:', { id, body });
+
     const supabase = getDb();
     const now = new Date().toISOString();
 
     const project = await fetchProject(supabase, id);
     if (!project) {
+      console.log('[API PUT /projects/:id] Project not found:', id);
       return NextResponse.json({ success: false, error: 'Project not found' }, { status: 404 });
     }
 
@@ -71,9 +74,21 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 
     // Build and apply state update
     const stateUpdate = buildStateUpdate(body);
+    console.log('[API PUT /projects/:id] State update:', stateUpdate);
+
     if (Object.keys(stateUpdate).length > 0) {
+      // Ensure project state row exists (it may not for newly created projects)
+      const ensured = await ensureProjectState(supabase, id);
+      console.log('[API PUT /projects/:id] ensureProjectState result:', ensured);
+
       stateUpdate.updated_at = now;
-      await supabase.from(TABLES.projectState).update(stateUpdate).eq('project_id', id);
+      const { error, count } = await supabase.from(TABLES.projectState).update(stateUpdate).eq('project_id', id);
+      console.log('[API PUT /projects/:id] Update result:', { error, count });
+
+      if (error) {
+        console.error('[API PUT /projects/:id] Update error:', error);
+      }
+
       await touchProject(supabase, id);
     }
 

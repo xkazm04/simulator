@@ -55,7 +55,7 @@ Return JSON with this exact structure:
       "style": "Art style description"
     },
     "suggestedBaseDescription": "A formatted description suitable as the 'Base Image' field for the simulator - focus on FORMAT not content",
-    "suggestedOutputMode": "gameplay|concept",
+    "suggestedOutputMode": "gameplay|sketch|trailer|poster (gameplay for game UIs, sketch for artistic/concept art, trailer for cinematic scenes, poster for key art)",
     "detectedReferences": ["Any recognizable cultural references - games, movies, art styles"]
   }
 }`;
@@ -78,7 +78,7 @@ export interface ImageDescription {
     style: string;
   };
   suggestedBaseDescription: string;
-  suggestedOutputMode: 'gameplay' | 'concept';
+  suggestedOutputMode: 'gameplay' | 'sketch' | 'trailer' | 'poster';
   detectedReferences: string[];
 }
 

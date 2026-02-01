@@ -24,6 +24,7 @@ import { DimensionsProvider, useDimensionsContext } from './subfeature_dimension
 import { BrainProvider, useBrainContext } from './subfeature_brain';
 import { PromptsProvider, usePromptsContext } from './subfeature_prompts';
 import { SimulatorProvider, useSimulatorContext } from './SimulatorContext';
+import { ProjectProvider } from './contexts';
 import { SimulatorHeader } from './subfeature_project';
 
 const PromptDetailModal = lazy(() => import('./subfeature_prompts').then(m => ({ default: m.PromptDetailModal })));
@@ -48,7 +49,7 @@ function SimulatorContent() {
   const [currentProjectId, setCurrentProjectId] = React.useState<string | null>(null);
 
   // Callback to sync saved images to database
-  const handleImageSaved = useCallback(async (info: { side: 'left' | 'right'; slotIndex: number; imageUrl: string; prompt: string }) => {
+  const handleImageSaved = useCallback(async (info: { id: string; side: 'left' | 'right'; slotIndex: number; imageUrl: string; prompt: string; type?: 'gameplay' | 'trailer' | 'sketch' | 'poster' | null }) => {
     if (!currentProjectId) return;
 
     try {
@@ -56,10 +57,12 @@ function SimulatorContent() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          id: info.id,
           side: info.side,
           slotIndex: info.slotIndex,
           imageUrl: info.imageUrl,
           prompt: info.prompt,
+          type: info.type,
         }),
       });
     } catch (error) {
@@ -70,6 +73,7 @@ function SimulatorContent() {
   const imageGen = useImageGeneration({
     projectId: currentProjectId,
     onImageSaved: handleImageSaved,
+    outputMode: brain.outputMode,
   });
 
   const pm = useProjectManager({ imageGen, onProjectChange: setCurrentProjectId });
@@ -322,15 +326,17 @@ function SimulatorContent() {
 
 export function SimulatorFeature() {
   return (
-    <DimensionsProvider>
-      <BrainProvider>
-        <PromptsProvider>
-          <SimulatorProvider>
-            <SimulatorContent />
-          </SimulatorProvider>
-        </PromptsProvider>
-      </BrainProvider>
-    </DimensionsProvider>
+    <ProjectProvider>
+      <DimensionsProvider>
+        <BrainProvider>
+          <PromptsProvider>
+            <SimulatorProvider>
+              <SimulatorContent />
+            </SimulatorProvider>
+          </PromptsProvider>
+        </BrainProvider>
+      </DimensionsProvider>
+    </ProjectProvider>
   );
 }
 

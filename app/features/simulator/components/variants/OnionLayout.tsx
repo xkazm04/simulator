@@ -11,7 +11,7 @@
 
 'use client';
 
-import React, { useEffect, useCallback, useMemo, memo, useState } from 'react';
+import React, { useEffect, useCallback, memo, useState } from 'react';
 import { AnimatePresence } from 'framer-motion';
 import {
   GeneratedPrompt,
@@ -26,16 +26,19 @@ import { SidePanel, UploadImageModal } from '../../subfeature_panels';
 import { Toast, useToast } from '@/app/components/ui';
 import { useResponsivePanels } from '../../lib/useResponsivePanels';
 
-// Context-aware components from subfeatures
-import { DimensionColumn } from '../../subfeature_dimensions/components/DimensionColumn';
-import { CentralBrain } from '../../subfeature_brain/components/CentralBrain';
-import { PosterFullOverlay } from '../../subfeature_brain/components/PosterFullOverlay';
-import { PromptSection } from '../../subfeature_prompts/components/PromptSection';
+// Core view components
+import { CmdCore } from './CmdCore';
+import { PosterCore } from './PosterCore';
+import { WhatifCore } from './WhatifCore';
 
-// Contexts
-import { useDimensionsContext } from '../../subfeature_dimensions/DimensionsContext';
-import { usePromptsContext } from '../../subfeature_prompts/PromptsContext';
+// Legacy components for poster overlay
+import { PosterFullOverlay } from '../../subfeature_brain/components/PosterFullOverlay';
+
+// Context for simulator actions
 import { useSimulatorContext } from '../../SimulatorContext';
+
+// Zustand store for view mode
+import { useViewModeStore } from '../../stores';
 
 export interface OnionLayoutProps {
   // Side panel props (external to subfeatures)
@@ -165,10 +168,11 @@ function OnionLayoutComponent({
   // Multi-phase autoplay props
   multiPhaseAutoplay,
 }: OnionLayoutProps) {
-  // Get state from contexts
-  const dimensions = useDimensionsContext();
-  const prompts = usePromptsContext();
+  // Get simulator actions from context
   const simulator = useSimulatorContext();
+
+  // Get view mode from Zustand store
+  const { viewMode } = useViewModeStore();
 
   // Responsive panel management
   const panels = useResponsivePanels();
@@ -223,52 +227,6 @@ function OnionLayoutComponent({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [simulator.canGenerate, simulator.isGenerating, isGeneratingPoster, simulator.handleGenerate]);
 
-  // Copy handler with toast notification
-  const handleCopyWithToast = useCallback((id: string) => {
-    const prompt = prompts.generatedPrompts.find(p => p.id === id);
-    if (prompt) {
-      navigator.clipboard.writeText(prompt.prompt);
-      prompts.handleCopy(id);
-      showToast('Prompt copied to clipboard', 'success');
-    }
-  }, [prompts, showToast]);
-
-  // Memoize dimension splitting to avoid recalculation on each render
-  const { leftDimensions, rightDimensions } = useMemo(() => {
-    const midPoint = Math.ceil(dimensions.dimensions.length / 2);
-    return {
-      leftDimensions: dimensions.dimensions.slice(0, midPoint),
-      rightDimensions: dimensions.dimensions.slice(midPoint),
-    };
-  }, [dimensions.dimensions]);
-
-  // Memoize reorder handlers - these need stable references
-  const handleLeftReorder = useCallback((reorderedLeft: typeof leftDimensions) => {
-    // Get current right dimensions at call time to avoid stale closure
-    const currentMidPoint = Math.ceil(dimensions.dimensions.length / 2);
-    const currentRight = dimensions.dimensions.slice(currentMidPoint);
-    dimensions.handleDimensionReorder([...reorderedLeft, ...currentRight]);
-  }, [dimensions.dimensions, dimensions.handleDimensionReorder]);
-
-  const handleRightReorder = useCallback((reorderedRight: typeof rightDimensions) => {
-    // Get current left dimensions at call time to avoid stale closure
-    const currentMidPoint = Math.ceil(dimensions.dimensions.length / 2);
-    const currentLeft = dimensions.dimensions.slice(0, currentMidPoint);
-    dimensions.handleDimensionReorder([...currentLeft, ...reorderedRight]);
-  }, [dimensions.dimensions, dimensions.handleDimensionReorder]);
-
-  // Memoize prompt splitting
-  const { topPrompts, bottomPrompts } = useMemo(() => ({
-    topPrompts: prompts.generatedPrompts.slice(0, 2),
-    bottomPrompts: prompts.generatedPrompts.slice(2),
-  }), [prompts.generatedPrompts]);
-
-  // Compute if all panel slots are full (for disabling lock when no room)
-  const allSlotsFull = useMemo(() => {
-    const allSlots = [...leftPanelSlots, ...rightPanelSlots];
-    // Use !! to handle both null and undefined cases
-    return allSlots.length > 0 && allSlots.every(slot => !!slot.image);
-  }, [leftPanelSlots, rightPanelSlots]);
 
   return (
     <div className="h-full w-full bg-surface-primary text-slate-200 flex overflow-hidden p-lg gap-lg font-sans selection:bg-amber-900/50 selection:text-amber-100 relative">
@@ -277,126 +235,98 @@ function OnionLayoutComponent({
       {/* Copy Toast */}
       <Toast {...toastProps} data-testid="copy-toast" />
 
-      {/* Left Border: Image Placeholders */}
-      <SidePanel
-        side="left"
-        slots={leftPanelSlots}
-        onRemoveImage={onRemovePanelImage}
-        onViewImage={onViewPanelImage}
-        onEmptySlotClick={handleEmptySlotClick}
-      />
+      {/* Left Border: Image Placeholders - only shown in CMD mode */}
+      {viewMode === 'cmd' && (
+        <SidePanel
+          side="left"
+          slots={leftPanelSlots}
+          onRemoveImage={onRemovePanelImage}
+          onViewImage={onViewPanelImage}
+          onEmptySlotClick={handleEmptySlotClick}
+        />
+      )}
 
-      {/* Main Layout */}
-      <div className="flex-1 flex flex-col h-full gap-md overflow-hidden z-10 w-full max-w-7xl mx-auto">
-        {/* Top Generated Prompts */}
-        <PromptSection
-          position="top"
-          prompts={topPrompts}
-          onViewPrompt={onViewPrompt}
+      {/* Main Layout - switches based on view mode */}
+      {viewMode === 'cmd' && (
+        <CmdCore
           generatedImages={generatedImages}
+          isGeneratingImages={isGeneratingImages}
           onStartImage={onStartImage}
           onDeleteImage={onDeleteImage}
           savedPromptIds={savedPromptIds}
-          allSlotsFull={allSlotsFull}
+          onDeleteGenerations={onDeleteGenerations}
+          projectPoster={projectPoster}
+          showPosterOverlay={showPosterOverlay}
+          onTogglePosterOverlay={onTogglePosterOverlay}
+          isGeneratingPoster={isGeneratingPoster}
+          onUploadPoster={onUploadPoster}
+          onGeneratePoster={onGeneratePoster}
+          posterGenerations={posterGenerations}
+          selectedPosterIndex={selectedPosterIndex}
+          isSavingPoster={isSavingPoster}
+          onSelectPoster={onSelectPoster}
+          onSavePoster={onSavePoster}
+          onCancelPosterGeneration={onCancelPosterGeneration}
+          interactiveMode={interactiveMode}
+          availableInteractiveModes={availableInteractiveModes}
+          onInteractiveModeChange={onInteractiveModeChange}
           onOpenComparison={onOpenComparison}
-          startSlotNumber={1}
-          isExpanded={panels.topBarExpanded}
-          onToggleExpand={panels.toggleTopBar}
+          onViewPrompt={onViewPrompt}
+          leftPanelSlots={leftPanelSlots}
+          rightPanelSlots={rightPanelSlots}
+          autoplay={autoplay}
+          multiPhaseAutoplay={multiPhaseAutoplay}
         />
+      )}
 
-        {/* Middle Layer: Dimensions - Center Brain - Dimensions */}
-        <div className="flex-1 flex gap-lg min-h-0 items-stretch relative">
-          {/* Left Dimensions Column */}
-          <DimensionColumn
-            side="left"
-            label="Parameters A"
-            collapsedLabel="PARAMS A"
-            dimensions={leftDimensions}
-            onReorder={handleLeftReorder}
-            isExpanded={panels.sidebarsExpanded}
-            onToggleExpand={panels.toggleSidebars}
-          />
+      {viewMode === 'poster' && (
+        <PosterCore
+          projectPoster={projectPoster}
+          posterGenerations={posterGenerations}
+          selectedPosterIndex={selectedPosterIndex}
+          isGeneratingPoster={isGeneratingPoster}
+          isSavingPoster={isSavingPoster}
+          onSelectPoster={onSelectPoster}
+          onSavePoster={onSavePoster}
+          onCancelPosterGeneration={onCancelPosterGeneration}
+          onUploadPoster={onUploadPoster}
+          onGeneratePoster={onGeneratePoster}
+        />
+      )}
 
-          {/* Center Core: Brain (Breakdown + Feedback) */}
-          <CentralBrain
-            interactiveMode={interactiveMode}
-            availableInteractiveModes={availableInteractiveModes}
-            onInteractiveModeChange={onInteractiveModeChange}
-            generatedImages={generatedImages}
-            isGeneratingImages={isGeneratingImages}
-            onDeleteGenerations={onDeleteGenerations}
-            projectPoster={projectPoster}
-            showPosterOverlay={showPosterOverlay}
-            onTogglePosterOverlay={onTogglePosterOverlay}
-            isGeneratingPoster={isGeneratingPoster}
-            onUploadPoster={onUploadPoster}
-            onGeneratePoster={onGeneratePoster}
+      {viewMode === 'whatif' && (
+        <WhatifCore />
+      )}
+
+      {/* Poster Overlay - covers center when active (for CMD mode backward compat) */}
+      <AnimatePresence>
+        {viewMode === 'cmd' && showPosterOverlay && (
+          <PosterFullOverlay
+            isOpen={showPosterOverlay}
+            onClose={onTogglePosterOverlay}
+            poster={projectPoster || null}
             posterGenerations={posterGenerations}
-            selectedPosterIndex={selectedPosterIndex}
-            isSavingPoster={isSavingPoster}
-            onSelectPoster={onSelectPoster}
-            onSavePoster={onSavePoster}
-            onCancelPosterGeneration={onCancelPosterGeneration}
-            autoplay={autoplay}
-            multiPhaseAutoplay={multiPhaseAutoplay}
+            selectedIndex={selectedPosterIndex}
+            isGenerating={isGeneratingPoster}
+            isSaving={isSavingPoster}
+            onSelect={onSelectPoster || (() => {})}
+            onSave={onSavePoster || (() => {})}
+            onCancel={onCancelPosterGeneration || (() => {})}
+            onUpload={onUploadPoster}
           />
+        )}
+      </AnimatePresence>
 
-          {/* Right Dimensions Column */}
-          <DimensionColumn
-            side="right"
-            label="Parameters B"
-            collapsedLabel="PARAMS B"
-            dimensions={rightDimensions}
-            onReorder={handleRightReorder}
-            isExpanded={panels.sidebarsExpanded}
-            onToggleExpand={panels.toggleSidebars}
-          />
-
-          {/* Poster Overlay - covers center when active */}
-          <AnimatePresence>
-            {showPosterOverlay && (
-              <PosterFullOverlay
-                isOpen={showPosterOverlay}
-                onClose={onTogglePosterOverlay}
-                poster={projectPoster || null}
-                posterGenerations={posterGenerations}
-                selectedIndex={selectedPosterIndex}
-                isGenerating={isGeneratingPoster}
-                isSaving={isSavingPoster}
-                onSelect={onSelectPoster || (() => {})}
-                onSave={onSavePoster || (() => {})}
-                onCancel={onCancelPosterGeneration || (() => {})}
-                onUpload={onUploadPoster}
-              />
-            )}
-          </AnimatePresence>
-        </div>
-
-        {/* Bottom Generated Prompts */}
-        <PromptSection
-          position="bottom"
-          prompts={bottomPrompts}
-          onViewPrompt={onViewPrompt}
-          generatedImages={generatedImages}
-          onStartImage={onStartImage}
-          onDeleteImage={onDeleteImage}
-          savedPromptIds={savedPromptIds}
-          allSlotsFull={allSlotsFull}
-          onOpenComparison={onOpenComparison}
-          startSlotNumber={3}
-          isExpanded={panels.bottomBarExpanded}
-          onToggleExpand={panels.toggleBottomBar}
+      {/* Right Border: Image Placeholders - only shown in CMD mode */}
+      {viewMode === 'cmd' && (
+        <SidePanel
+          side="right"
+          slots={rightPanelSlots}
+          onRemoveImage={onRemovePanelImage}
+          onViewImage={onViewPanelImage}
+          onEmptySlotClick={handleEmptySlotClick}
         />
-      </div>
-
-      {/* Right Border: Image Placeholders */}
-      <SidePanel
-        side="right"
-        slots={rightPanelSlots}
-        onRemoveImage={onRemovePanelImage}
-        onViewImage={onViewPanelImage}
-        onEmptySlotClick={handleEmptySlotClick}
-      />
+      )}
 
       {/* Upload Image Modal */}
       <UploadImageModal

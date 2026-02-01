@@ -4,7 +4,6 @@
  * Manages:
  * - Generated prompts and their ratings/locks
  * - Prompt elements and element locking
- * - Negative prompts
  * - Element acceptance flow
  */
 
@@ -15,7 +14,6 @@ import { v4 as uuidv4 } from 'uuid';
 import {
   GeneratedPrompt,
   PromptElement,
-  NegativePromptItem,
   Dimension,
   SCENE_TYPES,
   OutputMode,
@@ -39,7 +37,6 @@ export interface PromptsState {
   lockedElements: PromptElement[];
   hasLockedPrompts: boolean;
   acceptingElementId: string | null;
-  negativePrompts: NegativePromptItem[];
   promptHistory: Pick<PromptHistoryState, 'canUndo' | 'canRedo' | 'historyLength' | 'positionLabel'>;
 }
 
@@ -54,7 +51,6 @@ export interface PromptsActions {
     onDimensionUpdate: (updater: (prev: Dimension[]) => Dimension[]) => void,
     setPendingChange: (change: { element: PromptElement; previousDimensions: Dimension[] } | null) => void
   ) => Promise<void>;
-  setNegativePrompts: (negatives: NegativePromptItem[]) => void;
   setGeneratedPrompts: (prompts: GeneratedPrompt[]) => void;
   clearPrompts: () => void;
   handlePromptUndo: () => void;
@@ -87,7 +83,6 @@ export function usePrompts(options: UsePromptsOptions = {}): PromptsState & Prom
     initialPrompts || []
   );
   const [acceptingElementId, setAcceptingElementId] = useState<string | null>(null);
-  const [negativePrompts, setNegativePromptsState] = useState<NegativePromptItem[]>([]);
 
   // Prompt history
   const promptHistoryHook = usePromptHistory();
@@ -195,10 +190,6 @@ export function usePrompts(options: UsePromptsOptions = {}): PromptsState & Prom
     }
   }, [acceptingElementId]);
 
-  const setNegativePrompts = useCallback((negatives: NegativePromptItem[]) => {
-    setNegativePromptsState(negatives);
-  }, []);
-
   const setGeneratedPrompts = useCallback((prompts: GeneratedPrompt[]) => {
     setGeneratedPromptsState(prompts);
 
@@ -220,7 +211,6 @@ export function usePrompts(options: UsePromptsOptions = {}): PromptsState & Prom
 
   const clearPrompts = useCallback(() => {
     setGeneratedPromptsState([]);
-    setNegativePromptsState([]);
 
     // Persist deletion
     if (onDeletePrompts) {
@@ -267,22 +257,19 @@ export function usePrompts(options: UsePromptsOptions = {}): PromptsState & Prom
 
     const prompts = selectedScenes.map((sceneType, index) => {
       const promptId = uuidv4();
-      const { prompt, negativePrompt, elements } = buildMockPromptWithElements(
+      const { prompt, elements } = buildMockPromptWithElements(
         baseImage,
         filledDimensions,
         sceneType,
         index,
         lockedElements,
-        outputMode,
-        negativePrompts,
-        promptId
+        outputMode
       );
       return {
         id: promptId,
         sceneNumber: index + 1,
         sceneType,
         prompt,
-        negativePrompt,
         copied: false,
         rating: null,
         locked: false,
@@ -294,7 +281,7 @@ export function usePrompts(options: UsePromptsOptions = {}): PromptsState & Prom
     recordGenerationIteration(prompts.map((p) => p.id));
 
     return prompts;
-  }, [lockedElements, negativePrompts]);
+  }, [lockedElements]);
 
   // Prompt history state
   const promptHistory = useMemo(
@@ -313,7 +300,6 @@ export function usePrompts(options: UsePromptsOptions = {}): PromptsState & Prom
     lockedElements,
     hasLockedPrompts,
     acceptingElementId,
-    negativePrompts,
     promptHistory,
     // Actions
     handlePromptRate,
@@ -321,7 +307,6 @@ export function usePrompts(options: UsePromptsOptions = {}): PromptsState & Prom
     handleElementLock,
     handleCopy,
     handleAcceptElement,
-    setNegativePrompts,
     setGeneratedPrompts,
     clearPrompts,
     handlePromptUndo,

@@ -13,12 +13,13 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Dimension, OutputMode } from '../types';
-import { useProject } from './useProject';
+import { useProjectContext } from '../contexts';
 import { usePoster } from './usePoster';
 import { useImageGeneration } from './useImageGeneration';
 import { useDimensionsContext } from '../subfeature_dimensions';
 import { useBrainContext } from '../subfeature_brain';
 import { useSimulatorContext } from '../SimulatorContext';
+import { usePromptsContext } from '../subfeature_prompts';
 
 // LocalStorage key for persisting last selected project
 const LAST_PROJECT_KEY = 'simulator:lastProjectId';
@@ -40,11 +41,12 @@ interface UseProjectManagerOptions {
 }
 
 export function useProjectManager({ imageGen, onProjectChange }: UseProjectManagerOptions) {
-  const project = useProject();
+  const project = useProjectContext();
   const poster = usePoster();
   const dimensions = useDimensionsContext();
   const brain = useBrainContext();
   const simulator = useSimulatorContext();
+  const prompts = usePromptsContext();
 
   const [isInitialized, setIsInitialized] = useState(false);
   const [savedPromptIds, setSavedPromptIds] = useState<Set<string>>(new Set());
@@ -54,7 +56,11 @@ export function useProjectManager({ imageGen, onProjectChange }: UseProjectManag
   const submittedForGenerationRef = useRef<Set<string>>(new Set());
 
   // Helper to restore project state to simulator contexts
+  // Sets isRestoring flag to prevent autosave race conditions
   const restoreProjectState = useCallback((state: ProjectState) => {
+    // Set restoring flag to prevent autosave during state restoration
+    project.setIsRestoring(true);
+
     simulator.handleReset();
     if (state.basePrompt) {
       brain.setBaseImage(state.basePrompt);
@@ -76,7 +82,13 @@ export function useProjectManager({ imageGen, onProjectChange }: UseProjectManag
     if (state.feedback) {
       brain.setFeedback(state.feedback);
     }
-  }, [simulator, brain, dimensions]);
+
+    // Clear restoring flag after all state is set
+    // Use setTimeout to ensure React has processed all state updates
+    setTimeout(() => {
+      project.setIsRestoring(false);
+    }, 0);
+  }, [simulator, brain, dimensions, project]);
 
   // Load projects on mount
   useEffect(() => {
@@ -137,6 +149,16 @@ export function useProjectManager({ imageGen, onProjectChange }: UseProjectManag
         if (projectWithState?.state) {
           restoreProjectState(projectWithState.state);
         }
+
+        // Restore prompts from saved state (already converted to camelCase by parseProjectWithState)
+        if (projectWithState?.generatedPrompts && projectWithState.generatedPrompts.length > 0) {
+          prompts.restorePrompts(projectWithState.generatedPrompts);
+          // Mark restored prompts as already submitted to prevent auto-generation
+          projectWithState.generatedPrompts.forEach(p => {
+            submittedForGenerationRef.current.add(p.id);
+          });
+        }
+
         poster.setPoster(projectWithState?.poster || null);
 
         // Persist selection to localStorage only if successful
@@ -153,7 +175,7 @@ export function useProjectManager({ imageGen, onProjectChange }: UseProjectManag
       }
     };
     selectProject();
-  }, [isInitialized, project.projects.length, project.currentProject?.id, project.isLoading, project.selectProject, restoreProjectState, poster, onProjectChange]);
+  }, [isInitialized, project.projects.length, project.currentProject?.id, project.isLoading, project.selectProject, restoreProjectState, poster, prompts, onProjectChange]);
 
   // Handle project selection
   const handleProjectSelect = useCallback(async (projectId: string) => {
@@ -175,14 +197,31 @@ export function useProjectManager({ imageGen, onProjectChange }: UseProjectManag
     if (projectWithState?.state) {
       restoreProjectState(projectWithState.state);
     } else {
+      // Set restoring flag to prevent autosave during reset
+      project.setIsRestoring(true);
       simulator.handleReset();
+      setTimeout(() => project.setIsRestoring(false), 0);
     }
+
+    // Clear generation tracking before restoring
     imageGen.clearGeneratedImages();
     setSavedPromptIds(new Set());
     submittedForGenerationRef.current.clear();
+
+    // Restore prompts from saved state (already converted to camelCase by parseProjectWithState)
+    if (projectWithState?.generatedPrompts && projectWithState.generatedPrompts.length > 0) {
+      prompts.restorePrompts(projectWithState.generatedPrompts);
+      // Mark restored prompts as already submitted to prevent auto-generation
+      projectWithState.generatedPrompts.forEach(p => {
+        submittedForGenerationRef.current.add(p.id);
+      });
+    } else {
+      prompts.clearPrompts();
+    }
+
     poster.setPoster(projectWithState?.poster || null);
     setShowPosterOverlay(false);
-  }, [project, simulator, restoreProjectState, imageGen, poster, onProjectChange]);
+  }, [project, simulator, restoreProjectState, imageGen, poster, prompts, onProjectChange]);
 
   // Handle project creation
   const handleProjectCreate = useCallback(async (name: string) => {
@@ -198,18 +237,24 @@ export function useProjectManager({ imageGen, onProjectChange }: UseProjectManag
       // Notify parent of project change
       onProjectChange?.(newProject.id);
 
+      // Set restoring flag to prevent autosave during initialization
+      project.setIsRestoring(true);
       simulator.handleReset();
+      prompts.clearPrompts();
       imageGen.clearGeneratedImages();
       setSavedPromptIds(new Set());
       submittedForGenerationRef.current.clear();
       poster.setPoster(null);
       setShowPosterOverlay(false);
+      // Clear restoring flag after initialization
+      setTimeout(() => project.setIsRestoring(false), 0);
     }
-  }, [project, simulator, imageGen, poster, onProjectChange]);
+  }, [project, simulator, prompts, imageGen, poster, onProjectChange]);
 
   // Handle project reset
   const handleResetProject = useCallback(async () => {
     simulator.handleReset();
+    prompts.clearPrompts();
     imageGen.clearGeneratedImages();
     setSavedPromptIds(new Set());
     submittedForGenerationRef.current.clear();
@@ -228,7 +273,7 @@ export function useProjectManager({ imageGen, onProjectChange }: UseProjectManag
       });
       await poster.deletePoster(project.currentProject.id);
     }
-  }, [simulator, imageGen, project, poster]);
+  }, [simulator, prompts, imageGen, project, poster]);
 
   return {
     project,

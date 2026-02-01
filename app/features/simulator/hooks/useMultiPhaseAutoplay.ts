@@ -36,7 +36,7 @@ import { PosterGeneration } from './usePoster';
 
 // Default configuration
 const DEFAULT_CONFIG: ExtendedAutoplayConfig = {
-  conceptCount: 2,
+  sketchCount: 2,
   gameplayCount: 2,
   posterEnabled: false,
   hudEnabled: false,
@@ -48,7 +48,7 @@ function createInitialState(): MultiPhaseAutoplayState {
   return {
     phase: 'idle',
     config: DEFAULT_CONFIG,
-    conceptProgress: { saved: 0, target: 0 },
+    sketchProgress: { saved: 0, target: 0 },
     gameplayProgress: { saved: 0, target: 0 },
     posterSelected: false,
     hudGenerated: 0,
@@ -66,20 +66,20 @@ function multiPhaseReducer(
     case 'START': {
       return {
         ...createInitialState(),
-        phase: action.config.conceptCount > 0 ? 'concept' : 'gameplay',
+        phase: action.config.sketchCount > 0 ? 'sketch' : 'gameplay',
         config: action.config,
-        conceptProgress: { saved: 0, target: action.config.conceptCount },
+        sketchProgress: { saved: 0, target: action.config.sketchCount },
         gameplayProgress: { saved: 0, target: action.config.gameplayCount },
       };
     }
 
     case 'IMAGE_SAVED': {
-      if (action.phase === 'concept') {
+      if (action.phase === 'sketch') {
         const newProgress = {
-          ...state.conceptProgress,
-          saved: state.conceptProgress.saved + 1,
+          ...state.sketchProgress,
+          saved: state.sketchProgress.saved + 1,
         };
-        return { ...state, conceptProgress: newProgress };
+        return { ...state, sketchProgress: newProgress };
       } else {
         const newProgress = {
           ...state.gameplayProgress,
@@ -95,10 +95,10 @@ function multiPhaseReducer(
     }
 
     case 'ADVANCE_PHASE': {
-      const { phase, config, conceptProgress, gameplayProgress } = state;
+      const { phase, config, sketchProgress, gameplayProgress } = state;
 
       // Determine next phase based on current phase and config
-      if (phase === 'concept') {
+      if (phase === 'sketch') {
         // Move to gameplay if there are gameplay images to generate
         if (config.gameplayCount > 0) {
           return { ...state, phase: 'gameplay' };
@@ -169,7 +169,7 @@ export interface MultiPhaseAutoplayDeps {
   // From useImageGeneration
   generatedImages: GeneratedImage[];
   isGeneratingImages: boolean;
-  generateImagesFromPrompts: (prompts: Array<{ id: string; prompt: string; negativePrompt?: string }>) => Promise<void>;
+  generateImagesFromPrompts: (prompts: Array<{ id: string; prompt: string }>) => Promise<void>;
   saveImageToPanel: (promptId: string, promptText: string) => void;
   leftPanelSlots: Array<{ image: { url: string } | null }>;
   rightPanelSlots: Array<{ image: { url: string } | null }>;
@@ -216,7 +216,7 @@ export interface UseMultiPhaseAutoplayReturn {
   canStartReason: string | null;
   /** Whether we have content ready (baseImage or prompts) - used by modal for validation */
   hasContent: boolean;
-  conceptProgress: PhaseProgress;
+  sketchProgress: PhaseProgress;
   gameplayProgress: PhaseProgress;
   posterSelected: boolean;
   hudGenerated: number;
@@ -296,7 +296,7 @@ export function useMultiPhaseAutoplay(
       saveImageToPanel(promptId, promptText);
       // Track save for current phase
       const currentPhase = currentPhaseRef.current;
-      if (currentPhase === 'concept' || currentPhase === 'gameplay') {
+      if (currentPhase === 'sketch' || currentPhase === 'gameplay') {
         savedImagesThisPhaseRef.current++;
         dispatch({ type: 'IMAGE_SAVED', phase: currentPhase });
         // Log the save event
@@ -346,8 +346,8 @@ export function useMultiPhaseAutoplay(
   const hasContent = Boolean(baseImage || generatedPrompts.length > 0);
 
   // Total images saved across all phases
-  const totalSaved = state.conceptProgress.saved + state.gameplayProgress.saved;
-  const targetSaved = state.config.conceptCount + state.config.gameplayCount;
+  const totalSaved = state.sketchProgress.saved + state.gameplayProgress.saved;
+  const targetSaved = state.config.sketchCount + state.config.gameplayCount;
 
   // Completion reason for compatibility
   const completionReason = useMemo(() => {
@@ -377,8 +377,8 @@ export function useMultiPhaseAutoplay(
     console.log('[MultiPhase] Starting with config:', config);
 
     // Set output mode based on first phase
-    const firstPhase = config.conceptCount > 0 ? 'concept' : 'gameplay';
-    setOutputMode(firstPhase === 'concept' ? 'concept' : 'gameplay');
+    const firstPhase = config.sketchCount > 0 ? 'sketch' : 'gameplay';
+    setOutputMode(firstPhase === 'sketch' ? 'sketch' : 'gameplay');
 
     // Log start event
     logEvent('phase_started', `Starting autoplay: ${firstPhase} phase`, {
@@ -408,7 +408,7 @@ export function useMultiPhaseAutoplay(
    * Effect: Handle phase transitions
    */
   useEffect(() => {
-    const { phase, config, conceptProgress, gameplayProgress } = state;
+    const { phase, config, sketchProgress, gameplayProgress } = state;
 
     // Skip if not running
     if (phase === 'idle' || phase === 'complete' || phase === 'error') {
@@ -437,16 +437,16 @@ export function useMultiPhaseAutoplay(
       savedImagesThisPhaseRef.current = 0;
 
       // Set appropriate output mode for the new phase
-      if (phase === 'concept') {
-        setOutputMode('concept');
+      if (phase === 'sketch') {
+        setOutputMode('sketch');
       } else if (phase === 'gameplay') {
         setOutputMode('gameplay');
       }
     }
 
     // Check if current image generation phase is complete
-    if (phase === 'concept') {
-      if (conceptProgress.saved >= config.conceptCount) {
+    if (phase === 'sketch') {
+      if (sketchProgress.saved >= config.sketchCount) {
         console.log('[MultiPhase] Concept phase complete');
         dispatch({ type: 'ADVANCE_PHASE' });
       }
@@ -619,7 +619,7 @@ export function useMultiPhaseAutoplay(
     canStart: canStart && !canStartReason,
     canStartReason,
     hasContent,
-    conceptProgress: state.conceptProgress,
+    sketchProgress: state.sketchProgress,
     gameplayProgress: state.gameplayProgress,
     posterSelected: state.posterSelected,
     hudGenerated: state.hudGenerated,

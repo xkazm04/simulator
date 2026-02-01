@@ -15,7 +15,7 @@
  */
 
 import { v4 as uuidv4 } from 'uuid';
-import { Dimension, DimensionFilterMode, DimensionTransformMode, PromptElement, OutputMode, NegativePromptItem, LearnedContext, UserPreference } from '../types';
+import { Dimension, DimensionFilterMode, DimensionTransformMode, PromptElement, OutputMode, LearnedContext, UserPreference } from '../types';
 
 // Maximum prompt length for Leonardo API
 const MAX_PROMPT_LENGTH = 1500;
@@ -276,8 +276,11 @@ function buildFilterHints(filledDimensions: Dimension[]): string[] {
 
 /**
  * Build mode-specific phrases for prompt differentiation
- * Gameplay mode: HUD, UI overlays, in-game feel
- * Concept mode: Artistic interpretation, no UI, painterly
+ * Each mode generates vastly different visual styles:
+ * - Gameplay: HUD, UI overlays, authentic screenshot feel
+ * - Sketch: Hand-drawn concept art, rough linework, artistic
+ * - Trailer: Cinematic composition for video/animation
+ * - Poster: Key art composition (handled separately)
  */
 function buildModeSection(outputMode: OutputMode, gameUIDim?: Dimension): string[] {
   if (outputMode === 'gameplay') {
@@ -295,74 +298,37 @@ function buildModeSection(outputMode: OutputMode, gameUIDim?: Dimension): string
     return phrases;
   }
 
-  if (outputMode === 'concept') {
+  if (outputMode === 'sketch') {
     return [
-      'concept art visualization',
-      'artistic interpretation',
-      'no game UI or HUD',
-      'painterly composition',
+      'concept art sketch',
+      'hand-drawn illustration style',
+      'visible pencil strokes and linework',
+      'rough artistic rendering',
+      'sketch pad texture',
+      'traditional art medium feel',
+      'loose expressive lines',
+      'no game UI or HUD elements',
     ];
   }
 
-  // Poster mode or other modes - no mode section
+  if (outputMode === 'trailer') {
+    return [
+      'cinematic film still',
+      'dramatic movie scene composition',
+      'professional cinematography',
+      'dynamic action framing',
+      'high contrast dramatic lighting',
+      'motion blur suggesting movement',
+      'widescreen 21:9 aspect ratio feel',
+      'blockbuster trailer moment',
+      'no game UI or HUD elements',
+    ];
+  }
+
+  // Poster mode - no mode section (handled by poster-specific logic)
   return [];
 }
 
-/**
- * Build negative prompt string from negative prompt items
- * Combines global negatives with any prompt-specific negatives
- */
-export function buildNegativePrompt(
-  negativePrompts: NegativePromptItem[],
-  promptId?: string,
-  maxLength: number = 500
-): string {
-  // Get global negatives
-  const globalNegatives = negativePrompts
-    .filter((n) => n.scope === 'global')
-    .map((n) => n.text);
-
-  // Get prompt-specific negatives if promptId provided
-  const promptNegatives = promptId
-    ? negativePrompts
-        .filter((n) => n.scope === 'prompt' && n.promptId === promptId)
-        .map((n) => n.text)
-    : [];
-
-  // Combine and deduplicate
-  const allNegatives = [...new Set([...globalNegatives, ...promptNegatives])];
-
-  if (allNegatives.length === 0) {
-    return '';
-  }
-
-  // Join with commas and truncate if needed
-  const negativeString = allNegatives.join(', ');
-  if (negativeString.length <= maxLength) {
-    return negativeString;
-  }
-
-  // Truncate at last comma before limit
-  const truncated = negativeString.substring(0, maxLength);
-  const lastComma = truncated.lastIndexOf(',');
-  return lastComma > maxLength * 0.7 ? truncated.substring(0, lastComma) : truncated;
-}
-
-/**
- * Get default negative prompts for quality assurance
- * These are commonly used negatives that improve generation quality
- */
-export function getDefaultNegativePrompts(): string[] {
-  return [
-    'blurry',
-    'low quality',
-    'watermark',
-    'signature',
-    'text',
-    'bad anatomy',
-    'deformed',
-  ];
-}
 
 /**
  * Build elements array for UI feedback system
@@ -435,12 +401,16 @@ function buildElements(
     elements.push({ id: uuidv4(), text: customShort, category: 'style', locked: false });
   }
 
-  // Output mode element
+  // Output mode element - describes the visual style approach
+  const modeLabels: Record<OutputMode, string> = {
+    gameplay: 'gameplay: HUD and UI elements',
+    sketch: 'sketch: hand-drawn concept art',
+    trailer: 'trailer: cinematic scene',
+    poster: 'poster: key art composition',
+  };
   elements.push({
     id: uuidv4(),
-    text: outputMode === 'gameplay'
-      ? 'gameplay: HUD and UI elements'
-      : 'concept: artistic visualization',
+    text: modeLabels[outputMode],
     category: 'composition',
     locked: false,
   });
@@ -516,32 +486,6 @@ function filterAvoidElements(
   });
 }
 
-/**
- * Build additional negative prompts from learned context
- */
-function buildLearnedNegatives(learnedContext?: LearnedContext): string[] {
-  if (!learnedContext) return [];
-
-  const negatives: string[] = [];
-
-  // Add avoid elements as negatives
-  learnedContext.avoidElements.forEach((avoid) => {
-    if (avoid.length > 2) {
-      negatives.push(avoid);
-    }
-  });
-
-  // Add negatives from 'avoid' category preferences
-  learnedContext.preferences
-    .filter((p) => p.category === 'avoid' && p.strength >= 30)
-    .forEach((p) => {
-      if (!negatives.includes(p.value)) {
-        negatives.push(p.value);
-      }
-    });
-
-  return negatives;
-}
 
 /**
  * Build a prompt with elements - optimized for 1500 char limit
@@ -555,10 +499,8 @@ export function buildMockPromptWithElements(
   index: number,
   lockedElements: PromptElement[],
   outputMode: OutputMode,
-  negativePrompts: NegativePromptItem[] = [],
-  promptId?: string,
   learnedContext?: LearnedContext
-): { prompt: string; negativePrompt: string; elements: PromptElement[] } {
+): { prompt: string; elements: PromptElement[] } {
   const variation = SCENE_VARIATIONS[sceneType] || SCENE_VARIATIONS['Cinematic Wide Shot'];
   const variety = getVarietyModifiers(index);
 
@@ -627,22 +569,10 @@ export function buildMockPromptWithElements(
   const rawPrompt = enhancedParts.filter(p => p).join(', ');
   const finalPrompt = truncatePrompt(rawPrompt);
 
-  // Build negative prompt - include learned negatives
-  const learnedNegatives = buildLearnedNegatives(learnedContext);
-  const allNegativePrompts: NegativePromptItem[] = [
-    ...negativePrompts,
-    ...learnedNegatives.map((text) => ({
-      id: uuidv4(),
-      text,
-      scope: 'global' as const,
-    })),
-  ];
-  const negativePrompt = buildNegativePrompt(allNegativePrompts, promptId);
-
   // Build elements for UI
   const elements = buildElements(baseImage, filledDimensions, outputMode, 'detailed', lockedElements);
 
-  return { prompt: finalPrompt, negativePrompt, elements };
+  return { prompt: finalPrompt, elements };
 }
 
 /**
@@ -655,10 +585,8 @@ export async function buildPromptWithLearning(
   sceneType: string,
   index: number,
   lockedElements: PromptElement[],
-  outputMode: OutputMode,
-  negativePrompts: NegativePromptItem[] = [],
-  promptId?: string
-): Promise<{ prompt: string; negativePrompt: string; elements: PromptElement[] }> {
+  outputMode: OutputMode
+): Promise<{ prompt: string; elements: PromptElement[] }> {
   // Dynamically import to avoid circular dependencies and keep server-side safe
   let learnedContext: LearnedContext | undefined;
 
@@ -680,8 +608,6 @@ export async function buildPromptWithLearning(
     index,
     lockedElements,
     outputMode,
-    negativePrompts,
-    promptId,
     learnedContext
   );
 }

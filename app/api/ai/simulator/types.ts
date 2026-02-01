@@ -24,7 +24,7 @@ export interface GenerateWithFeedbackRequest {
   baseImage: string;
   dimensions: Array<{ type: string; label: string; reference: string }>;
   feedback: { positive: string; negative: string };
-  outputMode: 'gameplay' | 'concept' | 'poster';
+  outputMode: 'gameplay' | 'sketch' | 'trailer' | 'poster';
   lockedElements: Array<{ id: string; text: string; category: string; locked: boolean }>;
 }
 
@@ -32,7 +32,7 @@ export interface RefineFeedbackRequest {
   basePrompt: string;
   dimensions: Array<{ type: string; label: string; reference: string; id: string }>;
   changeFeedback: string;
-  outputMode: 'gameplay' | 'concept' | 'poster';
+  outputMode: 'gameplay' | 'sketch' | 'trailer' | 'poster';
 }
 
 export type SimulatorAction =

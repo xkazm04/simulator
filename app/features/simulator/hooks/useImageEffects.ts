@@ -59,7 +59,6 @@ export function useImageEffects({
           promptsNeedingImages.map((p) => ({
             id: p.id,
             prompt: p.prompt,
-            negativePrompt: p.negativePrompt,
           }))
         );
       }

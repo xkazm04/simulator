@@ -21,14 +21,14 @@ interface RouteParams {
 export async function POST(request: NextRequest, { params }: RouteParams) {
   try {
     const { id: projectId } = await params;
-    const { side, slotIndex, imageUrl, videoUrl, prompt } = await request.json();
+    const { id: clientImageId, side, slotIndex, imageUrl, videoUrl, prompt, type } = await request.json();
 
     // Validate input
     if (!side || !['left', 'right'].includes(side)) {
       return NextResponse.json({ success: false, error: 'Invalid side (must be "left" or "right")' }, { status: 400 });
     }
-    if (slotIndex === undefined || slotIndex < 0 || slotIndex >= 5) {
-      return NextResponse.json({ success: false, error: 'Invalid slot index (must be 0-4)' }, { status: 400 });
+    if (slotIndex === undefined || slotIndex < 0 || slotIndex >= 10) {
+      return NextResponse.json({ success: false, error: 'Invalid slot index (must be 0-9)' }, { status: 400 });
     }
     if (!imageUrl) {
       return NextResponse.json({ success: false, error: 'Image URL is required' }, { status: 400 });
@@ -44,12 +44,17 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     await supabase.from(TABLES.panelImages).delete()
       .eq('project_id', projectId).eq('side', side).eq('slot_index', slotIndex);
 
-    // Insert new image
-    const imageId = uuidv4();
+    // Insert new image - use client-provided ID if available, otherwise generate one
+    const imageId = clientImageId || uuidv4();
     const now = new Date().toISOString();
+    // Validate type if provided
+    const validTypes = ['gameplay', 'trailer', 'sketch', 'poster'];
+    const imageType = type && validTypes.includes(type) ? type : null;
+
     const { error } = await supabase.from(TABLES.panelImages).insert({
       id: imageId, project_id: projectId, side, slot_index: slotIndex,
-      image_url: imageUrl, video_url: videoUrl || null, prompt: prompt || null, created_at: now,
+      image_url: imageUrl, video_url: videoUrl || null, prompt: prompt || null,
+      type: imageType, created_at: now,
     });
 
     if (error) {
@@ -61,7 +66,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     const panelImage: DbPanelImage = {
       id: imageId, project_id: projectId, side, slot_index: slotIndex,
-      image_url: imageUrl, video_url: videoUrl || null, prompt: prompt || null, created_at: now,
+      image_url: imageUrl, video_url: videoUrl || null, prompt: prompt || null,
+      type: imageType, created_at: now,
     };
 
     return NextResponse.json({ success: true, image: panelImage });
@@ -78,6 +84,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
   try {
     const { id: projectId } = await params;
     const { imageId, videoUrl, imageUrl } = await request.json();
+    console.log('[PATCH /images] Request received:', { projectId, imageId, videoUrl: videoUrl?.substring(0, 50), imageUrl: imageUrl?.substring(0, 50) });
 
     if (!imageId) {
       return NextResponse.json({ success: false, error: 'Image ID is required' }, { status: 400 });

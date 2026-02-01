@@ -26,7 +26,8 @@ import {
   ChevronDown,
   ChevronUp,
   MonitorPlay,
-  Palette,
+  Pencil,
+  Clapperboard,
   Film,
 } from 'lucide-react';
 import {
@@ -38,11 +39,10 @@ import {
   AutoplayLogEntry,
 } from '../../types';
 import { InteractiveModeToggle } from '../../subfeature_interactive';
-import { NegativePromptInput } from '../../components/NegativePromptInput';
 import { SmartSuggestionPanel } from '../../components/SmartSuggestionPanel';
 import { useBrainContext } from '../BrainContext';
 import { DEFAULT_DIMENSIONS, EXTRA_DIMENSIONS } from '../../subfeature_dimensions/lib/defaultDimensions';
-import { createDimensionWithDefaults, NegativePromptItem, DimensionType, DimensionPreset } from '../../types';
+import { createDimensionWithDefaults, DimensionType, DimensionPreset } from '../../types';
 import { usePromptsContext } from '../../subfeature_prompts/PromptsContext';
 import { useDimensionsContext } from '../../subfeature_dimensions/DimensionsContext';
 import { useSimulatorContext } from '../../SimulatorContext';
@@ -170,17 +170,6 @@ export function DirectorControl({
     );
     dimensions.setDimensions(updated);
   }, [dimensions]);
-
-  const handleAcceptNegativePrompt = useCallback((negativePrompt: string) => {
-    // Add to negative prompts - split by comma and create global scope items
-    const newPrompts: NegativePromptItem[] = negativePrompt.split(',').map(text => ({
-      id: `neg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      text: text.trim(),
-      scope: 'global' as const,
-      isAutoSuggested: true, // Mark as auto-suggested from learning
-    })).filter(p => p.text);
-    prompts.setNegativePrompts([...prompts.negativePrompts, ...newPrompts]);
-  }, [prompts]);
 
   const handleAcceptOutputMode = useCallback((mode: OutputMode) => {
     brain.setOutputMode(mode);
@@ -429,16 +418,6 @@ export function DirectorControl({
             transition={transitions.normal}
             className="overflow-hidden mb-md"
           >
-            {/* Negative Prompt Input */}
-            <div className="mb-4">
-              <NegativePromptInput
-                negativePrompts={prompts.negativePrompts}
-                onNegativePromptsChange={prompts.setNegativePrompts}
-                dimensions={dimensions.dimensions}
-                isGenerating={isAnyGenerating}
-              />
-            </div>
-
             {/* Smart Suggestions Panel */}
             {showSuggestions && (
               <SmartSuggestionPanel
@@ -446,7 +425,6 @@ export function DirectorControl({
                 baseImageDescription={brain.baseImage}
                 onAcceptDimensionSuggestion={handleAcceptDimensionSuggestion}
                 onAcceptWeightSuggestion={handleAcceptWeightSuggestion}
-                onAcceptNegativePrompt={handleAcceptNegativePrompt}
                 onAcceptOutputMode={handleAcceptOutputMode}
                 isGenerating={isAnyGenerating}
               />
@@ -475,43 +453,57 @@ export function DirectorControl({
             <span className="text-xs font-medium text-slate-500 mr-2">Mode:</span>
             <div className="flex radius-md border border-slate-800 bg-slate-900/50 overflow-hidden">
               <button
-                onClick={() => brain.setOutputMode('concept')}
-                disabled={isAnyGenerating}
-                data-testid="output-mode-concept"
-                className={`px-3 py-1.5 flex items-center justify-center gap-1.5 text-xs font-mono uppercase tracking-wide transition-colors
-                            ${brain.outputMode === 'concept'
-                              ? 'bg-amber-500/20 text-amber-400 border-r border-amber-500/30'
-                              : 'text-slate-500 hover:text-slate-300 border-r border-slate-800'
-                            } disabled:opacity-50 disabled:cursor-not-allowed`}
-                title="Concept Art Mode"
-              >
-                <Palette size={12} />
-                <span>Concept</span>
-              </button>
-              <button
                 onClick={() => brain.setOutputMode('gameplay')}
                 disabled={isAnyGenerating}
                 data-testid="output-mode-gameplay"
-                className={`px-3 py-1.5 flex items-center justify-center gap-1.5 text-xs font-mono uppercase tracking-wide transition-colors border-r
+                className={`px-2.5 py-1.5 flex items-center justify-center gap-1 text-xs font-mono uppercase tracking-wide transition-colors border-r
                             ${brain.outputMode === 'gameplay'
                               ? 'bg-purple-500/20 text-purple-400 border-purple-500/30'
                               : 'text-slate-500 hover:text-slate-300 border-slate-800'
                             } disabled:opacity-50 disabled:cursor-not-allowed`}
-                title="Gameplay Screenshot Mode"
+                title="Gameplay Screenshot with HUD/UI"
               >
                 <MonitorPlay size={12} />
                 <span>Gameplay</span>
               </button>
               <button
+                onClick={() => brain.setOutputMode('sketch')}
+                disabled={isAnyGenerating}
+                data-testid="output-mode-sketch"
+                className={`px-2.5 py-1.5 flex items-center justify-center gap-1 text-xs font-mono uppercase tracking-wide transition-colors border-r
+                            ${brain.outputMode === 'sketch'
+                              ? 'bg-amber-500/20 text-amber-400 border-amber-500/30'
+                              : 'text-slate-500 hover:text-slate-300 border-slate-800'
+                            } disabled:opacity-50 disabled:cursor-not-allowed`}
+                title="Hand-drawn Concept Sketch"
+              >
+                <Pencil size={12} />
+                <span>Sketch</span>
+              </button>
+              <button
+                onClick={() => brain.setOutputMode('trailer')}
+                disabled={isAnyGenerating}
+                data-testid="output-mode-trailer"
+                className={`px-2.5 py-1.5 flex items-center justify-center gap-1 text-xs font-mono uppercase tracking-wide transition-colors border-r
+                            ${brain.outputMode === 'trailer'
+                              ? 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30'
+                              : 'text-slate-500 hover:text-slate-300 border-slate-800'
+                            } disabled:opacity-50 disabled:cursor-not-allowed`}
+                title="Cinematic Trailer Scene"
+              >
+                <Clapperboard size={12} />
+                <span>Trailer</span>
+              </button>
+              <button
                 onClick={() => brain.setOutputMode('poster')}
                 disabled={isAnyGenerating}
                 data-testid="output-mode-poster"
-                className={`px-3 py-1.5 flex items-center justify-center gap-1.5 text-xs font-mono uppercase tracking-wide transition-colors
+                className={`px-2.5 py-1.5 flex items-center justify-center gap-1 text-xs font-mono uppercase tracking-wide transition-colors
                             ${brain.outputMode === 'poster'
                               ? 'bg-rose-500/20 text-rose-400'
                               : 'text-slate-500 hover:text-slate-300'
                             } disabled:opacity-50 disabled:cursor-not-allowed`}
-                title="Generate Key Art Poster"
+                title="Key Art Poster"
               >
                 <Film size={12} />
                 <span>Poster</span>

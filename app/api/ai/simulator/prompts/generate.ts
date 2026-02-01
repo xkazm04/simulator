@@ -58,11 +58,37 @@ Your task is to:
 1. ANALYZE user feedback (preserve/change) and adjust relevant dimensions
 2. GENERATE exactly 4 diverse scene prompts using adjusted dimensions
 
+OUTPUT MODES - CRITICAL: Each mode produces DRASTICALLY different visuals:
+
+GAMEPLAY MODE:
+- Authentic video game screenshot with visible HUD/UI elements
+- Include: health bars, minimap, action RPG interface, game overlays
+- Style: in-game capture, video game screen
+- Negative: concept art, sketch, painting, movie still
+
+SKETCH MODE:
+- Hand-drawn concept art with visible artistic technique
+- Include: pencil strokes, graphite shading, sketch paper texture, loose linework, hatching
+- Style: concept art sketch, rough sketch, artist workbook page
+- Structure: Simplify dimensions, focus on core subjects (environment, characters)
+- Negative: photorealistic, digital render, CGI, smooth gradients, game screenshot, HUD
+
+TRAILER MODE:
+- Cinematic movie still with photorealistic Hollywood production quality
+- Include: anamorphic lens flare, shallow depth of field, dramatic rim lighting, film grain, volumetric lighting
+- Style: blockbuster film scene, professional cinematography, IMAX quality
+- Negative: cartoon, anime, sketch, game screenshot, HUD, UI elements
+
+POSTER MODE:
+- Official movie poster with dramatic marketing composition
+- Include: iconic poses, title space, dramatic lighting
+- Style: key art, promotional artwork, theatrical poster
+- Negative: screenshot, sketch, casual
+
 PROMPT GENERATION RULES:
 - Generate exactly 4 prompts with scene types: "Cinematic Wide Shot", "Hero Portrait", "Action Sequence", "Environmental Storytelling"
-- Each prompt should incorporate base format, dimensions, locked elements, output mode
+- Each prompt MUST follow the output mode's style requirements above
 - Keep prompts under 1500 characters
-- Generate negativePrompt for each (blurry, watermark, bad anatomy, etc.)
 
 ELEMENT CATEGORIES:
 - composition: Camera angle, framing
@@ -72,7 +98,30 @@ ELEMENT CATEGORIES:
 - mood: Atmosphere, lighting
 - quality: Technical quality
 
+DIMENSION ADJUSTMENTS - BE CONCISE:
+- Keep dimension adjustments BRIEF to avoid JSON truncation
+- Only include dimensions that were ACTUALLY modified
+- Skip detailed changeReason if feedback is simple
+
 OUTPUT: Valid JSON only, no markdown code blocks.`;
+
+/**
+ * Get mode-specific generation instructions
+ */
+function getModeInstructions(outputMode: string): string {
+  switch (outputMode) {
+    case 'gameplay':
+      return 'GAMEPLAY - Authentic game screenshot with visible HUD, health bars, minimap, UI overlays. Style: in-game capture.';
+    case 'sketch':
+      return 'SKETCH - Hand-drawn concept art with pencil strokes, graphite shading, loose linework, sketch paper texture. NO game UI. Style: artist workbook, rough sketch.';
+    case 'trailer':
+      return 'TRAILER - Photorealistic cinematic movie still with lens flare, shallow DOF, dramatic rim lighting, film grain. NO game UI. Style: Hollywood blockbuster.';
+    case 'poster':
+      return 'POSTER - Official movie poster with dramatic composition, iconic poses, title space. Style: theatrical key art.';
+    default:
+      return 'CONCEPT - Clean concept art without game UI.';
+  }
+}
 
 export function createGenerateWithFeedbackPrompt(body: GenerateWithFeedbackRequest): string {
   const { baseImage, dimensions, feedback, outputMode, lockedElements } = body;
@@ -86,8 +135,11 @@ export function createGenerateWithFeedbackPrompt(body: GenerateWithFeedbackReque
     ? lockedElements.map(e => `- [${e.category}]: "${e.text}"`).join('\n')
     : 'None';
 
+  const modeInstructions = getModeInstructions(outputMode);
+
   return `Base Image Format: "${baseImage}"
-Output Mode: ${outputMode} (${outputMode === 'gameplay' ? 'include game UI/HUD' : 'clean concept art'})
+Output Mode: ${outputMode.toUpperCase()}
+${modeInstructions}
 
 Feedback:
 PRESERVE: "${feedback.positive || 'none'}"
@@ -99,19 +151,20 @@ ${dimList || 'No dimensions set'}
 Locked Elements (MUST include):
 ${lockedList}
 
+IMPORTANT: Keep "adjustedDimensions" array SHORT (only modified dims with brief reasons).
+
 Return JSON:
 {
   "success": true,
   "adjustedDimensions": [
-    {"type": "dimType", "originalValue": "orig", "newValue": "new", "wasModified": bool, "changeReason": "why"}
+    {"type": "dimType", "originalValue": "orig", "newValue": "new", "wasModified": true, "changeReason": "brief reason"}
   ],
   "prompts": [
     {
       "id": "unique-id",
       "sceneNumber": 1,
       "sceneType": "Cinematic Wide Shot",
-      "prompt": "Full prompt text under 1500 chars",
-      "negativePrompt": "blurry, low quality, watermark...",
+      "prompt": "Full prompt text following ${outputMode.toUpperCase()} mode rules",
       "elements": [{"id": "elem-1", "text": "desc", "category": "composition", "locked": false}]
     }
   ],

@@ -4,7 +4,7 @@
 import React from 'react';
 import Image from 'next/image';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Copy, Check, ThumbsUp, ThumbsDown, Lock, Unlock, Zap, ImageIcon, Ban } from 'lucide-react';
+import { X, Copy, Check, ThumbsUp, ThumbsDown, Lock, Unlock, Zap, ImageIcon } from 'lucide-react';
 import { GeneratedPrompt, PromptElement, GeneratedImage } from '../../types';
 import { ElementChip } from './ElementChip';
 import { IconButton } from '@/app/components/ui';
@@ -166,21 +166,6 @@ export function PromptDetailModal({
                                         })}
                                     </p>
                                 </div>
-
-                                {/* Negative Prompt Display */}
-                                {prompt.negativePrompt && (
-                                    <div className="mt-3">
-                                        <h4 className="type-label font-medium text-red-400/70 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                                            <Ban size={10} />
-                                            Negative Prompt
-                                        </h4>
-                                        <div className="p-3 radius-md border border-red-500/20 bg-red-500/5">
-                                            <p className="font-mono text-xs text-red-300/80 leading-relaxed">
-                                                {prompt.negativePrompt}
-                                            </p>
-                                        </div>
-                                    </div>
-                                )}
 
                                 {/* Quick actions */}
                                 <div className="flex gap-2">

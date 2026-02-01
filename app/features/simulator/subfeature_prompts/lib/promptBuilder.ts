@@ -15,7 +15,7 @@
  */
 
 import { v4 as uuidv4 } from 'uuid';
-import { Dimension, DimensionFilterMode, DimensionTransformMode, PromptElement, OutputMode, NegativePromptItem, LearnedContext } from '../../types';
+import { Dimension, DimensionFilterMode, DimensionTransformMode, PromptElement, OutputMode, LearnedContext } from '../../types';
 
 // Maximum prompt length for Leonardo API
 const MAX_PROMPT_LENGTH = 1500;
@@ -87,6 +87,220 @@ export const SCENE_VARIATIONS: Record<string, {
     focus: 'world-building',
   },
 };
+
+// ============================================================================
+// OUTPUT MODE CONFIGURATIONS - Drastically different prompt structures
+// ============================================================================
+
+/**
+ * Mode-specific prompt configurations
+ * Each mode produces fundamentally different visual outputs
+ */
+interface ModeConfig {
+  /** Primary style keywords that define the visual approach */
+  styleKeywords: string[];
+  /** Technical/quality keywords specific to this mode */
+  technicalKeywords: string[];
+  /** What to exclude for this mode */
+  negativeKeywords: string[];
+  /** Whether to heavily use dimension content or simplify */
+  dimensionUsage: 'full' | 'simplified' | 'minimal';
+  /** Scene variation override (optional) */
+  sceneOverride?: Record<string, { moment: string; focus: string }>;
+}
+
+const MODE_CONFIGS: Record<OutputMode, ModeConfig> = {
+  gameplay: {
+    styleKeywords: [
+      'authentic gameplay screenshot',
+      'in-game capture',
+      'video game screen',
+    ],
+    technicalKeywords: [
+      'HUD elements visible',
+      'game UI overlay',
+      'health bars',
+      'minimap corner',
+      'action RPG interface',
+    ],
+    negativeKeywords: [
+      'concept art',
+      'sketch',
+      'painting',
+      'drawing',
+      'illustration',
+      'movie still',
+    ],
+    dimensionUsage: 'full',
+  },
+
+  sketch: {
+    styleKeywords: [
+      'concept art sketch',
+      'hand-drawn illustration',
+      'pencil drawing',
+      'rough sketch',
+      'traditional art',
+    ],
+    technicalKeywords: [
+      'visible pencil strokes',
+      'graphite shading',
+      'sketch paper texture',
+      'loose linework',
+      'artistic hatching',
+      'charcoal accents',
+      'construction lines visible',
+      'artist workbook page',
+    ],
+    negativeKeywords: [
+      'photorealistic',
+      'photograph',
+      'digital render',
+      '3D rendering',
+      'smooth gradients',
+      'polished finish',
+      'game screenshot',
+      'HUD',
+      'UI elements',
+      'video game',
+      'CGI',
+      'hyperrealistic',
+    ],
+    dimensionUsage: 'simplified', // Focus on core concept, not all dimensions
+    sceneOverride: {
+      'Cinematic Wide Shot': { moment: 'composition study', focus: 'perspective sketch' },
+      'Hero Portrait': { moment: 'character study', focus: 'figure drawing' },
+      'Action Sequence': { moment: 'gesture drawing', focus: 'dynamic poses' },
+      'Environmental Storytelling': { moment: 'environment sketch', focus: 'architectural study' },
+    },
+  },
+
+  trailer: {
+    styleKeywords: [
+      'cinematic movie still',
+      'blockbuster film scene',
+      'Hollywood production',
+      'photorealistic',
+      'professional cinematography',
+    ],
+    technicalKeywords: [
+      'anamorphic lens flare',
+      'shallow depth of field',
+      'dramatic rim lighting',
+      'cinematic color grading',
+      'film grain',
+      'ultra high resolution',
+      'IMAX quality',
+      'theatrical release',
+      'motion picture',
+    ],
+    negativeKeywords: [
+      'cartoon',
+      'anime',
+      'illustration',
+      'sketch',
+      'drawing',
+      'game screenshot',
+      'HUD',
+      'UI elements',
+      'video game interface',
+      'low budget',
+      'amateur',
+      'flat lighting',
+    ],
+    dimensionUsage: 'full',
+    sceneOverride: {
+      'Cinematic Wide Shot': { moment: 'epic establishing shot', focus: 'sweeping vista' },
+      'Hero Portrait': { moment: 'dramatic close-up', focus: 'emotional intensity' },
+      'Action Sequence': { moment: 'high-octane action', focus: 'explosive moment' },
+      'Environmental Storytelling': { moment: 'atmospheric wide', focus: 'immersive world' },
+    },
+  },
+
+  poster: {
+    styleKeywords: [
+      'official movie poster',
+      'key art',
+      'promotional artwork',
+      'theatrical poster',
+    ],
+    technicalKeywords: [
+      'poster composition',
+      'dramatic lighting',
+      'iconic pose',
+      'title space',
+      'marketing quality',
+    ],
+    negativeKeywords: [
+      'screenshot',
+      'sketch',
+      'behind the scenes',
+      'casual',
+    ],
+    dimensionUsage: 'full',
+  },
+};
+
+/**
+ * Build mode-specific prompt section
+ * Returns an array of prompt parts specific to the selected output mode
+ */
+function buildModePromptParts(
+  outputMode: OutputMode,
+  sceneType: string,
+  gameUIDim?: Dimension
+): { styleParts: string[]; sceneOverride?: { moment: string; focus: string } } {
+  const config = MODE_CONFIGS[outputMode];
+  const styleParts: string[] = [];
+
+  // Add primary style keywords (pick 2-3 for variety)
+  styleParts.push(...config.styleKeywords.slice(0, 3));
+
+  // Add technical keywords (pick 2-3 based on scene type)
+  const techKeywords = config.technicalKeywords;
+  if (sceneType.includes('Portrait') || sceneType.includes('Hero')) {
+    styleParts.push(techKeywords[0], techKeywords[2]);
+  } else if (sceneType.includes('Action')) {
+    styleParts.push(techKeywords[1], techKeywords[3]);
+  } else {
+    styleParts.push(techKeywords[0], techKeywords[1]);
+  }
+
+  // For gameplay mode, add game UI dimension if available
+  if (outputMode === 'gameplay' && gameUIDim?.reference) {
+    styleParts.push(`${gameUIDim.reference} style UI`);
+  }
+
+  return {
+    styleParts,
+    sceneOverride: config.sceneOverride?.[sceneType],
+  };
+}
+
+/**
+ * Check if dimension should be used for this mode
+ * Sketch mode simplifies by focusing on fewer dimensions
+ */
+function shouldUseDimension(
+  outputMode: OutputMode,
+  dimensionType: string,
+  dimensionIndex: number
+): boolean {
+  const config = MODE_CONFIGS[outputMode];
+
+  if (config.dimensionUsage === 'full') return true;
+  if (config.dimensionUsage === 'minimal') return dimensionIndex === 0;
+
+  // 'simplified' mode - focus on core dimensions
+  if (config.dimensionUsage === 'simplified') {
+    // For sketch, prioritize: environment, characters (core subjects)
+    // Skip: gameUI, technology, creatures (too detailed for sketches)
+    const priorityDimensions = ['environment', 'characters', 'artStyle', 'mood'];
+    return priorityDimensions.includes(dimensionType);
+  }
+
+  return true;
+}
 
 /**
  * Get variety modifiers for a specific prompt index (0-3)
@@ -275,123 +489,6 @@ function buildFilterHints(filledDimensions: Dimension[]): string[] {
 }
 
 /**
- * Build negative prompt string from negative prompt items
- * Combines global negatives with any prompt-specific negatives
- */
-export function buildNegativePrompt(
-  negativePrompts: NegativePromptItem[],
-  promptId?: string,
-  maxLength: number = 500
-): string {
-  // Get global negatives
-  const globalNegatives = negativePrompts
-    .filter((n) => n.scope === 'global')
-    .map((n) => n.text);
-
-  // Get prompt-specific negatives if promptId provided
-  const promptNegatives = promptId
-    ? negativePrompts
-        .filter((n) => n.scope === 'prompt' && n.promptId === promptId)
-        .map((n) => n.text)
-    : [];
-
-  // Combine and deduplicate
-  const allNegatives = [...new Set([...globalNegatives, ...promptNegatives])];
-
-  if (allNegatives.length === 0) {
-    return '';
-  }
-
-  // Join with commas and truncate if needed
-  const negativeString = allNegatives.join(', ');
-  if (negativeString.length <= maxLength) {
-    return negativeString;
-  }
-
-  // Truncate at last comma before limit
-  const truncated = negativeString.substring(0, maxLength);
-  const lastComma = truncated.lastIndexOf(',');
-  return lastComma > maxLength * 0.7 ? truncated.substring(0, lastComma) : truncated;
-}
-
-/**
- * Get default negative prompts for quality assurance
- * These are commonly used negatives that improve generation quality
- */
-export function getDefaultNegativePrompts(): string[] {
-  return [
-    'blurry',
-    'low quality',
-    'watermark',
-    'signature',
-    'text',
-    'bad anatomy',
-    'deformed',
-  ];
-}
-
-/**
- * Generate smart negative prompts based on dimensions and scene type
- * Returns an array of negative prompt strings tailored to the content
- */
-export function generateSmartNegatives(
-  dimensions: Dimension[],
-  sceneType: string
-): string[] {
-  const negatives: string[] = [...getDefaultNegativePrompts()];
-
-  // Character-focused scenes need anatomy negatives
-  const hasCharacters = dimensions.some(d => d.type === 'characters' && d.reference?.trim());
-  const isCharacterScene = sceneType === 'Hero Portrait' || sceneType === 'Action Sequence';
-
-  if (hasCharacters || isCharacterScene) {
-    negatives.push('extra limbs', 'missing limbs', 'mutated hands', 'disfigured face', 'extra fingers');
-  }
-
-  // Environment scenes need composition negatives
-  const isEnvironmentScene = sceneType === 'Environmental Storytelling' || sceneType === 'Cinematic Wide Shot';
-  if (isEnvironmentScene) {
-    negatives.push('cropped', 'out of frame', 'poor composition', 'cluttered');
-  }
-
-  // Art style conflicts
-  const artStyleDim = dimensions.find(d => d.type === 'artStyle');
-  if (artStyleDim?.reference) {
-    const ref = artStyleDim.reference.toLowerCase();
-    if (ref.includes('anime') || ref.includes('cartoon') || ref.includes('cel-shaded')) {
-      negatives.push('photorealistic', '3D render', 'hyperrealistic');
-    } else if (ref.includes('realistic') || ref.includes('photorealistic')) {
-      negatives.push('cartoon', 'anime', 'cel-shaded', 'illustration');
-    } else if (ref.includes('pixel') || ref.includes('retro')) {
-      negatives.push('high resolution', 'photorealistic', 'smooth');
-    }
-  }
-
-  // Game UI mode should avoid clean images (opposite)
-  const gameUIDim = dimensions.find(d => d.type === 'gameUI');
-  if (gameUIDim?.reference?.trim()) {
-    // User wants game UI, so we don't add "no UI" negatives
-  } else {
-    // No game UI specified - concept mode
-    negatives.push('game UI', 'HUD elements', 'health bars');
-  }
-
-  // Mood-based negatives
-  const moodDim = dimensions.find(d => d.type === 'mood');
-  if (moodDim?.reference) {
-    const ref = moodDim.reference.toLowerCase();
-    if (ref.includes('dark') || ref.includes('horror') || ref.includes('gritty')) {
-      negatives.push('bright', 'cheerful', 'happy colors');
-    } else if (ref.includes('bright') || ref.includes('cheerful') || ref.includes('happy')) {
-      negatives.push('dark', 'gloomy', 'depressing');
-    }
-  }
-
-  // Return deduplicated array
-  return [...new Set(negatives)];
-}
-
-/**
  * Build elements array for UI feedback system
  */
 function buildElements(
@@ -462,10 +559,19 @@ function buildElements(
     elements.push({ id: uuidv4(), text: customShort, category: 'style', locked: false });
   }
 
-  // Output mode element
+  // Output mode element - different text for each mode
+  const modeElementText = (() => {
+    switch (outputMode) {
+      case 'gameplay': return 'game UI visible';
+      case 'sketch': return 'hand-drawn sketch';
+      case 'trailer': return 'cinematic film still';
+      case 'poster': return 'poster composition';
+      default: return 'concept art';
+    }
+  })();
   elements.push({
     id: uuidv4(),
-    text: outputMode === 'gameplay' ? 'game UI visible' : 'no UI (concept)',
+    text: modeElementText,
     category: 'composition',
     locked: false,
   });
@@ -542,36 +648,15 @@ function filterAvoidElements(
 }
 
 /**
- * Build additional negative prompts from learned context
- */
-function buildLearnedNegatives(learnedContext?: LearnedContext): string[] {
-  if (!learnedContext) return [];
-
-  const negatives: string[] = [];
-
-  // Add avoid elements as negatives
-  learnedContext.avoidElements.forEach((avoid) => {
-    if (avoid.length > 2) {
-      negatives.push(avoid);
-    }
-  });
-
-  // Add negatives from 'avoid' category preferences
-  learnedContext.preferences
-    .filter((p) => p.category === 'avoid' && p.strength >= 30)
-    .forEach((p) => {
-      if (!negatives.includes(p.value)) {
-        negatives.push(p.value);
-      }
-    });
-
-  return negatives;
-}
-
-/**
  * Build a prompt with elements - optimized for 1500 char limit
  * Uses the lens model for graduated transformations based on weight
  * Now enhanced with learned context from user feedback
+ *
+ * OUTPUT MODES produce drastically different prompts:
+ * - gameplay: Authentic game screenshot with HUD/UI elements visible
+ * - sketch: Hand-drawn concept art with pencil strokes and loose linework
+ * - trailer: Cinematic movie still with photorealistic Hollywood production quality
+ * - poster: Official movie poster with dramatic composition
  */
 export function buildMockPromptWithElements(
   baseImage: string,
@@ -580,69 +665,176 @@ export function buildMockPromptWithElements(
   index: number,
   lockedElements: PromptElement[],
   outputMode: OutputMode,
-  negativePrompts: NegativePromptItem[] = [],
-  promptId?: string,
   learnedContext?: LearnedContext
-): { prompt: string; negativePrompt: string; elements: PromptElement[] } {
-  const variation = SCENE_VARIATIONS[sceneType] || SCENE_VARIATIONS['Cinematic Wide Shot'];
+): { prompt: string; elements: PromptElement[] } {
+  const modeConfig = MODE_CONFIGS[outputMode];
   const variety = getVarietyModifiers(index);
+
+  // Get mode-specific scene variation (or default)
+  const defaultVariation = SCENE_VARIATIONS[sceneType] || SCENE_VARIATIONS['Cinematic Wide Shot'];
+  const variation = modeConfig.sceneOverride?.[sceneType] || defaultVariation;
 
   const styleDim = filledDimensions.find((d) => d.type === 'artStyle');
   const moodDim = filledDimensions.find((d) => d.type === 'mood');
   const cameraDim = filledDimensions.find((d) => d.type === 'camera');
   const gameUIDim = filledDimensions.find((d) => d.type === 'gameUI');
 
-  // Build prompt parts - prioritized by importance
+  // Filter dimensions based on mode's dimensionUsage setting
+  const activeDimensions = filledDimensions.filter((dim, idx) =>
+    shouldUseDimension(outputMode, dim.type, idx)
+  );
+
+  // Build prompt parts - structure varies dramatically by mode
   const promptParts: string[] = [];
 
-  // 1. Camera angle (respects weight if camera dim exists)
-  const cameraClause = cameraDim ? buildWeightedClause(cameraDim, 30) : null;
-  promptParts.push(cameraClause || variety.camera);
+  // ====================================================================
+  // MODE-SPECIFIC PROMPT STRUCTURE
+  // ====================================================================
 
-  // 2. Base description (truncate if too long)
-  const baseDesc = baseImage.length > 200 ? baseImage.substring(0, 200) : baseImage;
-  promptParts.push(baseDesc);
+  if (outputMode === 'sketch') {
+    // SKETCH MODE: Lead with artistic medium, minimize technical game details
+    // Structure: [artistic style] + [subject from base] + [simplified dimensions] + [artistic technique]
 
-  // 3. Filter preservation hints (based on active filter modes)
-  const filterHints = buildFilterHints(filledDimensions);
-  if (filterHints.length > 0) {
-    promptParts.push(filterHints.join(' and '));
-  }
+    // 1. Primary artistic style (this is the MOST important for sketch mode)
+    promptParts.push(...modeConfig.styleKeywords.slice(0, 2));
+    promptParts.push(...modeConfig.technicalKeywords.slice(0, 3));
 
-  // 4. Scene type
-  promptParts.push(variation.moment);
+    // 2. Subject extracted from base (simplified, no game-specific UI language)
+    const baseSubject = baseImage.length > 120 ? baseImage.substring(0, 120) : baseImage;
+    promptParts.push(`of ${baseSubject}`);
 
-  // 5. Content swaps with weights (most important for variety)
-  const swaps = buildContentSwaps(filledDimensions);
-  if (swaps.length > 0) {
-    promptParts.push(swaps.join(', '));
-  }
+    // 3. Scene context (use artistic terminology)
+    promptParts.push(variation.moment);
+    promptParts.push(variation.focus);
 
-  // 6. Style and mood (with weight consideration)
-  if (styleDim?.reference) {
-    const styleClause = buildWeightedClause(styleDim, 50);
-    if (styleClause) promptParts.push(styleClause);
-  }
-  if (moodDim?.reference) {
-    const moodClause = buildWeightedClause(moodDim, 30);
-    if (moodClause) promptParts.push(moodClause);
-  }
+    // 4. Simplified dimensions (only core subjects, not game UI or tech details)
+    const sketchSwaps = buildContentSwaps(activeDimensions);
+    if (sketchSwaps.length > 0) {
+      promptParts.push(sketchSwaps.slice(0, 2).join(', ')); // Limit to avoid over-detailing
+    }
 
-  // 7. Variety modifiers
-  promptParts.push(variety.time);
-  promptParts.push(variety.atmosphere);
+    // 5. Mood if present (sketches can convey mood through stroke weight)
+    if (moodDim?.reference) {
+      promptParts.push(`${moodDim.reference} atmosphere`);
+    }
 
-  // 8. Output mode (with weight consideration if gameUI dim has weight)
-  if (outputMode === 'gameplay') {
-    const gameUIClause = gameUIDim ? buildWeightedClause(gameUIDim, 50) : null;
-    promptParts.push(gameUIClause || 'game UI overlay');
+    // 6. Additional artistic technique
+    promptParts.push('artist workbook page');
+    promptParts.push('raw and expressive');
+
+  } else if (outputMode === 'trailer') {
+    // TRAILER MODE: Lead with cinematic production quality
+    // Structure: [cinematic style] + [film techniques] + [dramatic scene] + [full dimensions]
+
+    // 1. Cinematic production keywords (CRITICAL for photorealistic output)
+    promptParts.push(...modeConfig.styleKeywords);
+
+    // 2. Camera work (cinematic angle)
+    const cameraClause = cameraDim ? buildWeightedClause(cameraDim, 30) : null;
+    promptParts.push(cameraClause || 'sweeping cinematic shot');
+
+    // 3. Scene from base with dramatic framing
+    const baseDesc = baseImage.length > 180 ? baseImage.substring(0, 180) : baseImage;
+    promptParts.push(baseDesc);
+
+    // 4. Cinematic moment (use trailer-specific scene descriptions)
+    promptParts.push(variation.moment);
+    promptParts.push(variation.focus);
+
+    // 5. Full dimension content (trailer mode uses all dimensions)
+    const trailerSwaps = buildContentSwaps(activeDimensions);
+    if (trailerSwaps.length > 0) {
+      promptParts.push(trailerSwaps.join(', '));
+    }
+
+    // 6. Art style and mood for visual coherence
+    if (styleDim?.reference) {
+      const styleClause = buildWeightedClause(styleDim, 50);
+      if (styleClause) promptParts.push(styleClause);
+    }
+    if (moodDim?.reference) {
+      promptParts.push(`${moodDim.reference} mood`);
+    }
+
+    // 7. Technical film quality keywords (CRITICAL for photorealism)
+    promptParts.push(...modeConfig.technicalKeywords.slice(0, 4));
+
+    // 8. Lighting (cinematic lighting is essential)
+    promptParts.push(variety.time);
+    promptParts.push('dramatic volumetric lighting');
+
+  } else if (outputMode === 'poster') {
+    // POSTER MODE: Marketing composition with dramatic character focus
+    promptParts.push(...modeConfig.styleKeywords);
+
+    const baseDesc = baseImage.length > 150 ? baseImage.substring(0, 150) : baseImage;
+    promptParts.push(baseDesc);
+
+    promptParts.push(variation.moment);
+
+    const posterSwaps = buildContentSwaps(activeDimensions);
+    if (posterSwaps.length > 0) {
+      promptParts.push(posterSwaps.join(', '));
+    }
+
+    if (styleDim?.reference) {
+      promptParts.push(styleDim.reference);
+    }
+
+    promptParts.push(...modeConfig.technicalKeywords.slice(0, 3));
+    promptParts.push(variation.focus);
+
   } else {
-    promptParts.push('concept art');
-  }
+    // GAMEPLAY MODE (default): Authentic game screenshot with visible UI
+    // Structure: [camera] + [base] + [scene] + [dimensions] + [style] + [game UI] + [quality]
 
-  // 9. Quality
-  promptParts.push(variation.focus);
-  promptParts.push('detailed');
+    // 1. Camera angle
+    const cameraClause = cameraDim ? buildWeightedClause(cameraDim, 30) : null;
+    promptParts.push(cameraClause || variety.camera);
+
+    // 2. Base description
+    const baseDesc = baseImage.length > 200 ? baseImage.substring(0, 200) : baseImage;
+    promptParts.push(baseDesc);
+
+    // 3. Filter preservation hints
+    const filterHints = buildFilterHints(activeDimensions);
+    if (filterHints.length > 0) {
+      promptParts.push(filterHints.join(' and '));
+    }
+
+    // 4. Scene type
+    promptParts.push(defaultVariation.moment);
+
+    // 5. Content swaps
+    const swaps = buildContentSwaps(activeDimensions);
+    if (swaps.length > 0) {
+      promptParts.push(swaps.join(', '));
+    }
+
+    // 6. Style and mood
+    if (styleDim?.reference) {
+      const styleClause = buildWeightedClause(styleDim, 50);
+      if (styleClause) promptParts.push(styleClause);
+    }
+    if (moodDim?.reference) {
+      const moodClause = buildWeightedClause(moodDim, 30);
+      if (moodClause) promptParts.push(moodClause);
+    }
+
+    // 7. Variety modifiers
+    promptParts.push(variety.time);
+    promptParts.push(variety.atmosphere);
+
+    // 8. Game UI (CRITICAL for gameplay mode)
+    const gameUIClause = gameUIDim ? buildWeightedClause(gameUIDim, 50) : null;
+    promptParts.push(...modeConfig.styleKeywords.slice(0, 2));
+    promptParts.push(gameUIClause || 'game UI overlay');
+    promptParts.push(...modeConfig.technicalKeywords.slice(0, 3));
+
+    // 9. Quality
+    promptParts.push(defaultVariation.focus);
+    promptParts.push('detailed');
+  }
 
   // Apply learned context - enhance with preferences and filter avoid elements
   let enhancedParts = applyLearnedContext(promptParts, learnedContext);
@@ -654,22 +846,10 @@ export function buildMockPromptWithElements(
   const rawPrompt = enhancedParts.filter(p => p).join(', ');
   const finalPrompt = truncatePrompt(rawPrompt);
 
-  // Build negative prompt - include learned negatives
-  const learnedNegatives = buildLearnedNegatives(learnedContext);
-  const allNegativePrompts: NegativePromptItem[] = [
-    ...negativePrompts,
-    ...learnedNegatives.map((text) => ({
-      id: uuidv4(),
-      text,
-      scope: 'global' as const,
-    })),
-  ];
-  const negativePrompt = buildNegativePrompt(allNegativePrompts, promptId);
-
   // Build elements for UI
-  const elements = buildElements(baseImage, filledDimensions, outputMode, 'detailed', lockedElements);
+  const elements = buildElements(baseImage, activeDimensions, outputMode, 'detailed', lockedElements);
 
-  return { prompt: finalPrompt, negativePrompt, elements };
+  return { prompt: finalPrompt, elements };
 }
 
 /**
@@ -682,10 +862,8 @@ export async function buildPromptWithLearning(
   sceneType: string,
   index: number,
   lockedElements: PromptElement[],
-  outputMode: OutputMode,
-  negativePrompts: NegativePromptItem[] = [],
-  promptId?: string
-): Promise<{ prompt: string; negativePrompt: string; elements: PromptElement[] }> {
+  outputMode: OutputMode
+): Promise<{ prompt: string; elements: PromptElement[] }> {
   // Dynamically import to avoid circular dependencies and keep server-side safe
   let learnedContext: LearnedContext | undefined;
 
@@ -707,8 +885,6 @@ export async function buildPromptWithLearning(
     index,
     lockedElements,
     outputMode,
-    negativePrompts,
-    promptId,
     learnedContext
   );
 }

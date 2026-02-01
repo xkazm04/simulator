@@ -20,7 +20,6 @@ import {
   X,
   Sparkles,
   Scale,
-  Ban,
   MonitorPlay,
   Loader2,
 } from 'lucide-react';
@@ -34,7 +33,6 @@ interface SmartSuggestionPanelProps {
   baseImageDescription: string;
   onAcceptDimensionSuggestion?: (dimensionType: DimensionType, weight?: number) => void;
   onAcceptWeightSuggestion?: (dimensionType: DimensionType, weight: number) => void;
-  onAcceptNegativePrompt?: (negativePrompt: string) => void;
   onAcceptOutputMode?: (mode: OutputMode) => void;
   isGenerating?: boolean;
 }
@@ -42,7 +40,6 @@ interface SmartSuggestionPanelProps {
 const suggestionIcons: Record<SmartSuggestion['type'], React.ReactNode> = {
   dimension: <Sparkles size={14} className="text-cyan-400" />,
   weight: <Scale size={14} className="text-purple-400" />,
-  negative_prompt: <Ban size={14} className="text-rose-400" />,
   output_mode: <MonitorPlay size={14} className="text-amber-400" />,
   element_lock: <Check size={14} className="text-green-400" />,
 };
@@ -52,7 +49,6 @@ export function SmartSuggestionPanel({
   baseImageDescription,
   onAcceptDimensionSuggestion,
   onAcceptWeightSuggestion,
-  onAcceptNegativePrompt,
   onAcceptOutputMode,
   isGenerating = false,
 }: SmartSuggestionPanelProps) {
@@ -101,11 +97,6 @@ export function SmartSuggestionPanel({
       case 'weight':
         if (suggestion.data.dimensionType && suggestion.data.weight != null && onAcceptWeightSuggestion) {
           onAcceptWeightSuggestion(suggestion.data.dimensionType, suggestion.data.weight);
-        }
-        break;
-      case 'negative_prompt':
-        if (suggestion.data.negativePrompt && onAcceptNegativePrompt) {
-          onAcceptNegativePrompt(suggestion.data.negativePrompt);
         }
         break;
       case 'output_mode':

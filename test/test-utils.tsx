@@ -16,6 +16,7 @@ export * from '@testing-library/react';
 export { userEvent };
 
 // Import simulator providers
+import { ProjectProvider } from '@/app/features/simulator/contexts';
 import { BrainProvider } from '@/app/features/simulator/subfeature_brain/BrainContext';
 import { DimensionsProvider } from '@/app/features/simulator/subfeature_dimensions/DimensionsContext';
 import { PromptsProvider } from '@/app/features/simulator/subfeature_prompts/PromptsContext';
@@ -36,15 +37,17 @@ import {
  */
 function AllProviders({ children }: { children: ReactNode }) {
   return (
-    <BrainProvider>
-      <DimensionsProvider>
-        <PromptsProvider>
-          <SimulatorProvider>
-            {children}
-          </SimulatorProvider>
-        </PromptsProvider>
-      </DimensionsProvider>
-    </BrainProvider>
+    <ProjectProvider>
+      <BrainProvider>
+        <DimensionsProvider>
+          <PromptsProvider>
+            <SimulatorProvider>
+              {children}
+            </SimulatorProvider>
+          </PromptsProvider>
+        </DimensionsProvider>
+      </BrainProvider>
+    </ProjectProvider>
   );
 }
 
