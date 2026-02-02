@@ -10,7 +10,7 @@
 
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Play, X, Loader2, AlertCircle, RefreshCw } from 'lucide-react';
 import { staggerContainer } from '@/app/features/simulator/lib/motion';
@@ -23,8 +23,10 @@ import { BasePromptBanner } from './cinematic/BasePromptBanner';
 import { ShowcasePlayer } from './cinematic/ShowcasePlayer';
 import { AmbientEffects } from './cinematic/AmbientEffects';
 import { SketchSidebar } from './cinematic/SketchSidebar';
-import { ShowcaseVideoItem } from '@/remotion/types';
+import { ShowcaseVideoItem, SHOWCASE_VIDEO_DEFAULTS } from '@/remotion/types';
 import { useVideoPreloader } from '../hooks/useVideoPreloader';
+import { useVideoExport } from '../hooks/useVideoExport';
+import { ExportButton } from './cinematic/ExportButton';
 
 interface Dimension {
   id: string;
@@ -42,6 +44,9 @@ interface ShowcaseCinematicProps {
 export function ShowcaseCinematic({ project, onImageClick }: ShowcaseCinematicProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [selectedDimension, setSelectedDimension] = useState<Dimension | null>(null);
+
+  // Video export hook
+  const { exportState, exportVideo, resetExport, isExporting } = useVideoExport();
 
   // Parse dimensions from state (handles both array and stringified JSON)
   const dimensions = useMemo((): Dimension[] => {
@@ -148,6 +153,42 @@ export function ShowcaseCinematic({ project, onImageClick }: ShowcaseCinematicPr
   const hasContent = Boolean(heroImage) || showcaseVideos.length > 0;
   const hasVideos = showcaseVideos.length > 0;
 
+  // Export handler - calculates duration and triggers export
+  const handleExport = useCallback(() => {
+    const { titleDuration, coverDuration, estimatedVideoDuration, transitionDuration } = SHOWCASE_VIDEO_DEFAULTS;
+
+    // Calculate duration (same logic as ShowcasePlayer)
+    let totalSequenceDuration = titleDuration;
+    let numTransitions = 0;
+
+    if (heroImage) {
+      totalSequenceDuration += coverDuration;
+      numTransitions++;
+    }
+
+    if (showcaseVideos.length > 0) {
+      totalSequenceDuration += showcaseVideos.length * estimatedVideoDuration;
+      if (!heroImage) numTransitions++;
+      else numTransitions++;
+      numTransitions += Math.max(0, showcaseVideos.length - 1);
+    }
+
+    const transitionOverlap = numTransitions * transitionDuration;
+    const durationInFrames = Math.max(1, totalSequenceDuration - transitionOverlap);
+
+    exportVideo({
+      projectName: project.name,
+      inputProps: {
+        projectName: project.name,
+        coverUrl: heroImage || null,
+        videos: showcaseVideos,
+        coverDuration,
+        titleDuration,
+      },
+      durationInFrames,
+    });
+  }, [project.name, heroImage, showcaseVideos, exportVideo]);
+
   return (
     <div className="relative w-full h-dvh overflow-hidden bg-[#030303]">
       {/* Ambient Background Effects */}
@@ -247,6 +288,20 @@ export function ShowcaseCinematic({ project, onImageClick }: ShowcaseCinematicPr
                   exit={{ opacity: 0 }}
                   transition={{ duration: 0.3 }}
                 >
+                  {/* Export Button - Top left when there's content */}
+                  {hasContent && (
+                    <div className="absolute top-4 left-4 z-30">
+                      <ExportButton
+                        stage={exportState.stage}
+                        progress={exportState.progress}
+                        error={exportState.error}
+                        onExport={handleExport}
+                        onReset={resetExport}
+                        disabled={isExporting}
+                      />
+                    </div>
+                  )}
+
                   {/* Left Sketch Sidebar */}
                   {leftSketches.length > 0 && (
                     <div className="absolute left-0 top-1/2 -translate-y-1/2 z-20 hidden lg:block">
