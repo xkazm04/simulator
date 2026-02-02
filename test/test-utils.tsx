@@ -28,9 +28,16 @@ import {
   DimensionType,
   GeneratedPrompt,
   PromptElement,
-  NegativePromptItem,
   OutputMode,
 } from '@/app/features/simulator/types';
+
+// Local type for test mocks (removed from main types)
+interface NegativePromptItem {
+  id: string;
+  text: string;
+  scope: string;
+  isAutoSuggested: boolean;
+}
 
 /**
  * All providers wrapper for simulator components
@@ -111,7 +118,6 @@ export function createMockPrompt(overrides: Partial<GeneratedPrompt> = {}): Gene
     sceneNumber: 1,
     sceneType: 'Cinematic Wide Shot',
     prompt: 'A cinematic wide shot of a fantasy landscape',
-    negativePrompt: 'blurry, low quality, watermark',
     copied: false,
     rating: null,
     locked: false,
@@ -195,7 +201,6 @@ export function mockGenerateWithFeedbackResponse(prompts: Partial<GeneratedPromp
       sceneNumber: i + 1,
       sceneType: p.sceneType || 'Cinematic Wide Shot',
       prompt: p.prompt || `Generated prompt ${i + 1}`,
-      negativePrompt: p.negativePrompt || 'blurry, low quality',
       elements: p.elements || [
         { id: `elem-${i}-0`, text: 'element 1', category: 'composition', locked: false },
       ],

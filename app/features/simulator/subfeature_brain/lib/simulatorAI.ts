@@ -4,27 +4,14 @@
  * Provides client-side functions to call the simulator AI API.
  */
 
-import { DimensionType, OutputMode } from '../../types';
+import { DimensionType, SmartBreakdownResult, OutputMode } from '../../types';
+
+// Re-export SmartBreakdownResult for consumers that import from this module
+export type { SmartBreakdownResult } from '../../types';
 
 // ============================================================================
 // RESPONSE TYPES
 // ============================================================================
-
-export interface SmartBreakdownResult {
-  success: boolean;
-  baseImage: {
-    description: string;
-    format: string;
-    keyElements: string[];
-  };
-  dimensions: Array<{
-    type: DimensionType;
-    reference: string;
-    confidence: number;
-  }>;
-  suggestedOutputMode: OutputMode;
-  reasoning: string;
-}
 
 export interface ElementToDimensionResult {
   success: boolean;

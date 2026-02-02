@@ -118,7 +118,8 @@ export function ShowcasePlayer({
   return (
     <div className={className}>
       <Player
-        component={ShowcaseVideo}
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        component={ShowcaseVideo as any}
         inputProps={inputProps}
         durationInFrames={durationInFrames}
         fps={fps}

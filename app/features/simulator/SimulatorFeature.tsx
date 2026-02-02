@@ -26,6 +26,7 @@ import { PromptsProvider, usePromptsContext } from './subfeature_prompts';
 import { SimulatorProvider, useSimulatorContext } from './SimulatorContext';
 import { ProjectProvider } from './contexts';
 import { SimulatorHeader } from './subfeature_project';
+import { ViewModeProvider } from './stores';
 
 const PromptDetailModal = lazy(() => import('./subfeature_prompts').then(m => ({ default: m.PromptDetailModal })));
 const SavedImageModal = lazy(() => import('./subfeature_panels').then(m => ({ default: m.SavedImageModal })));
@@ -164,7 +165,7 @@ function SimulatorContent() {
     canStartReason: multiPhaseAutoplay.canStartReason,
     hasContent: multiPhaseAutoplay.hasContent,
     phase: multiPhaseAutoplay.phase,
-    conceptProgress: multiPhaseAutoplay.conceptProgress,
+    sketchProgress: multiPhaseAutoplay.sketchProgress,
     gameplayProgress: multiPhaseAutoplay.gameplayProgress,
     posterSelected: multiPhaseAutoplay.posterSelected,
     hudGenerated: multiPhaseAutoplay.hudGenerated,
@@ -327,15 +328,17 @@ function SimulatorContent() {
 export function SimulatorFeature() {
   return (
     <ProjectProvider>
-      <DimensionsProvider>
-        <BrainProvider>
-          <PromptsProvider>
-            <SimulatorProvider>
-              <SimulatorContent />
-            </SimulatorProvider>
-          </PromptsProvider>
-        </BrainProvider>
-      </DimensionsProvider>
+      <ViewModeProvider>
+        <DimensionsProvider>
+          <BrainProvider>
+            <PromptsProvider>
+              <SimulatorProvider>
+                <SimulatorContent />
+              </SimulatorProvider>
+            </PromptsProvider>
+          </BrainProvider>
+        </DimensionsProvider>
+      </ViewModeProvider>
     </ProjectProvider>
   );
 }

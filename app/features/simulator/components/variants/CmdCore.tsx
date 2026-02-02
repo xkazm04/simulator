@@ -90,7 +90,7 @@ export interface CmdCoreProps {
     canStartReason: string | null;
     hasContent: boolean;
     phase: string;
-    conceptProgress: { saved: number; target: number };
+    sketchProgress: { saved: number; target: number };
     gameplayProgress: { saved: number; target: number };
     posterSelected: boolean;
     hudGenerated: number;

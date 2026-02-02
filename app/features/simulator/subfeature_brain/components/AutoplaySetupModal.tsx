@@ -68,7 +68,7 @@ export interface AutoplaySetupModalProps {
   // Activity mode props (optional - only needed when mode='activity')
   mode?: AutoplayModalMode;
   currentPhase?: AutoplayPhase;
-  conceptProgress?: PhaseProgress;
+  sketchProgress?: PhaseProgress;
   gameplayProgress?: PhaseProgress;
   posterSelected?: boolean;
   hudGenerated?: number;
@@ -381,7 +381,7 @@ function SetupModeContent({
  */
 function ActivityModeContent({
   currentPhase,
-  conceptProgress,
+  sketchProgress,
   gameplayProgress,
   posterSelected,
   hudGenerated,
@@ -391,7 +391,7 @@ function ActivityModeContent({
   imageEvents,
 }: {
   currentPhase: AutoplayPhase;
-  conceptProgress: PhaseProgress;
+  sketchProgress: PhaseProgress;
   gameplayProgress: PhaseProgress;
   posterSelected: boolean;
   hudGenerated: number;
@@ -416,7 +416,7 @@ function ActivityModeContent({
       <div className="flex-1 border-x border-slate-800">
         <ActivityProgressCenter
           currentPhase={currentPhase}
-          conceptProgress={conceptProgress}
+          sketchProgress={sketchProgress}
           gameplayProgress={gameplayProgress}
           posterSelected={posterSelected}
           hudGenerated={hudGenerated}
@@ -450,7 +450,7 @@ export function AutoplaySetupModal({
   // Activity mode props
   mode = 'setup',
   currentPhase = 'idle',
-  conceptProgress = { saved: 0, target: 0 },
+  sketchProgress = { saved: 0, target: 0 },
   gameplayProgress = { saved: 0, target: 0 },
   posterSelected = false,
   hudGenerated = 0,
@@ -595,7 +595,7 @@ export function AutoplaySetupModal({
           {isActivityMode ? (
             <ActivityModeContent
               currentPhase={currentPhase}
-              conceptProgress={conceptProgress}
+              sketchProgress={sketchProgress}
               gameplayProgress={gameplayProgress}
               posterSelected={posterSelected}
               hudGenerated={hudGenerated}
@@ -647,7 +647,7 @@ export function AutoplaySetupModal({
                   )}
                 </div>
                 <div className="text-sm text-slate-500 font-mono">
-                  Phase: {conceptProgress.saved + gameplayProgress.saved}/{conceptProgress.target + gameplayProgress.target} saved
+                  Phase: {sketchProgress.saved + gameplayProgress.saved}/{sketchProgress.target + gameplayProgress.target} saved
                 </div>
               </>
             ) : (

@@ -49,7 +49,6 @@ import { useSimulatorContext } from '../../SimulatorContext';
 import { expandCollapse, transitions } from '../../lib/motion';
 import { semanticColors } from '../../lib/semanticColors';
 import { refineFeedback, smartBreakdown } from '../lib/simulatorAI';
-import { AutoplayControls } from './AutoplayControls';
 import { AutoplaySetupModal } from './AutoplaySetupModal';
 import { useModalInstance } from '@/app/providers';
 
@@ -68,23 +67,6 @@ export interface DirectorControlProps {
   isGeneratingPoster: boolean;
   onGeneratePoster?: () => Promise<void>;
 
-  // Autoplay orchestrator props (legacy single-mode)
-  autoplay?: {
-    isRunning: boolean;
-    canStart: boolean;
-    canStartReason: string | null;
-    status: string;
-    currentIteration: number;
-    maxIterations: number;
-    totalSaved: number;
-    targetSaved: number;
-    completionReason: string | null;
-    error: string | undefined;
-    onStart: (config: { targetSavedCount: number; maxIterations: number }) => void;
-    onStop: () => void;
-    onReset: () => void;
-  };
-
   // Multi-phase autoplay props
   multiPhaseAutoplay?: {
     isRunning: boolean;
@@ -92,7 +74,7 @@ export interface DirectorControlProps {
     canStartReason: string | null;
     hasContent: boolean;
     phase: string;
-    conceptProgress: { saved: number; target: number };
+    sketchProgress: { saved: number; target: number };
     gameplayProgress: { saved: number; target: number };
     posterSelected: boolean;
     hudGenerated: number;
@@ -119,7 +101,6 @@ export function DirectorControl({
   onDeleteGenerations,
   isGeneratingPoster,
   onGeneratePoster,
-  autoplay,
   multiPhaseAutoplay,
   eventLog,
 }: DirectorControlProps) {
@@ -137,11 +118,8 @@ export function DirectorControl({
   // Modal provider for root-level rendering (avoids z-index issues)
   const autoplayModal = useModalInstance('autoplay-setup');
 
-  // Derive autoplay lock state - check both single-mode and multi-phase
-  const isAutoplayLocked = (autoplay?.isRunning ?? false) || (multiPhaseAutoplay?.isRunning ?? false);
-
-  // Use multi-phase autoplay if available, fall back to legacy
-  const activeAutoplay = multiPhaseAutoplay || autoplay;
+  // Derive autoplay lock state from multi-phase autoplay
+  const isAutoplayLocked = multiPhaseAutoplay?.isRunning ?? false;
 
   const isAnyGenerating = simulator.isGenerating || isGeneratingPoster || isRefining || isAutoplayLocked;
 
@@ -535,7 +513,7 @@ export function DirectorControl({
                       isRunning={multiPhaseAutoplay.isRunning}
                       // Activity mode props
                       currentPhase={multiPhaseAutoplay.phase as any}
-                      conceptProgress={multiPhaseAutoplay.conceptProgress}
+                      sketchProgress={multiPhaseAutoplay.sketchProgress}
                       gameplayProgress={multiPhaseAutoplay.gameplayProgress}
                       posterSelected={multiPhaseAutoplay.posterSelected}
                       hudGenerated={multiPhaseAutoplay.hudGenerated}
@@ -557,8 +535,8 @@ export function DirectorControl({
                 >
                   <Sparkles size={12} className="animate-pulse" />
                   <span className="font-mono type-label uppercase">
-                    {multiPhaseAutoplay.conceptProgress.saved + multiPhaseAutoplay.gameplayProgress.saved}/
-                    {multiPhaseAutoplay.conceptProgress.target + multiPhaseAutoplay.gameplayProgress.target}
+                    {multiPhaseAutoplay.sketchProgress.saved + multiPhaseAutoplay.gameplayProgress.saved}/
+                    {multiPhaseAutoplay.sketchProgress.target + multiPhaseAutoplay.gameplayProgress.target}
                   </span>
                 </button>
               ) : (
@@ -579,7 +557,7 @@ export function DirectorControl({
                       isRunning={multiPhaseAutoplay.isRunning}
                       // Activity mode props
                       currentPhase={multiPhaseAutoplay.phase as any}
-                      conceptProgress={multiPhaseAutoplay.conceptProgress}
+                      sketchProgress={multiPhaseAutoplay.sketchProgress}
                       gameplayProgress={multiPhaseAutoplay.gameplayProgress}
                       posterSelected={multiPhaseAutoplay.posterSelected}
                       hudGenerated={multiPhaseAutoplay.hudGenerated}
@@ -608,26 +586,6 @@ export function DirectorControl({
                 </button>
               )}
             </>
-          )}
-
-          {/* Legacy Autoplay Controls - only show if multi-phase not available */}
-          {brain.outputMode !== 'poster' && !multiPhaseAutoplay && autoplay && (
-            <AutoplayControls
-              isRunning={autoplay.isRunning}
-              canStart={autoplay.canStart}
-              canStartReason={autoplay.canStartReason}
-              status={autoplay.status}
-              currentIteration={autoplay.currentIteration}
-              maxIterations={autoplay.maxIterations}
-              totalSaved={autoplay.totalSaved}
-              targetSaved={autoplay.targetSaved}
-              completionReason={autoplay.completionReason}
-              error={autoplay.error}
-              onStart={autoplay.onStart}
-              onStop={autoplay.onStop}
-              onReset={autoplay.onReset}
-              disabled={isAnyGenerating && !isAutoplayLocked}
-            />
           )}
 
           {/* Generate Button - takes most space */}

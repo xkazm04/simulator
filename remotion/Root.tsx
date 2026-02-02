@@ -9,16 +9,38 @@
  */
 
 import { ShowcaseVideo } from './compositions/ShowcaseVideo';
-import { ShowcaseVideoProps, SHOWCASE_VIDEO_DEFAULTS, ShowcaseImage } from './types';
+import { ShowcaseVideoProps, SHOWCASE_VIDEO_DEFAULTS, ShowcaseVideoItem } from './types';
 
 /**
- * Calculate total video duration based on image count
+ * Calculate total video duration based on video count
+ * TransitionSeries overlaps scenes during transitions, so:
+ * Total = sum(sequences) - sum(transitions)
  */
 export function calculateDuration(
-  imageCount: number,
-  durationPerImage: number = SHOWCASE_VIDEO_DEFAULTS.durationPerImage
+  videoCount: number,
+  hasCover: boolean,
+  coverDuration: number = SHOWCASE_VIDEO_DEFAULTS.coverDuration,
+  estimatedVideoDuration: number = SHOWCASE_VIDEO_DEFAULTS.estimatedVideoDuration,
+  transitionDuration: number = SHOWCASE_VIDEO_DEFAULTS.transitionDuration
 ): number {
-  return Math.max(imageCount * durationPerImage, SHOWCASE_VIDEO_DEFAULTS.durationPerImage);
+  if (videoCount === 0) {
+    return hasCover ? coverDuration : 1;
+  }
+
+  // Sum of all sequence durations
+  let totalSequenceDuration = 0;
+
+  if (hasCover) {
+    totalSequenceDuration += coverDuration;
+  }
+
+  totalSequenceDuration += videoCount * estimatedVideoDuration;
+
+  // Count transitions (overlap reduces total duration)
+  const numTransitions = (hasCover ? 1 : 0) + Math.max(0, videoCount - 1);
+  const transitionOverlap = numTransitions * transitionDuration;
+
+  return Math.max(1, totalSequenceDuration - transitionOverlap);
 }
 
 /**
@@ -26,8 +48,9 @@ export function calculateDuration(
  */
 export const defaultShowcaseVideoProps: ShowcaseVideoProps = {
   projectName: 'Sample Project',
-  images: [],
-  durationPerImage: SHOWCASE_VIDEO_DEFAULTS.durationPerImage,
+  coverUrl: null,
+  videos: [],
+  coverDuration: SHOWCASE_VIDEO_DEFAULTS.coverDuration,
 };
 
 /**
@@ -43,4 +66,4 @@ export const SHOWCASE_VIDEO_COMPOSITION = {
 // Re-export composition for direct Player usage
 export { ShowcaseVideo };
 export { SHOWCASE_VIDEO_DEFAULTS };
-export type { ShowcaseVideoProps, ShowcaseImage };
+export type { ShowcaseVideoProps, ShowcaseVideoItem };

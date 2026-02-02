@@ -116,7 +116,7 @@ function PosterCoreComponent({
               ) : (
                 posterGenerations.map((gen, index) => (
                   <button
-                    key={gen.id}
+                    key={gen.generationId || index}
                     onClick={() => onSelectPoster?.(index)}
                     className={`relative aspect-[3/4] overflow-hidden radius-lg border-2 transition-all ${
                       selectedPosterIndex === index
