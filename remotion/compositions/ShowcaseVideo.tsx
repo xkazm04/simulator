@@ -24,6 +24,7 @@ import { fade } from '@remotion/transitions/fade';
 import { slide } from '@remotion/transitions/slide';
 import { clockWipe } from '@remotion/transitions/clock-wipe';
 import { ShowcaseVideoProps, SHOWCASE_VIDEO_DEFAULTS } from '../types';
+import { TitleCard } from './TitleCard';
 
 // ============================================================================
 // Cover Slide - Static poster image
@@ -256,6 +257,7 @@ export function ShowcaseVideo({
   videos,
   coverDuration = SHOWCASE_VIDEO_DEFAULTS.coverDuration,
   videoDuration = SHOWCASE_VIDEO_DEFAULTS.estimatedVideoDuration,
+  titleDuration = SHOWCASE_VIDEO_DEFAULTS.titleDuration,
 }: ShowcaseVideoProps) {
   const { transitionDuration, width, height } = SHOWCASE_VIDEO_DEFAULTS;
 
@@ -281,6 +283,15 @@ export function ShowcaseVideo({
   return (
     <AbsoluteFill style={{ backgroundColor: '#000' }}>
       <TransitionSeries>
+        {/* Title card always first */}
+        <TransitionSeries.Sequence durationInFrames={titleDuration}>
+          <TitleCard projectName={projectName} subtitle="Project Showcase" />
+        </TransitionSeries.Sequence>
+        <TransitionSeries.Transition
+          presentation={fade()}
+          timing={linearTiming({ durationInFrames: transitionDuration })}
+        />
+
         {/* Cover image if available */}
         {coverUrl && (
           <>
