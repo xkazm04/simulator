@@ -143,7 +143,9 @@ export function ShowcaseCinematic({ project, onImageClick }: ShowcaseCinematicPr
     return images;
   }, [project.poster, nonSketchImages]);
 
-  // Check if we have videos to play
+  // Check if we have content to show in video preview
+  // Title card always shows, so we need cover OR videos for meaningful content
+  const hasContent = Boolean(heroImage) || showcaseVideos.length > 0;
   const hasVideos = showcaseVideos.length > 0;
 
   return (
@@ -265,55 +267,60 @@ export function ShowcaseCinematic({ project, onImageClick }: ShowcaseCinematicPr
                     />
 
                     {/* Play Button Overlay with Loading Progress */}
-                    {hasVideos && (
+                    {hasContent && (
                       <motion.div
                         className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-30 flex flex-col items-center gap-4"
                         initial={{ opacity: 0, scale: 0.8 }}
                         animate={{ opacity: 1, scale: 1 }}
                         transition={{ delay: 0.5, duration: 0.3 }}
                       >
-                        {/* Play Button */}
-                        <motion.button
-                          onClick={() => videosReady && setIsPlaying(true)}
-                          disabled={!videosReady}
-                          className={`
-                            p-6 rounded-full backdrop-blur-sm
-                            border-2 shadow-2xl shadow-black/50
-                            transition-all duration-300 group
-                            ${videosReady
-                              ? 'bg-black/60 hover:bg-black/80 border-white/30 hover:border-cyan-400/50 cursor-pointer'
-                              : 'bg-black/40 border-white/20 cursor-not-allowed'
-                            }
-                          `}
-                          whileHover={videosReady ? { scale: 1.1 } : {}}
-                          whileTap={videosReady ? { scale: 0.95 } : {}}
-                        >
-                          {videosLoading ? (
-                            <Loader2
-                              size={48}
-                              className="text-cyan-400 animate-spin"
-                            />
-                          ) : loadErrors.length > 0 && !videosReady ? (
-                            <AlertCircle
-                              size={48}
-                              className="text-red-400"
-                            />
-                          ) : (
-                            <Play
-                              size={48}
+                        {/* Play Button - Ready when no videos to preload OR videos are ready */}
+                        {(() => {
+                          const playReady = !hasVideos || videosReady;
+                          return (
+                            <motion.button
+                              onClick={() => playReady && setIsPlaying(true)}
+                              disabled={!playReady}
                               className={`
-                                transition-colors
-                                ${videosReady
-                                  ? 'text-white fill-white group-hover:text-cyan-400 group-hover:fill-cyan-400'
-                                  : 'text-white/50 fill-white/50'
+                                p-6 rounded-full backdrop-blur-sm
+                                border-2 shadow-2xl shadow-black/50
+                                transition-all duration-300 group
+                                ${playReady
+                                  ? 'bg-black/60 hover:bg-black/80 border-white/30 hover:border-cyan-400/50 cursor-pointer'
+                                  : 'bg-black/40 border-white/20 cursor-not-allowed'
                                 }
                               `}
-                            />
-                          )}
-                        </motion.button>
+                              whileHover={playReady ? { scale: 1.1 } : {}}
+                              whileTap={playReady ? { scale: 0.95 } : {}}
+                            >
+                              {hasVideos && videosLoading ? (
+                                <Loader2
+                                  size={48}
+                                  className="text-cyan-400 animate-spin"
+                                />
+                              ) : hasVideos && loadErrors.length > 0 && !videosReady ? (
+                                <AlertCircle
+                                  size={48}
+                                  className="text-red-400"
+                                />
+                              ) : (
+                                <Play
+                                  size={48}
+                                  className={`
+                                    transition-colors
+                                    ${playReady
+                                      ? 'text-white fill-white group-hover:text-cyan-400 group-hover:fill-cyan-400'
+                                      : 'text-white/50 fill-white/50'
+                                    }
+                                  `}
+                                />
+                              )}
+                            </motion.button>
+                          );
+                        })()}
 
-                        {/* Progress Bar - Show while loading */}
-                        {!videosReady && (
+                        {/* Progress Bar - Show while loading videos */}
+                        {hasVideos && !videosReady && (
                           <motion.div
                             className="flex flex-col items-center gap-2"
                             initial={{ opacity: 0, y: 10 }}
@@ -354,15 +361,15 @@ export function ShowcaseCinematic({ project, onImageClick }: ShowcaseCinematicPr
                           </motion.div>
                         )}
 
-                        {/* Ready indicator */}
-                        {videosReady && (
+                        {/* Ready indicator - different text for cover-only vs with videos */}
+                        {(!hasVideos || videosReady) && (
                           <motion.span
                             className="text-xs font-mono text-cyan-400"
                             initial={{ opacity: 0 }}
                             animate={{ opacity: 1 }}
                             transition={{ delay: 0.1 }}
                           >
-                            Ready to play
+                            {hasVideos ? 'Ready to play' : 'Watch showcase'}
                           </motion.span>
                         )}
                       </motion.div>
@@ -380,8 +387,8 @@ export function ShowcaseCinematic({ project, onImageClick }: ShowcaseCinematicPr
                     </div>
                   )}
 
-                  {/* Video count badge */}
-                  {hasVideos && (
+                  {/* Content badge - shows for any content (cover or videos) */}
+                  {hasContent && (
                     <motion.div
                       className="absolute left-1/2 -translate-x-1/2 bottom-8 z-30"
                       initial={{ opacity: 0, y: 10 }}
@@ -389,15 +396,17 @@ export function ShowcaseCinematic({ project, onImageClick }: ShowcaseCinematicPr
                       transition={{ delay: 0.7 }}
                     >
                       <span className={`px-4 py-2 rounded-full bg-black/60 backdrop-blur-sm border text-xs font-mono ${
-                        videosReady
+                        (!hasVideos || videosReady)
                           ? 'border-cyan-500/30 text-cyan-400'
                           : 'border-white/20 text-slate-400'
                       }`}>
-                        {videosReady
-                          ? `${showcaseVideos.length} video${showcaseVideos.length !== 1 ? 's' : ''} ready`
-                          : videosLoading
-                            ? `Loading ${loadedCount}/${totalCount}...`
-                            : `${showcaseVideos.length} video${showcaseVideos.length !== 1 ? 's' : ''}`
+                        {hasVideos
+                          ? videosReady
+                            ? `${showcaseVideos.length} video${showcaseVideos.length !== 1 ? 's' : ''} ready`
+                            : videosLoading
+                              ? `Loading ${loadedCount}/${totalCount}...`
+                              : `${showcaseVideos.length} video${showcaseVideos.length !== 1 ? 's' : ''}`
+                          : 'Watch showcase'
                         }
                       </span>
                     </motion.div>
