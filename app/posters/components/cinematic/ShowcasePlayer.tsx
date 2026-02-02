@@ -60,6 +60,7 @@ export function ShowcasePlayer({
     width,
     height,
     coverDuration,
+    titleDuration,
     estimatedVideoDuration,
     transitionDuration,
   } = SHOWCASE_VIDEO_DEFAULTS;
@@ -67,30 +68,34 @@ export function ShowcasePlayer({
   // Calculate total duration for TransitionSeries
   // TransitionSeries overlaps scenes during transitions, so:
   // Total = sum(sequences) - sum(transitions)
+  // Sequence: Title card -> Cover (if exists) -> Videos (if any)
   const durationInFrames = useMemo(() => {
-    if (videos.length === 0) {
-      return coverUrl ? coverDuration : 1;
-    }
+    // Title card always shows
+    let totalSequenceDuration = titleDuration;
 
-    // Sum of all sequence durations
-    let totalSequenceDuration = 0;
+    // Count transitions starting with title -> cover/video
+    let numTransitions = 0;
 
     // Cover sequence
     if (coverUrl) {
       totalSequenceDuration += coverDuration;
+      numTransitions++; // title -> cover
     }
 
     // Video sequences
-    totalSequenceDuration += videos.length * estimatedVideoDuration;
+    if (videos.length > 0) {
+      totalSequenceDuration += videos.length * estimatedVideoDuration;
+      // Transition from cover to first video (or title to first video if no cover)
+      if (!coverUrl) numTransitions++; // title -> first video
+      else numTransitions++; // cover -> first video
+      // Transitions between videos
+      numTransitions += Math.max(0, videos.length - 1);
+    }
 
-    // Count transitions (overlap reduces total duration)
-    // - 1 transition from cover to first video (if cover exists)
-    // - (videos.length - 1) transitions between videos
-    const numTransitions = (coverUrl ? 1 : 0) + Math.max(0, videos.length - 1);
     const transitionOverlap = numTransitions * transitionDuration;
-
     return Math.max(1, totalSequenceDuration - transitionOverlap);
   }, [
+    titleDuration,
     coverUrl,
     coverDuration,
     videos.length,
@@ -106,12 +111,14 @@ export function ShowcasePlayer({
       coverUrl,
       videos,
       coverDuration,
+      titleDuration,
     }),
-    [projectName, coverUrl, videos, coverDuration]
+    [projectName, coverUrl, videos, coverDuration, titleDuration]
   );
 
-  // Handle empty state - need at least cover or videos
-  if (!coverUrl && (!videos || videos.length === 0)) {
+  // Handle empty state - title card always shows, so we need cover or videos for meaningful content
+  const hasContent = Boolean(coverUrl) || (videos && videos.length > 0);
+  if (!hasContent) {
     return <EmptyPlaceholder />;
   }
 
