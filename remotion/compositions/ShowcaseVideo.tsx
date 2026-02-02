@@ -22,6 +22,7 @@ import {
 import { TransitionSeries, linearTiming } from '@remotion/transitions';
 import { fade } from '@remotion/transitions/fade';
 import { slide } from '@remotion/transitions/slide';
+import { clockWipe } from '@remotion/transitions/clock-wipe';
 import { ShowcaseVideoProps, SHOWCASE_VIDEO_DEFAULTS } from '../types';
 
 // ============================================================================
@@ -254,8 +255,16 @@ export function ShowcaseVideo({
   coverUrl,
   videos,
   coverDuration = SHOWCASE_VIDEO_DEFAULTS.coverDuration,
+  videoDuration = SHOWCASE_VIDEO_DEFAULTS.estimatedVideoDuration,
 }: ShowcaseVideoProps) {
-  const { estimatedVideoDuration, transitionDuration } = SHOWCASE_VIDEO_DEFAULTS;
+  const { transitionDuration, width, height } = SHOWCASE_VIDEO_DEFAULTS;
+
+  // Transitions rotate through fade, slide, clockWipe
+  const transitions = [
+    fade(),
+    slide({ direction: 'from-right' }),
+    clockWipe({ width, height }),
+  ];
 
   // Empty state
   if (!videos || videos.length === 0) {
@@ -288,7 +297,7 @@ export function ShowcaseVideo({
         {/* Video slides with transitions between them */}
         {videos.map((video, index) => (
           <React.Fragment key={video.id}>
-            <TransitionSeries.Sequence durationInFrames={estimatedVideoDuration}>
+            <TransitionSeries.Sequence durationInFrames={videoDuration}>
               <VideoSlide
                 videoUrl={video.videoUrl}
                 label={video.label}
@@ -297,10 +306,11 @@ export function ShowcaseVideo({
               />
             </TransitionSeries.Sequence>
 
-            {/* Transition to next video (not after last) */}
+            {/* Transition to next video (not after last) - rotate through fade, slide, clockWipe */}
             {index < videos.length - 1 && (
               <TransitionSeries.Transition
-                presentation={index % 2 === 0 ? slide({ direction: 'from-right' }) : fade()}
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                presentation={transitions[index % transitions.length] as any}
                 timing={linearTiming({ durationInFrames: transitionDuration })}
               />
             )}

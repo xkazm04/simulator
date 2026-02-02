@@ -14,7 +14,7 @@ export interface ShowcaseVideoItem {
 
 /**
  * Props for the ShowcaseVideo composition
- * Sequence: Cover image (poster) → Videos in order
+ * Sequence: Title card → Cover image (poster) → Videos in order
  */
 export interface ShowcaseVideoProps {
   projectName: string;
@@ -24,6 +24,10 @@ export interface ShowcaseVideoProps {
   videos: ShowcaseVideoItem[];
   /** Duration for cover image in frames. Default: 90 (3 seconds at 30fps) */
   coverDuration?: number;
+  /** Duration for each video in frames. Default: 150 (5 seconds at 30fps) */
+  videoDuration?: number;
+  /** Duration for title card in frames. Default: 90 (3 seconds at 30fps) */
+  titleDuration?: number;
 }
 
 /**
@@ -44,4 +48,6 @@ export const SHOWCASE_VIDEO_DEFAULTS = {
   transitionDuration: 15,
   /** Lower third display duration in frames (2 seconds at 30fps) */
   lowerThirdDuration: 60,
+  /** Default duration for title card in frames (3 seconds at 30fps) */
+  titleDuration: 90,
 } as const;
