@@ -25,10 +25,11 @@ This milestone fixes the broken autoplay orchestration chain so the automated ge
   2. A single iteration completes generate, evaluate, and refine steps without stalling
   3. Multi-phase mode progresses through all configured phases automatically
   4. No timeout errors appear during normal autoplay operation
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 01-01: TBD
+- [ ] 01-01-PLAN.md — Fix single-phase orchestration with callback-based prompt propagation
+- [ ] 01-02-PLAN.md — Wire multi-phase to delegate to single-phase orchestrator
 
 ### Phase 2: UI State & Lock
 **Goal**: User sees accurate progress and cannot interfere with running autoplay
@@ -64,7 +65,7 @@ Plans:
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Orchestration Fix | 0/TBD | Not started | - |
+| 1. Orchestration Fix | 0/2 | Planned | - |
 | 2. UI State & Lock | 0/TBD | Not started | - |
 | 3. Polish & Documentation | 0/TBD | Not started | - |
 
