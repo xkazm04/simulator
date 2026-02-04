@@ -79,9 +79,12 @@ export interface AutoplayOrchestratorDeps {
    *
    * The orchestrator will detect generation completion via isGeneratingImages flag.
    *
-   * @param overrides - Optional overrides for feedback to avoid React state timing issues
+   * @param overrides - Optional overrides for feedback and onPromptsReady callback
    */
-  onRegeneratePrompts: (overrides?: { feedback?: { positive: string; negative: string } }) => void;
+  onRegeneratePrompts: (overrides?: {
+    feedback?: { positive: string; negative: string };
+    onPromptsReady?: (prompts: GeneratedPrompt[]) => void;
+  }) => void;
 
   // Event logging callback (optional)
   onLogEvent?: (
@@ -203,7 +206,14 @@ export function useAutoplayOrchestrator(
               // Pass pending feedback directly to avoid React state timing issues
               const feedbackOverride = pendingFeedbackRef.current;
               pendingFeedbackRef.current = null; // Clear after using
-              onRegeneratePrompts(feedbackOverride ? { feedback: feedbackOverride } : undefined);
+              // Pass callback to receive prompts immediately after generation
+              onRegeneratePrompts({
+                feedback: feedbackOverride || undefined,
+                onPromptsReady: (newPrompts) => {
+                  console.log('[Autoplay] Prompts ready, triggering image generation for', newPrompts.length, 'prompts');
+                  generateImagesFromPrompts(newPrompts.map(p => ({ id: p.id, prompt: p.prompt })));
+                },
+              });
             }
           }
           break;
@@ -505,7 +515,9 @@ export function useAutoplayOrchestrator(
   ]);
 
   /**
-   * Effect: Trigger image generation when prompts are ready during autoplay
+   * Effect: Backup trigger for image generation when prompts are ready during autoplay
+   * Primary path is now the onPromptsReady callback in handleGenerate.
+   * This effect serves as a safety net for edge cases (e.g., manual state changes).
    * Since useImageEffects is disabled during autoplay, the orchestrator must trigger generation
    * NOTE: generatedPrompts is in deps to re-run when fallback prompts are set after API error
    */
