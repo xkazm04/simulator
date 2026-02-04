@@ -31,6 +31,8 @@ export interface GenerateOverrides {
   baseImage?: string;
   dimensions?: Array<{ type: DimensionType; label: string; reference: string }>;
   feedback?: { positive: string; negative: string };
+  /** Callback fired immediately after prompts are generated, bypassing async state timing */
+  onPromptsReady?: (prompts: GeneratedPrompt[]) => void;
 }
 
 export interface SimulatorContextValue {
@@ -128,6 +130,9 @@ export function SimulatorProvider({ children }: SimulatorProviderProps) {
         prompts.setGeneratedPrompts(generatedPrompts);
         prompts.pushToHistory(generatedPrompts);
 
+        // Fire callback with fresh prompts (bypasses async state timing)
+        overrides?.onPromptsReady?.(generatedPrompts);
+
         // Record this generation iteration for learning
         recordGenerationIteration(generatedPrompts.map((p) => p.id));
 
@@ -146,6 +151,10 @@ export function SimulatorProvider({ children }: SimulatorProviderProps) {
         );
         prompts.setGeneratedPrompts(fallbackPrompts);
         prompts.pushToHistory(fallbackPrompts);
+
+        // Fire callback with fallback prompts (bypasses async state timing)
+        overrides?.onPromptsReady?.(fallbackPrompts);
+
         brain.clearFeedback();
       }
     } catch (err) {
@@ -158,6 +167,10 @@ export function SimulatorProvider({ children }: SimulatorProviderProps) {
       );
       prompts.setGeneratedPrompts(fallbackPrompts);
       prompts.pushToHistory(fallbackPrompts);
+
+      // Fire callback with fallback prompts (bypasses async state timing)
+      overrides?.onPromptsReady?.(fallbackPrompts);
+
       brain.clearFeedback();
     } finally {
       setIsGenerating(false);
