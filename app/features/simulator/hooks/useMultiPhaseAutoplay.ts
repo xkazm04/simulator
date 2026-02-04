@@ -331,6 +331,9 @@ export function useMultiPhaseAutoplay(
     logEvent,
   ]);
 
+  // ACTUALLY USE the orchestrator for image generation
+  const singlePhaseOrchestrator = useAutoplayOrchestrator(orchestratorDeps);
+
   // Derived state
   const isRunning = state.phase !== 'idle' && state.phase !== 'complete' && state.phase !== 'error';
   const canStart = state.phase === 'idle' || state.phase === 'complete' || state.phase === 'error';
@@ -457,6 +460,66 @@ export function useMultiPhaseAutoplay(
       }
     }
   }, [state, setOutputMode, logEvent]);
+
+  /**
+   * Effect: Delegate image generation phases to single-phase orchestrator
+   * When multi-phase enters 'sketch' or 'gameplay', start the single-phase orchestrator
+   * which handles the actual generate -> evaluate -> refine loop
+   */
+  useEffect(() => {
+    const { phase, config, sketchProgress, gameplayProgress } = state;
+
+    // Only delegate for image generation phases
+    if (phase !== 'sketch' && phase !== 'gameplay') {
+      return;
+    }
+
+    // Calculate target for current phase
+    const targetForPhase = phase === 'sketch'
+      ? config.sketchCount - sketchProgress.saved
+      : config.gameplayCount - gameplayProgress.saved;
+
+    // If we've already met the target, don't start orchestrator
+    if (targetForPhase <= 0) {
+      return;
+    }
+
+    // Only start if not already running
+    if (!singlePhaseOrchestrator.isRunning && singlePhaseOrchestrator.canStart) {
+      console.log(`[MultiPhase] Delegating ${phase} phase to single-phase orchestrator (target: ${targetForPhase})`);
+      singlePhaseOrchestrator.startAutoplay({
+        targetSavedCount: targetForPhase,
+        maxIterations: config.maxIterationsPerImage,
+      });
+    }
+  }, [state.phase, state.config, state.sketchProgress, state.gameplayProgress, singlePhaseOrchestrator]);
+
+  /**
+   * Effect: Detect single-phase completion and advance multi-phase
+   */
+  useEffect(() => {
+    const { phase } = state;
+
+    if (phase !== 'sketch' && phase !== 'gameplay') {
+      return;
+    }
+
+    // When single-phase orchestrator completes, advance to next phase
+    if (!singlePhaseOrchestrator.isRunning && singlePhaseOrchestrator.completionReason) {
+      console.log(`[MultiPhase] Single-phase completed: ${singlePhaseOrchestrator.completionReason}`);
+
+      // Check if we should advance based on saved count
+      const progress = phase === 'sketch' ? state.sketchProgress : state.gameplayProgress;
+      const target = phase === 'sketch' ? state.config.sketchCount : state.config.gameplayCount;
+
+      if (progress.saved >= target || singlePhaseOrchestrator.completionReason !== 'target_met') {
+        dispatch({ type: 'ADVANCE_PHASE' });
+      }
+
+      // Reset single-phase for potential reuse
+      singlePhaseOrchestrator.resetAutoplay();
+    }
+  }, [state, singlePhaseOrchestrator.isRunning, singlePhaseOrchestrator.completionReason, singlePhaseOrchestrator.resetAutoplay]);
 
   /**
    * Effect: Handle poster phase
