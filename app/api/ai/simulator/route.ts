@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createErrorResponse, HTTP_STATUS } from '@/app/utils/apiErrorHandling';
-import { getUnifiedProvider } from '@/app/lib/ai';
+import { getUnifiedProvider, parseAIJsonResponse } from '@/app/lib/ai';
 import {
   SmartBreakdownRequest,
   ElementToDimensionRequest,
@@ -9,6 +9,7 @@ import {
   GenerateWithFeedbackRequest,
   RefineFeedbackRequest,
   SimulatorAction,
+  DimensionTransformation,
 } from './types';
 import {
   BREAKDOWN_SYSTEM_PROMPT,
@@ -28,143 +29,141 @@ import {
 /**
  * Simulator AI API - Uses Claude for all LLM operations
  *
- * Endpoints:
- * - POST ?action=breakdown - Smart Breakdown
- * - POST ?action=element-to-dimension - Element to Dimension
- * - POST ?action=label-to-dimension - Label to Dimension refinement
- * - POST ?action=feedback-to-dimension - Apply feedback to dimensions
- * - POST ?action=generate-with-feedback - Generate prompts
- * - POST ?action=refine-feedback - Refine based on change input
+ * All endpoints implement the DimensionTransformation pattern:
+ * - POST ?action=breakdown - Smart Breakdown (text → dimensions)
+ * - POST ?action=element-to-dimension - Element to Dimension (elements → dimensions)
+ * - POST ?action=label-to-dimension - Label to Dimension (element + dims → refined dims)
+ * - POST ?action=feedback-to-dimension - Apply feedback (feedback + dims → adjusted dims)
+ * - POST ?action=generate-with-feedback - Generate prompts (dims + context → prompts)
+ * - POST ?action=refine-feedback - Refine based on change (prompt + feedback → refined)
  */
 
-async function callClaude(systemPrompt: string, userPrompt: string, feature: string, maxTokens: number = 2000): Promise<string> {
+// ============================================================================
+// TRANSFORMATION EXECUTOR
+// ============================================================================
+
+/**
+ * Execute a dimension transformation - unified execution path for all transformers
+ */
+async function executeTransformation<TInput, TOutput>(
+  transformation: DimensionTransformation<TInput, TOutput>,
+  input: TInput
+): Promise<NextResponse> {
+  // Step 1: Validate input
+  const validationError = transformation.validate(input);
+  if (validationError) {
+    return createErrorResponse(validationError, HTTP_STATUS.BAD_REQUEST);
+  }
+
+  // Step 2: Call Claude with system + user prompts
   const provider = getUnifiedProvider();
   const response = await provider.generateText({
-    systemPrompt,
-    userPrompt,
-    maxTokens,
-    metadata: { feature },
+    systemPrompt: transformation.systemPrompt,
+    userPrompt: transformation.createUserPrompt(input),
+    maxTokens: transformation.maxTokens ?? 2000,
+    metadata: { feature: transformation.featureName },
   }, 'claude');
-  return response.text;
+
+  // Step 3: Parse JSON response
+  const parsed = parseAIJsonResponse(response.text);
+
+  // Step 4: Optional post-processing
+  const output = transformation.postProcess
+    ? transformation.postProcess(parsed, input)
+    : parsed as TOutput;
+
+  return NextResponse.json(output);
 }
 
-function parseJsonResponse(text: string): unknown {
-  // Log raw response for debugging
-  console.log('[parseJsonResponse] Raw response length:', text.length);
+// ============================================================================
+// TRANSFORMATION DEFINITIONS
+// ============================================================================
 
-  // Step 1: Strip markdown code blocks if present
-  let cleaned = text;
+const smartBreakdown: DimensionTransformation<SmartBreakdownRequest, unknown> = {
+  action: 'breakdown',
+  featureName: 'smart-breakdown',
+  systemPrompt: BREAKDOWN_SYSTEM_PROMPT,
+  validate: (input) =>
+    !input.userInput || input.userInput.trim().length < 5
+      ? 'Input too short'
+      : null,
+  createUserPrompt: (input) => createBreakdownPrompt(input.userInput),
+};
 
-  // Remove ```json ... ``` or ``` ... ``` blocks
-  const codeBlockMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-  if (codeBlockMatch) {
-    cleaned = codeBlockMatch[1].trim();
-  }
+const elementToDimension: DimensionTransformation<ElementToDimensionRequest, unknown> = {
+  action: 'element-to-dimension',
+  featureName: 'element-to-dimension',
+  systemPrompt: ELEMENT_TO_DIM_SYSTEM_PROMPT,
+  validate: (input) =>
+    !input.elements || input.elements.length === 0
+      ? 'No elements provided'
+      : null,
+  createUserPrompt: (input) => createElementToDimPrompt(input.elements),
+};
 
-  // Step 2: Try to find JSON object with proper string handling
-  const startIdx = cleaned.indexOf('{');
-  if (startIdx === -1) {
-    console.error('[parseJsonResponse] No JSON found in:', cleaned.substring(0, 500));
-    throw new Error('Could not find JSON object in response');
-  }
+const labelToDimension: DimensionTransformation<LabelToDimensionRequest, unknown> = {
+  action: 'label-to-dimension',
+  featureName: 'label-to-dimension',
+  systemPrompt: LABEL_TO_DIM_SYSTEM_PROMPT,
+  validate: (input) =>
+    !input.acceptedElement || !input.currentDimensions
+      ? 'Missing required fields'
+      : null,
+  createUserPrompt: (input) => createLabelToDimPrompt(input),
+};
 
-  // Find the matching closing brace, properly handling strings
-  let braceCount = 0;
-  let endIdx = -1;
-  let inString = false;
-  let escapeNext = false;
+const feedbackToDimension: DimensionTransformation<FeedbackToDimensionRequest, unknown> = {
+  action: 'feedback-to-dimension',
+  featureName: 'feedback-to-dimension',
+  systemPrompt: FEEDBACK_TO_DIM_SYSTEM_PROMPT,
+  validate: (input) =>
+    !input.feedback || !input.currentDimensions
+      ? 'Missing required fields'
+      : null,
+  createUserPrompt: (input) => createFeedbackToDimPrompt(input),
+};
 
-  for (let i = startIdx; i < cleaned.length; i++) {
-    const char = cleaned[i];
-
-    if (escapeNext) {
-      escapeNext = false;
-      continue;
+const generateWithFeedback: DimensionTransformation<GenerateWithFeedbackRequest, unknown> = {
+  action: 'generate-with-feedback',
+  featureName: 'generate-with-feedback',
+  systemPrompt: GENERATE_WITH_FEEDBACK_SYSTEM_PROMPT,
+  maxTokens: 4000, // Higher limit for 4 full prompts + adjustments
+  validate: (input) =>
+    !input.baseImage?.trim()
+      ? 'Base image description is required'
+      : null,
+  createUserPrompt: (input) => createGenerateWithFeedbackPrompt(input),
+  postProcess: (parsed) => {
+    // Ensure all IDs are present
+    const result = parsed as { prompts?: Array<{ id?: string; elements?: Array<{ id?: string }> }> };
+    if (result.prompts) {
+      result.prompts = result.prompts.map((p, idx) => ({
+        ...p,
+        id: p.id || `prompt-${Date.now()}-${idx}`,
+        elements: (p.elements || []).map((e, eIdx) => ({
+          ...e,
+          id: e.id || `elem-${Date.now()}-${idx}-${eIdx}`,
+        })),
+      }));
     }
+    return result;
+  },
+};
 
-    if (char === '\\' && inString) {
-      escapeNext = true;
-      continue;
-    }
+const refineFeedback: DimensionTransformation<RefineFeedbackRequest, unknown> = {
+  action: 'refine-feedback',
+  featureName: 'refine-feedback',
+  systemPrompt: REFINE_FEEDBACK_SYSTEM_PROMPT,
+  validate: () => null, // No validation error - empty feedback handled specially
+  createUserPrompt: (input) => createRefineFeedbackPrompt(input),
+};
 
-    if (char === '"') {
-      inString = !inString;
-      continue;
-    }
+// ============================================================================
+// SPECIAL CASE HANDLERS (for early-return cases)
+// ============================================================================
 
-    if (!inString) {
-      if (char === '{') braceCount++;
-      if (char === '}') braceCount--;
-      if (braceCount === 0) {
-        endIdx = i;
-        break;
-      }
-    }
-  }
-
-  if (endIdx === -1) {
-    console.error('[parseJsonResponse] Incomplete JSON. Brace count:', braceCount, 'Response preview:', cleaned.substring(0, 1000));
-    throw new Error(`Could not find complete JSON object in response (unclosed braces: ${braceCount})`);
-  }
-
-  const jsonStr = cleaned.substring(startIdx, endIdx + 1);
-
-  try {
-    return JSON.parse(jsonStr);
-  } catch (parseError) {
-    // Log the problematic JSON for debugging
-    console.error('[parseJsonResponse] Parse error:', parseError);
-    console.error('[parseJsonResponse] JSON string:', jsonStr.substring(0, 1000));
-    throw new Error(`Invalid JSON in response: ${parseError instanceof Error ? parseError.message : 'Unknown error'}`);
-  }
-}
-
-async function handleSmartBreakdown(body: SmartBreakdownRequest) {
-  const { userInput } = body;
-  if (!userInput || userInput.trim().length < 5) {
-    return createErrorResponse('Input too short', HTTP_STATUS.BAD_REQUEST);
-  }
-
-  const response = await callClaude(
-    BREAKDOWN_SYSTEM_PROMPT,
-    createBreakdownPrompt(userInput),
-    'smart-breakdown'
-  );
-  return NextResponse.json(parseJsonResponse(response));
-}
-
-async function handleElementToDimension(body: ElementToDimensionRequest) {
-  const { elements } = body;
-  if (!elements || elements.length === 0) {
-    return createErrorResponse('No elements provided', HTTP_STATUS.BAD_REQUEST);
-  }
-
-  const response = await callClaude(
-    ELEMENT_TO_DIM_SYSTEM_PROMPT,
-    createElementToDimPrompt(elements),
-    'element-to-dimension'
-  );
-  return NextResponse.json(parseJsonResponse(response));
-}
-
-async function handleLabelToDimension(body: LabelToDimensionRequest) {
-  if (!body.acceptedElement || !body.currentDimensions) {
-    return createErrorResponse('Missing required fields', HTTP_STATUS.BAD_REQUEST);
-  }
-
-  const response = await callClaude(
-    LABEL_TO_DIM_SYSTEM_PROMPT,
-    createLabelToDimPrompt(body),
-    'label-to-dimension'
-  );
-  return NextResponse.json(parseJsonResponse(response));
-}
-
-async function handleFeedbackToDimension(body: FeedbackToDimensionRequest) {
-  if (!body.feedback || !body.currentDimensions) {
-    return createErrorResponse('Missing required fields', HTTP_STATUS.BAD_REQUEST);
-  }
-
+function handleFeedbackToDimensionSpecialCase(body: FeedbackToDimensionRequest): NextResponse | null {
+  // Early return if no actual feedback
   if (!body.feedback.positive?.trim() && !body.feedback.negative?.trim()) {
     return NextResponse.json({
       success: true,
@@ -173,48 +172,11 @@ async function handleFeedbackToDimension(body: FeedbackToDimensionRequest) {
       reasoning: 'No feedback provided',
     });
   }
-
-  const response = await callClaude(
-    FEEDBACK_TO_DIM_SYSTEM_PROMPT,
-    createFeedbackToDimPrompt(body),
-    'feedback-to-dimension'
-  );
-  return NextResponse.json(parseJsonResponse(response));
+  return null;
 }
 
-async function handleGenerateWithFeedback(body: GenerateWithFeedbackRequest) {
-  if (!body.baseImage?.trim()) {
-    return createErrorResponse('Base image description is required', HTTP_STATUS.BAD_REQUEST);
-  }
-
-  // Use higher token limit for generation (4 prompts + dimension adjustments)
-  const response = await callClaude(
-    GENERATE_WITH_FEEDBACK_SYSTEM_PROMPT,
-    createGenerateWithFeedbackPrompt(body),
-    'generate-with-feedback',
-    4000 // Higher limit for 4 full prompts + adjustments
-  );
-
-  const parsed = parseJsonResponse(response) as {
-    prompts?: Array<{ id?: string; elements?: Array<{ id?: string }> }>;
-  };
-
-  // Ensure all IDs are present
-  if (parsed.prompts) {
-    parsed.prompts = parsed.prompts.map((p, idx) => ({
-      ...p,
-      id: p.id || `prompt-${Date.now()}-${idx}`,
-      elements: (p.elements || []).map((e, eIdx) => ({
-        ...e,
-        id: e.id || `elem-${Date.now()}-${idx}-${eIdx}`,
-      })),
-    }));
-  }
-
-  return NextResponse.json(parsed);
-}
-
-async function handleRefineFeedback(body: RefineFeedbackRequest) {
+function handleRefineFeedbackSpecialCase(body: RefineFeedbackRequest): NextResponse | null {
+  // Early return if no actual feedback
   if (!body.changeFeedback?.trim()) {
     return NextResponse.json({
       success: true,
@@ -224,14 +186,12 @@ async function handleRefineFeedback(body: RefineFeedbackRequest) {
       reasoning: 'No feedback provided',
     });
   }
-
-  const response = await callClaude(
-    REFINE_FEEDBACK_SYSTEM_PROMPT,
-    createRefineFeedbackPrompt(body),
-    'refine-feedback'
-  );
-  return NextResponse.json(parseJsonResponse(response));
+  return null;
 }
+
+// ============================================================================
+// REQUEST HANDLER
+// ============================================================================
 
 export async function POST(request: NextRequest) {
   try {
@@ -241,17 +201,29 @@ export async function POST(request: NextRequest) {
 
     switch (action) {
       case 'breakdown':
-        return handleSmartBreakdown(body);
+        return executeTransformation(smartBreakdown, body);
+
       case 'element-to-dimension':
-        return handleElementToDimension(body);
+        return executeTransformation(elementToDimension, body);
+
       case 'label-to-dimension':
-        return handleLabelToDimension(body);
-      case 'feedback-to-dimension':
-        return handleFeedbackToDimension(body);
+        return executeTransformation(labelToDimension, body);
+
+      case 'feedback-to-dimension': {
+        const specialCase = handleFeedbackToDimensionSpecialCase(body);
+        if (specialCase) return specialCase;
+        return executeTransformation(feedbackToDimension, body);
+      }
+
       case 'generate-with-feedback':
-        return handleGenerateWithFeedback(body);
-      case 'refine-feedback':
-        return handleRefineFeedback(body);
+        return executeTransformation(generateWithFeedback, body);
+
+      case 'refine-feedback': {
+        const specialCase = handleRefineFeedbackSpecialCase(body);
+        if (specialCase) return specialCase;
+        return executeTransformation(refineFeedback, body);
+      }
+
       default:
         return createErrorResponse(`Unknown action: ${action}`, HTTP_STATUS.BAD_REQUEST);
     }

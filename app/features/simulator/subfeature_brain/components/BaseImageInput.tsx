@@ -9,15 +9,11 @@
 
 'use client';
 
-import React, { useRef, useState, useCallback, useEffect } from 'react';
+import React, { useRef, useState, useCallback, useEffect, useMemo } from 'react';
 import Image from 'next/image';
 import { Upload, X, ImageIcon, Loader2, Sparkles, AlertCircle, Undo2 } from 'lucide-react';
-import { stateClasses, semanticColors } from '../../lib/semanticColors';
-
-// File validation constants
-const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
-const SUPPORTED_FORMATS = ['image/jpeg', 'image/png', 'image/webp'];
-const SUPPORTED_FORMATS_DISPLAY = 'JPEG, PNG, or WebP';
+import { stateClasses } from '../../lib/semanticColors';
+import { createImageValidator, IMAGE_VALIDATION } from '@/app/lib/validation';
 
 interface BaseImageInputProps {
   value: string;
@@ -50,20 +46,17 @@ export function BaseImageInput({
   const [isDragging, setIsDragging] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
 
+  // Create image validator pipeline (memoized)
+  const imageValidator = useMemo(() => createImageValidator(), []);
+
   const processFile = useCallback((file: File) => {
     // Clear any previous validation error
     setValidationError(null);
 
-    // Validate file format
-    if (!SUPPORTED_FORMATS.includes(file.type)) {
-      setValidationError(`Unsupported format. Please use ${SUPPORTED_FORMATS_DISPLAY}.`);
-      return;
-    }
-
-    // Validate file size
-    if (file.size > MAX_FILE_SIZE) {
-      const sizeMB = (file.size / (1024 * 1024)).toFixed(1);
-      setValidationError(`File too large (${sizeMB}MB). Maximum size is 5MB.`);
+    // Run validation pipeline
+    const result = imageValidator.validate(file);
+    if (!result.valid) {
+      setValidationError(result.error || 'Invalid file');
       return;
     }
 
@@ -76,7 +69,7 @@ export function BaseImageInput({
       }
     };
     reader.readAsDataURL(file);
-  }, [onImageChange, onImageParse]);
+  }, [onImageChange, onImageParse, imageValidator]);
 
   // Handle paste from clipboard (Ctrl+V)
   useEffect(() => {
@@ -295,7 +288,7 @@ export function BaseImageInput({
           <input
             ref={fileInputRef}
             type="file"
-            accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
+            accept={IMAGE_VALIDATION.ACCEPT}
             onChange={handleFileSelect}
             className="hidden"
           />

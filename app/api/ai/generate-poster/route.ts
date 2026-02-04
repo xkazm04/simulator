@@ -16,7 +16,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getLeonardoProvider, isLeonardoAvailable, AIError } from '@/app/lib/ai';
+import { getLeonardoProvider, isLeonardoAvailable, AIError, checkGenerationStatus, deleteGenerations } from '@/app/lib/ai';
 import {
   buildPosterPrompts,
   POSTER_SYSTEM_PROMPT,
@@ -237,44 +237,11 @@ export async function POST(request: NextRequest) {
 
 /**
  * GET - Check generation status
+ * Uses shared utility for consistent status checking across all generation types.
  */
 export async function GET(request: NextRequest) {
-  try {
-    const { searchParams } = new URL(request.url);
-    const generationId = searchParams.get('generationId');
-
-    if (!generationId) {
-      return NextResponse.json(
-        { success: false, error: 'generationId parameter is required' },
-        { status: 400 }
-      );
-    }
-
-    if (!isLeonardoAvailable()) {
-      return NextResponse.json(
-        { success: false, error: 'Leonardo API key not configured' },
-        { status: 503 }
-      );
-    }
-
-    const leonardo = getLeonardoProvider();
-    const result = await leonardo.checkGeneration(generationId);
-
-    return NextResponse.json({
-      success: true,
-      generationId,
-      ...result,
-    });
-  } catch (error) {
-    console.error('Check generation error:', error);
-    return NextResponse.json(
-      {
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to check generation status'
-      },
-      { status: 500 }
-    );
-  }
+  const generationId = new URL(request.url).searchParams.get('generationId');
+  return checkGenerationStatus(generationId, 'image');
 }
 
 /**
@@ -284,83 +251,17 @@ export async function GET(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   try {
     const body = await request.json();
-    const { generationIds } = body;
+    const result = await deleteGenerations(body.generationIds);
 
-    if (!generationIds || !Array.isArray(generationIds)) {
-      return NextResponse.json(
-        { success: false, error: 'generationIds array is required', deleted: [], failed: [] },
-        { status: 400 }
-      );
+    // Return appropriate HTTP status based on result
+    if (result.error === 'generationIds array is required') {
+      return NextResponse.json(result, { status: 400 });
+    }
+    if (result.error === 'Leonardo API is not configured') {
+      return NextResponse.json(result, { status: 503 });
     }
 
-    const validIds = generationIds.filter(
-      (id): id is string => typeof id === 'string' && id.trim().length > 0
-    );
-
-    if (validIds.length === 0) {
-      return NextResponse.json({
-        success: true,
-        deleted: [],
-        failed: [],
-        message: 'No valid generation IDs provided',
-      });
-    }
-
-    if (!isLeonardoAvailable()) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Leonardo API is not configured',
-          deleted: [],
-          failed: validIds.map(id => ({ id, error: 'API not configured' })),
-        },
-        { status: 503 }
-      );
-    }
-
-    const leonardo = getLeonardoProvider();
-    const deleted: string[] = [];
-    const failed: Array<{ id: string; error: string }> = [];
-
-    const deletePromises = validIds.map(async (generationId) => {
-      try {
-        await leonardo.deleteGeneration(generationId);
-        return { id: generationId, success: true };
-      } catch (error) {
-        const errorMsg = error instanceof AIError
-          ? error.message
-          : error instanceof Error
-            ? error.message
-            : 'Unknown error';
-        if (errorMsg.includes('404') || errorMsg.includes('not found')) {
-          return { id: generationId, success: true };
-        }
-        return { id: generationId, success: false, error: errorMsg };
-      }
-    });
-
-    const results = await Promise.allSettled(deletePromises);
-
-    results.forEach((result) => {
-      if (result.status === 'fulfilled') {
-        const { id, success, error } = result.value;
-        if (success) {
-          deleted.push(id);
-        } else {
-          failed.push({ id, error: error || 'Unknown error' });
-        }
-      }
-    });
-
-    if (failed.length > 0) {
-      console.error('Batch delete partial failures:', { failed });
-    }
-
-    return NextResponse.json({
-      success: failed.length === 0,
-      deleted,
-      failed,
-    });
+    return NextResponse.json(result);
   } catch (error) {
     console.error('Delete generations error:', error);
     return NextResponse.json(

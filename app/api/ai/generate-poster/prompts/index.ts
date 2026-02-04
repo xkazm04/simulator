@@ -48,32 +48,35 @@ function truncate(text: string, maxLength: number): string {
 }
 
 /**
- * VARIANT 1: HEROIC PORTRAIT
- * Inspired by: Mass Effect, God of War, The Witcher 3
+ * VARIANT 1: FREESTYLE
+ * Inspired by: Artistic freedom and LLM creativity
+ * Gives the AI maximum creative latitude based on game description
  */
-export const HEROIC_PORTRAIT: PosterVariant = {
-  id: 'heroic-portrait',
-  name: 'Heroic Portrait',
-  style: 'Character-focused dramatic portrait',
+export const FREESTYLE: PosterVariant = {
+  id: 'freestyle',
+  name: 'Freestyle',
+  style: 'AI-driven creative interpretation',
   buildPrompt: (context) => {
     const d = extractDimensions(context.dimensions);
     const title = context.projectName.toUpperCase();
-    const chars = truncate(d.characters, 60);
-    const env = truncate(d.environment, 50);
 
-    return `Heroic character portrait, ${d.artStyle}, vertical 2:3 poster.
+    return `Create a striking video game poster, vertical 2:3 format.
 
-Central figure: ${chars} in powerful three-quarter pose, occupying 70% of frame. Detailed face, armor textures, signature equipment. Eyes convey determination.
+Game essence: ${context.basePrompt}
 
-Background: ${env} visible through atmospheric haze, framing the character.
+World: ${d.environment}
+Characters: ${d.characters}
+Art direction: ${d.artStyle}
+Tone: ${d.mood}
 
-Lighting: Strong rim light creating heroic halo, dramatic shadows, ${d.mood} atmosphere.
+Creative freedom: Interpret this game concept in your most compelling visual style. Choose any composition, perspective, or artistic approach that best captures the soul of this game. You may focus on character, environment, abstract symbolism, action, emotion, or any combination. Surprise with an unexpected angle or concept that still feels true to the game's identity.
 
-Composition: Rule of thirds, eyes at upper intersection. Lower third reserved for title.
+Only requirements:
+- Title "${title}" integrated naturally into the composition
+- Professional game marketing quality
+- Evocative and memorable imagery
 
-Title: "${title}" in bold weathered metallic typography at bottom center, dimensional depth with scratches matching game aesthetic.
-
-Quality: AAA game cover, photorealistic, 8K, professional key art.`;
+Quality: AAA game key art, portfolio-worthy, 8K detail.`;
   },
 };
 
@@ -142,38 +145,36 @@ Quality: Gallery-worthy graphic design, iconic brand identity, merchandise-ready
 };
 
 /**
- * VARIANT 4: CINEMATIC MOMENT
- * Inspired by: The Last of Us, Red Dead Redemption 2, Ghost of Tsushima
+ * VARIANT 4: CINEMATIC ACTION
+ * Inspired by: Uncharted, Devil May Cry, Bayonetta, Metal Gear Rising
  */
-export const CINEMATIC_MOMENT: PosterVariant = {
-  id: 'cinematic-moment',
-  name: 'Cinematic Moment',
-  style: 'Atmospheric story moment',
+export const CINEMATIC_ACTION: PosterVariant = {
+  id: 'cinematic-action',
+  name: 'Cinematic Action',
+  style: 'Dynamic action spectacle',
   buildPrompt: (context) => {
     const d = extractDimensions(context.dimensions);
     const title = context.projectName.toUpperCase();
     const chars = truncate(d.characters, 50);
     const env = truncate(d.environment, 50);
 
-    return `Cinematic story moment, ${d.artStyle} with film aesthetics, vertical 2:3 poster.
+    return `Explosive cinematic action, ${d.artStyle} with blockbuster energy, vertical 2:3 poster.
 
-Scene: Pivotal quiet moment featuring ${chars} within ${env}. Contemplative beat suggesting deeper narrative, not action.
+Scene: ${chars} in peak action within ${env}. Capture the most intense, gravity-defying, or impossible moment. Mid-leap, mid-strike, mid-explosion - frozen at maximum drama.
 
-Storytelling: Environment rich with narrative detail - weathered belongings, signs of story.
+Motion: Dynamic pose with extreme foreshortening or dramatic angle. Cape/hair/debris in motion blur. Speed lines or impact effects where appropriate.
 
-Cinematography: Film frame composition, shallow depth of field, intimate documentary feel.
+Chaos: Environment reacting - crumbling structures, flying sparks, shattered glass, energy discharges, or elemental effects swirling around the action.
 
-Lighting: Golden hour warmth or overcast diffusion, naturalistic motivation, ${d.mood} tone. Subtle lens flares acceptable.
+Cinematography: Dutch angle or extreme perspective. Wide-angle distortion for impact. ${d.mood} atmosphere amplified to eleven.
 
-Color grading: Cinematic palette - warm sepia, cold blue tension, or desaturated grit. Cohesive film appearance.
+Lighting: Multiple dramatic light sources - explosions, magic, muzzle flashes, environmental destruction casting dynamic shadows and rim lights.
 
-Emotion: Body language speaks volumes, glimpse of private moment.
+Color: High contrast, saturated accent colors against darker backgrounds. Visual hierarchy through color temperature.
 
-Atmosphere: Dust motes in light beams, particles appropriate to environment.
+Title: "${title}" bold and integrated with the action, possibly angled or impacted by the scene's energy.
 
-Title: "${title}" in elegant understated typography at bottom, prestigious film credits style, subtle metallic effect.
-
-Quality: Movie screenshot quality, emotionally evocative, GOTY edition marketing.`;
+Quality: Summer blockbuster keyart, maximum visual impact, collector's edition worthy.`;
   },
 };
 
@@ -181,10 +182,10 @@ Quality: Movie screenshot quality, emotionally evocative, GOTY edition marketing
  * All poster variants for iteration
  */
 export const POSTER_VARIANTS: PosterVariant[] = [
-  HEROIC_PORTRAIT,
+  FREESTYLE,
   EPIC_PANORAMA,
   ICONIC_SYMBOL,
-  CINEMATIC_MOMENT,
+  CINEMATIC_ACTION,
 ];
 
 /**

@@ -6,6 +6,8 @@
  * - Feedback (positive/negative)
  * - Output mode (gameplay/concept/poster)
  * - Image parsing state
+ *
+ * Uses the unified UndoStack pattern for undo operations.
  */
 
 'use client';
@@ -21,9 +23,11 @@ import {
 } from '../../types';
 import { describeImage, ImageDescriptionResult } from '../lib/simulatorAI';
 import { DEFAULT_DIMENSIONS } from '../../subfeature_dimensions/lib/defaultDimensions';
+import { useUndoStack, UNDO_TAGS } from '../../hooks/useUndoStack';
 
 /**
  * Snapshot of state before image parse - used for undo
+ * Now uses the unified UndoStack pattern
  */
 export interface PreParseSnapshot {
   baseImage: string;
@@ -89,9 +93,13 @@ export function useBrain(): BrainState & BrainActions {
   const [isParsingImage, setIsParsingImage] = useState(false);
   const [imageParseError, setImageParseError] = useState<string | null>(null);
   const [parsedImageDescription, setParsedImageDescription] = useState<ImageDescriptionResult['description'] | null>(null);
-  const [preParseSnapshot, setPreParseSnapshot] = useState<PreParseSnapshot | null>(null);
 
-  const canUndoParse = preParseSnapshot !== null;
+  // Unified undo stack for brain state operations
+  const undoStack = useUndoStack<PreParseSnapshot>({ maxSize: 5 });
+
+  // Derive preParseSnapshot from undo stack for backwards compatibility
+  const preParseSnapshot = undoStack.peek()?.state ?? null;
+  const canUndoParse = undoStack.canUndo;
 
   const setBaseImage = useCallback((value: string) => {
     setBaseImageState(value);
@@ -129,13 +137,17 @@ export function useBrain(): BrainState & BrainActions {
   ) => {
     if (isParsingImage) return;
 
-    // Snapshot current state before parsing (for undo)
-    setPreParseSnapshot({
-      baseImage: baseImage,
-      visionSentence: visionSentence,
-      outputMode: outputMode,
-      dimensions: [...currentDimensions],
-    });
+    // Push snapshot to undo stack before parsing (unified pattern)
+    undoStack.pushSnapshot(
+      {
+        baseImage: baseImage,
+        visionSentence: visionSentence,
+        outputMode: outputMode,
+        dimensions: [...currentDimensions],
+      },
+      UNDO_TAGS.IMAGE_PARSE,
+      'Pre-image parse state'
+    );
 
     setIsParsingImage(true);
     setParsedImageDescription(null);
@@ -181,39 +193,39 @@ export function useBrain(): BrainState & BrainActions {
           });
         }
       } else {
-        // API returned error - clear snapshot since parse failed
-        setPreParseSnapshot(null);
+        // API returned error - pop snapshot since parse failed
+        undoStack.undo();
         setImageParseError(result.error || 'Failed to analyze image');
       }
     } catch (err) {
       console.error('Failed to parse image:', err);
-      // Clear snapshot since parse failed
-      setPreParseSnapshot(null);
+      // Pop snapshot since parse failed
+      undoStack.undo();
       setImageParseError(err instanceof Error ? err.message : 'Failed to analyze image');
     } finally {
       setIsParsingImage(false);
     }
-  }, [isParsingImage, baseImage, visionSentence, outputMode]);
+  }, [isParsingImage, baseImage, visionSentence, outputMode, undoStack]);
 
-  // Undo the last image parse
+  // Undo the last image parse using unified undo stack
   const undoImageParse = useCallback((onDimensionsRestore: (dimensions: Dimension[]) => void) => {
-    if (!preParseSnapshot) return;
+    const snapshot = undoStack.undo();
+    if (!snapshot) return;
 
-    // Restore previous state
-    setBaseImageState(preParseSnapshot.baseImage);
-    setVisionSentenceState(preParseSnapshot.visionSentence);
-    setOutputModeState(preParseSnapshot.outputMode);
-    onDimensionsRestore(preParseSnapshot.dimensions);
+    // Restore previous state from snapshot
+    setBaseImageState(snapshot.state.baseImage);
+    setVisionSentenceState(snapshot.state.visionSentence);
+    setOutputModeState(snapshot.state.outputMode);
+    onDimensionsRestore(snapshot.state.dimensions);
 
-    // Clear the snapshot
-    setPreParseSnapshot(null);
+    // Clear parsed description
     setParsedImageDescription(null);
-  }, [preParseSnapshot]);
+  }, [undoStack]);
 
-  // Clear the undo snapshot manually
+  // Clear the undo stack manually
   const clearUndoSnapshot = useCallback(() => {
-    setPreParseSnapshot(null);
-  }, []);
+    undoStack.clear();
+  }, [undoStack]);
 
   // Smart breakdown apply - sets vision sentence, base image and triggers dimension update
   const handleSmartBreakdownApply = useCallback((
@@ -268,8 +280,8 @@ export function useBrain(): BrainState & BrainActions {
     setFeedbackState({ positive: '', negative: '' });
     setParsedImageDescription(null);
     setImageParseError(null);
-    setPreParseSnapshot(null);
-  }, []);
+    undoStack.clear();
+  }, [undoStack]);
 
   return {
     // State

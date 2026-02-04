@@ -12,7 +12,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Layers, Loader2, Check, X, Sparkles } from 'lucide-react';
 import { PromptElement, Dimension, DimensionType, createDimensionWithDefaults } from '../types';
-import { elementToDimension, ElementToDimensionResult } from '../lib/simulatorAI';
+import { elementToDimension, ElementToDimensionResult } from '../subfeature_brain/lib/simulatorAI';
 import { getDimensionPreset } from '../lib/defaultDimensions';
 import { v4 as uuidv4 } from 'uuid';
 

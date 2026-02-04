@@ -20,8 +20,8 @@
 import React, { useCallback, memo } from 'react';
 import Image from 'next/image';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Copy, Check, Lock, Eye, Image as ImageIcon, Sparkles, Loader2, CheckCircle, Gamepad2, MousePointer2, Trash2 } from 'lucide-react';
-import { GeneratedPrompt, PromptElement, GeneratedImage, InteractiveMode, InteractivePrototype } from '../../types';
+import { Copy, Check, Lock, Eye, Image as ImageIcon, Sparkles, Loader2, CheckCircle, Trash2 } from 'lucide-react';
+import { GeneratedPrompt, PromptElement, GeneratedImage } from '../../types';
 import { semanticColors } from '../../lib/semanticColors';
 import { scaleIn, useReducedMotion, getReducedMotionStaggeredTransition } from '../../lib/motion';
 import { useCopyFeedback } from '../../hooks/useCopyFeedback';
@@ -112,24 +112,6 @@ interface PromptCardProps {
   onDeleteImage?: (promptId: string) => void;
   isSavedToPanel?: boolean;
   allSlotsFull?: boolean;  // All panel slots are occupied
-  // Interactive prototype props
-  interactiveMode?: InteractiveMode;
-  interactivePrototype?: InteractivePrototype;
-  onInteractiveClick?: (promptId: string) => void;
-}
-
-/**
- * Get icon and colors for interactive mode
- */
-function getInteractiveModeDisplay(mode: InteractiveMode): { icon: React.ReactNode; color: string; bgColor: string } {
-  switch (mode) {
-    case 'webgl':
-      return { icon: <Gamepad2 size={10} />, color: 'text-cyan-400', bgColor: 'bg-cyan-500/20' };
-    case 'clickable':
-      return { icon: <MousePointer2 size={10} />, color: 'text-purple-400', bgColor: 'bg-purple-500/20' };
-    default:
-      return { icon: null, color: '', bgColor: '' };
-  }
 }
 
 /**
@@ -147,9 +129,6 @@ function PromptCardComponent({
   onDeleteImage,
   isSavedToPanel = false,
   allSlotsFull = false,
-  interactiveMode = 'static',
-  interactivePrototype,
-  onInteractiveClick,
 }: PromptCardProps) {
   // Copy feedback hook with 2-second auto-reset
   const { isCopied: justCopied, triggerCopy } = useCopyFeedback({
@@ -417,30 +396,6 @@ function PromptCardComponent({
         )}
       </AnimatePresence>
 
-      {/* Interactive mode indicator */}
-      {interactiveMode !== 'static' && isComplete && (
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onInteractiveClick?.(prompt.id);
-          }}
-          className={`absolute bottom-8 right-sm flex items-center gap-1 px-1.5 py-0.5 radius-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/50 focus-visible:ring-offset-1 focus-visible:ring-offset-slate-900
-                     ${getInteractiveModeDisplay(interactiveMode).bgColor} border border-white/10
-                     opacity-0 group-hover:opacity-100 transition-opacity hover:brightness-125`}
-          data-testid={`prompt-interactive-${prompt.id}`}
-          title={`Open ${interactiveMode} preview`}
-        >
-          <span className={getInteractiveModeDisplay(interactiveMode).color}>
-            {getInteractiveModeDisplay(interactiveMode).icon}
-          </span>
-          <span className={`font-mono type-label uppercase ${getInteractiveModeDisplay(interactiveMode).color}`}>
-            {interactiveMode === 'webgl' ? 'Play' : interactiveMode === 'clickable' ? 'Try' : 'Watch'}
-          </span>
-          {interactivePrototype?.status === 'generating' && (
-            <Loader2 size={8} className="animate-spin" />
-          )}
-        </button>
-      )}
     </motion.div>
   );
 }
@@ -469,8 +424,6 @@ function arePropsEqual(prevProps: PromptCardProps, nextProps: PromptCardProps): 
   // Check other state flags
   if (prevProps.isSavedToPanel !== nextProps.isSavedToPanel) return false;
   if (prevProps.allSlotsFull !== nextProps.allSlotsFull) return false;
-  if (prevProps.interactiveMode !== nextProps.interactiveMode) return false;
-  if (prevProps.interactivePrototype?.status !== nextProps.interactivePrototype?.status) return false;
   if (prevProps.index !== nextProps.index) return false;
 
   // Callbacks are assumed stable (should be memoized by parent)

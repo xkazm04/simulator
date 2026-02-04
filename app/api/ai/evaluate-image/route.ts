@@ -10,24 +10,19 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getGeminiProvider } from '@/app/lib/ai/providers/gemini';
+import { getGeminiProvider, parseJsonFromGeminiResponse } from '@/app/lib/ai';
+import { fetchImageAsDataUrl } from '@/app/lib/ai/image-utils';
 import { ImageEvaluation } from '@/app/features/simulator/types';
 import { buildEvaluationPrompt, EvaluationRequest, EvaluationResponse, EvaluationCriteria } from '@/app/features/simulator/subfeature_brain/lib/imageEvaluator';
 
-/**
- * Fetch image from URL and convert to base64 data URL
- */
-async function fetchImageAsDataUrl(imageUrl: string): Promise<string> {
-  const response = await fetch(imageUrl);
-  if (!response.ok) {
-    throw new Error(`Failed to fetch image: ${response.status}`);
-  }
-
-  const contentType = response.headers.get('content-type') || 'image/png';
-  const arrayBuffer = await response.arrayBuffer();
-  const base64 = Buffer.from(arrayBuffer).toString('base64');
-
-  return `data:${contentType};base64,${base64}`;
+/** Expected shape of Gemini's evaluation response */
+interface GeminiEvaluationResponse {
+  score?: number;
+  modeCompliance?: boolean;
+  technicalScore?: number;
+  feedback?: string;
+  improvements?: string[];
+  strengths?: string[];
 }
 
 /**
@@ -38,23 +33,8 @@ function parseEvaluationResponse(
   promptId: string,
   criteria: EvaluationCriteria
 ): ImageEvaluation {
-  // Try to extract JSON from the response
-  // Gemini sometimes wraps in markdown code blocks despite instructions
-  let jsonStr = text.trim();
-
-  // Remove markdown code blocks if present
-  if (jsonStr.startsWith('```json')) {
-    jsonStr = jsonStr.slice(7);
-  } else if (jsonStr.startsWith('```')) {
-    jsonStr = jsonStr.slice(3);
-  }
-  if (jsonStr.endsWith('```')) {
-    jsonStr = jsonStr.slice(0, -3);
-  }
-  jsonStr = jsonStr.trim();
-
   try {
-    const parsed = JSON.parse(jsonStr);
+    const parsed = parseJsonFromGeminiResponse<GeminiEvaluationResponse>(text);
 
     // Validate and map to ImageEvaluation
     const score = typeof parsed.score === 'number' ? parsed.score : 50;

@@ -7,11 +7,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import {
-  getLeonardoProvider,
-  isLeonardoAvailable,
-  AIError,
-} from '@/app/lib/ai';
+import { getLeonardoProvider, isLeonardoAvailable, AIError, checkGenerationStatus } from '@/app/lib/ai';
 
 interface GenerateVideoRequest {
   sourceImageUrl: string;  // URL of the source image
@@ -116,45 +112,9 @@ export async function POST(request: NextRequest) {
 
 /**
  * GET - Check video generation status
+ * Uses shared utility for consistent status checking across all generation types.
  */
 export async function GET(request: NextRequest) {
-  try {
-    const { searchParams } = new URL(request.url);
-    const generationId = searchParams.get('generationId');
-
-    if (!generationId) {
-      return NextResponse.json(
-        { success: false, error: 'generationId parameter is required' },
-        { status: 400 }
-      );
-    }
-
-    if (!isLeonardoAvailable()) {
-      return NextResponse.json(
-        { success: false, error: 'Leonardo API key not configured' },
-        { status: 503 }
-      );
-    }
-
-    const leonardo = getLeonardoProvider();
-    const result = await leonardo.checkVideoGeneration(generationId);
-
-    return NextResponse.json({
-      success: true,
-      generationId,
-      status: result.status,
-      videoUrl: result.videoUrl,
-      error: result.error,
-    });
-  } catch (error) {
-    console.error('Check video generation error:', error);
-
-    return NextResponse.json(
-      {
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to check video status'
-      },
-      { status: 500 }
-    );
-  }
+  const generationId = new URL(request.url).searchParams.get('generationId');
+  return checkGenerationStatus(generationId, 'video');
 }

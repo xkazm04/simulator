@@ -9,16 +9,23 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// Mock the Leonardo service
-vi.mock('@/app/lib/services/leonardo', () => ({
-  LeonardoService: vi.fn().mockImplementation(() => ({
+// Mock the Leonardo provider
+vi.mock('@/app/lib/ai', () => ({
+  getLeonardoProvider: vi.fn().mockReturnValue({
     startGeneration: vi.fn().mockResolvedValue({ generationId: 'test-gen-id' }),
-    checkGenerationStatus: vi.fn().mockResolvedValue({
+    checkGeneration: vi.fn().mockResolvedValue({
       status: 'COMPLETE',
       images: [{ url: 'https://example.com/image.png' }],
     }),
-    deleteGeneration: vi.fn().mockResolvedValue(true),
-  })),
+  }),
+  isLeonardoAvailable: vi.fn().mockReturnValue(true),
+  AIError: class AIError extends Error {
+    code: string;
+    constructor(message: string, code: string) {
+      super(message);
+      this.code = code;
+    }
+  },
 }));
 
 describe('/api/ai/generate-images', () => {

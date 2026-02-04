@@ -42,6 +42,14 @@ export { AICache, getAICache, withCache } from './cache';
 export { RateLimiter, getRateLimiter } from './rate-limiter';
 export { withRetry, shouldRetry, calculateDelay, createRetryWrapper } from './retry';
 export { CostTracker, getCostTracker } from './cost-tracker';
+export { parseAIJsonResponse, parseJsonFromGeminiResponse } from './parse-json';
+export {
+  checkGenerationStatus,
+  deleteGenerations,
+  type GenerationType,
+  type GenerationStatusResult,
+  type DeleteGenerationsResult,
+} from './leonardo-utils';
 export {
   healthCheck,
   getProviderHealth,

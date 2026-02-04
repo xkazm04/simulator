@@ -1,3 +1,185 @@
+// ============================================================================
+// SIMULATOR STATE MACHINE
+// ============================================================================
+//
+// The simulator follows a state machine pattern where AI operations are valid
+// only in certain states. This ensures consistent workflow and prevents
+// calling actions with inconsistent state.
+//
+// STATE DIAGRAM:
+//
+//   ┌─────────────┐
+//   │    EMPTY    │ ← Initial state, no project data
+//   └──────┬──────┘
+//          │ SmartBreakdown() OR DescribeImage()
+//          ▼
+//   ┌─────────────────┐
+//   │ HAS_DIMENSIONS  │ ← Has base image + dimensions, ready to refine or generate
+//   └────────┬────────┘
+//          ╱ │ ╲
+//         ╱  │  ╲ ← ElementToDimension(), LabelToDimension(), FeedbackToDimension()
+//        ╲   │  ╱   (all loop back to HAS_DIMENSIONS)
+//         ╲  │ ╱
+//          ╲ │╱
+//           ▼│ GenerateWithFeedback()
+//   ┌─────────────────┐
+//   │   HAS_PROMPTS   │ ← Has generated prompts, ready to iterate or refine
+//   └────────┬────────┘
+//            │ ╲
+//            │  ╲ ← RefineFeedback() (loops back to HAS_PROMPTS)
+//            │  ╱
+//            │ ╱
+//            ▼
+//   (Can return to HAS_DIMENSIONS by clearing prompts and editing dimensions)
+//
+// VALID TRANSITIONS:
+// - EMPTY → HAS_DIMENSIONS: via SmartBreakdown or DescribeImage
+// - HAS_DIMENSIONS → HAS_DIMENSIONS: via dimension refinement operations
+// - HAS_DIMENSIONS → HAS_PROMPTS: via GenerateWithFeedback
+// - HAS_PROMPTS → HAS_PROMPTS: via RefineFeedback iteration
+// - HAS_PROMPTS → HAS_DIMENSIONS: via clearing prompts (implicit)
+//
+// ============================================================================
+
+/**
+ * SimulatorState - The current state of the simulator workflow
+ */
+export type SimulatorState = 'empty' | 'has_dimensions' | 'has_prompts';
+
+/**
+ * SimulatorAction - All possible AI-driven actions in the simulator
+ */
+export type SimulatorAction =
+  | 'smart_breakdown'        // Parse vision sentence → dimensions
+  | 'describe_image'         // Analyze image → base description + dimensions
+  | 'element_to_dimension'   // Convert locked elements → new dimensions
+  | 'label_to_dimension'     // Refine dimensions based on accepted element
+  | 'feedback_to_dimension'  // Apply preserve/change feedback → dimension updates
+  | 'generate_with_feedback' // Generate prompts from dimensions + feedback
+  | 'refine_feedback';       // Iterate on prompts with change feedback
+
+/**
+ * StateTransition - Defines valid state transitions for each action
+ */
+export interface StateTransition {
+  action: SimulatorAction;
+  fromStates: SimulatorState[];
+  toState: SimulatorState;
+  description: string;
+}
+
+/**
+ * SIMULATOR_TRANSITIONS - The complete state machine definition
+ * Documents all valid transitions and their effects
+ */
+export const SIMULATOR_TRANSITIONS: StateTransition[] = [
+  {
+    action: 'smart_breakdown',
+    fromStates: ['empty', 'has_dimensions'], // Can re-parse from any non-prompt state
+    toState: 'has_dimensions',
+    description: 'Parse a vision sentence into structured dimensions',
+  },
+  {
+    action: 'describe_image',
+    fromStates: ['empty', 'has_dimensions'],
+    toState: 'has_dimensions',
+    description: 'Analyze an uploaded image to extract base description and suggest dimensions',
+  },
+  {
+    action: 'element_to_dimension',
+    fromStates: ['has_dimensions', 'has_prompts'],
+    toState: 'has_dimensions',
+    description: 'Convert locked prompt elements into reusable dimensions',
+  },
+  {
+    action: 'label_to_dimension',
+    fromStates: ['has_dimensions', 'has_prompts'],
+    toState: 'has_dimensions',
+    description: 'Gently refine dimensions based on an accepted element label',
+  },
+  {
+    action: 'feedback_to_dimension',
+    fromStates: ['has_dimensions'],
+    toState: 'has_dimensions',
+    description: 'Apply preserve/change feedback to update dimensions',
+  },
+  {
+    action: 'generate_with_feedback',
+    fromStates: ['has_dimensions'],
+    toState: 'has_prompts',
+    description: 'Generate prompts from current dimensions and feedback',
+  },
+  {
+    action: 'refine_feedback',
+    fromStates: ['has_prompts'],
+    toState: 'has_prompts',
+    description: 'Iterate on generated prompts with refinement feedback',
+  },
+];
+
+/**
+ * Check if an action is valid from the current state
+ */
+export function isValidTransition(currentState: SimulatorState, action: SimulatorAction): boolean {
+  const transition = SIMULATOR_TRANSITIONS.find((t) => t.action === action);
+  return transition ? transition.fromStates.includes(currentState) : false;
+}
+
+/**
+ * Get the resulting state after an action (if valid)
+ */
+export function getNextState(currentState: SimulatorState, action: SimulatorAction): SimulatorState | null {
+  if (!isValidTransition(currentState, action)) {
+    return null;
+  }
+  const transition = SIMULATOR_TRANSITIONS.find((t) => t.action === action);
+  return transition ? transition.toState : null;
+}
+
+/**
+ * Get all valid actions from the current state
+ */
+export function getValidActions(currentState: SimulatorState): SimulatorAction[] {
+  return SIMULATOR_TRANSITIONS
+    .filter((t) => t.fromStates.includes(currentState))
+    .map((t) => t.action);
+}
+
+/**
+ * Determine the current state based on simulator data
+ */
+export function deriveSimulatorState(
+  hasDimensions: boolean,
+  hasPrompts: boolean
+): SimulatorState {
+  if (hasPrompts) return 'has_prompts';
+  if (hasDimensions) return 'has_dimensions';
+  return 'empty';
+}
+
+// ============================================================================
+// SMART BREAKDOWN TYPES
+// ============================================================================
+
+/**
+ * SmartBreakdownResult - AI response from parsing a vision sentence
+ * Contains the structured breakdown of user's creative intent
+ */
+export interface SmartBreakdownResult {
+  success: boolean;
+  baseImage: {
+    description: string;
+    format: string;
+    keyElements: string[];
+  };
+  dimensions: Array<{
+    type: DimensionType;
+    reference: string;
+    confidence: number;
+  }>;
+  suggestedOutputMode: OutputMode;
+  reasoning: string;
+}
 
 /**
  * SmartBreakdownPersisted - Subset of SmartBreakdownResult for database storage
@@ -297,7 +479,7 @@ export const SCENE_TYPES = [
   'Key Art Poster',
 ];
 
-export type OutputMode = 'gameplay' | 'sketch' | 'trailer' | 'poster';
+export type OutputMode = 'gameplay' | 'sketch' | 'trailer' | 'poster' | 'realistic';
 
 export const OUTPUT_MODES: Record<OutputMode, { label: string; description: string }> = {
   gameplay: {
@@ -315,6 +497,10 @@ export const OUTPUT_MODES: Record<OutputMode, { label: string; description: stri
   poster: {
     label: 'Poster',
     description: 'Key art / game cover poster composition',
+  },
+  realistic: {
+    label: 'Realistic',
+    description: 'Next-gen photorealistic game graphics (UE5 quality)',
   },
 };
 
@@ -363,149 +549,6 @@ export interface ProjectPoster {
   createdAt: string;
 }
 
-// ============================================
-// Interactive Prototype Types
-// ============================================
-
-/**
- * InteractiveMode - The type of interactive experience to generate
- * - webgl: Playable WebGL demo for gameplay scenes
- * - clickable: Clickable Figma-like prototype for UI concepts
- * - static: Traditional static image (default)
- */
-export type InteractiveMode = 'static' | 'webgl' | 'clickable';
-
-export const INTERACTIVE_MODES: Record<InteractiveMode, { label: string; description: string; icon: string }> = {
-  static: {
-    label: 'Static Image',
-    description: 'Traditional static image output',
-    icon: 'Image',
-  },
-  webgl: {
-    label: 'Game Prompt',
-    description: 'Generate AI Studio prompt for playable game',
-    icon: 'Gamepad2',
-  },
-  clickable: {
-    label: 'Image Editor',
-    description: 'Draw regions for inpainting/editing',
-    icon: 'MousePointer2',
-  },
-};
-
-/**
- * InteractiveRegion - A clickable/interactive region in a prototype
- */
-export interface InteractiveRegion {
-  id: string;
-  /** Normalized coordinates (0-1) for position */
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  /** Type of interaction */
-  type: 'button' | 'link' | 'hover' | 'drag';
-  /** Action to perform on interaction */
-  action: {
-    type: 'navigate' | 'toggle' | 'animate' | 'callback';
-    target?: string;
-    params?: Record<string, unknown>;
-  };
-  /** Visual feedback on interaction */
-  feedback?: {
-    hover?: string; // CSS class or animation name
-    active?: string;
-  };
-  /** Tooltip/label */
-  label?: string;
-}
-
-/**
- * WebGLSceneConfig - Configuration for WebGL demo generation
- */
-export interface WebGLSceneConfig {
-  /** Camera settings */
-  camera: {
-    type: 'perspective' | 'orthographic';
-    position: [number, number, number];
-    target: [number, number, number];
-    fov?: number;
-  };
-  /** Lighting setup */
-  lighting: {
-    ambient: number;
-    directional?: {
-      intensity: number;
-      position: [number, number, number];
-      color?: string;
-    };
-  };
-  /** Controls configuration */
-  controls: {
-    type: 'orbit' | 'fly' | 'pointer-lock' | 'none';
-    enabled: boolean;
-    autoRotate?: boolean;
-    dampingFactor?: number;
-  };
-  /** Environment/skybox */
-  environment?: {
-    type: 'color' | 'gradient' | 'hdri';
-    value: string | [string, string];
-  };
-  /** Post-processing effects */
-  effects?: Array<'bloom' | 'vignette' | 'chromatic-aberration' | 'film-grain'>;
-}
-
-/**
- * InteractivePrototype - The main interactive prototype entity
- */
-export interface InteractivePrototype {
-  id: string;
-  /** Reference to the source generated prompt */
-  promptId: string;
-  /** Reference to the source generated image */
-  imageId?: string;
-  /** The mode of interactivity */
-  mode: InteractiveMode;
-  /** Status of generation */
-  status: 'pending' | 'generating' | 'ready' | 'failed';
-  /** Error message if failed */
-  error?: string;
-  /** Creation timestamp */
-  createdAt: string;
-  /** Mode-specific configuration */
-  config: WebGLSceneConfig | { regions: InteractiveRegion[] } | null;
-  /** Generated assets */
-  assets?: {
-    /** Primary preview/thumbnail */
-    thumbnail?: string;
-    /** WebGL scene data (for webgl mode) */
-    sceneData?: string;
-    /** Interactive regions (for clickable mode) */
-    regions?: InteractiveRegion[];
-  };
-}
-
-/**
- * InteractiveGenerationRequest - Request to generate interactive prototype
- */
-export interface InteractiveGenerationRequest {
-  promptId: string;
-  imageUrl?: string;
-  prompt: string;
-  mode: InteractiveMode;
-  sceneType: string;
-  dimensions: Array<{ type: DimensionType; reference: string }>;
-}
-
-/**
- * InteractiveGenerationResponse - Response from interactive generation
- */
-export interface InteractiveGenerationResponse {
-  success: boolean;
-  prototype?: InteractivePrototype;
-  error?: string;
-}
 
 // Unified generation API types
 export interface DimensionAdjustment {
@@ -879,14 +922,6 @@ export interface SimulatorLayoutProps {
   isGeneratingPoster?: boolean;
   // Delete generations
   onDeleteGenerations?: () => Promise<void>;
-  // Interactive prototype props
-  interactiveMode?: InteractiveMode;
-  availableInteractiveModes?: InteractiveMode[];
-  onInteractiveModeChange?: (mode: InteractiveMode) => void;
-  interactivePrototypes?: Map<string, InteractivePrototype>;
-  isGeneratingPrototype?: boolean;
-  onGeneratePrototype?: (promptId: string) => void;
-  onViewInteractivePrototype?: (promptId: string) => void;
   // Comparison props
   onOpenComparison?: () => void;
   // Prompt history props

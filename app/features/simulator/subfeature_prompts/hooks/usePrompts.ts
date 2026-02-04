@@ -29,8 +29,8 @@ import {
   getActiveSession,
   processFeedback,
   learnStylePreferences,
+  processEnhancedFeedback,
 } from '../../lib/preferenceEngine';
-import { processEnhancedFeedback } from '../../lib/feedbackLearning';
 
 export interface PromptsState {
   generatedPrompts: GeneratedPrompt[];

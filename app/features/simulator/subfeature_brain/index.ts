@@ -18,8 +18,6 @@ export type { WhatifPair } from './hooks/useWhatif';
 
 // Lib
 export * from './lib/simulatorAI';
-export * from './lib/llmPrompts';
-export * from './lib/visionExamples';
 export * from './lib/posterEvaluator';
 export * from './lib/imagePolisher';
 
@@ -28,14 +26,11 @@ export { CentralBrain } from './components/CentralBrain';
 export { DirectorControl } from './components/DirectorControl';
 export { SmartBreakdown } from './components/SmartBreakdown';
 export { BaseImageInput } from './components/BaseImageInput';
-export { FeedbackPanel } from './components/FeedbackPanel';
 export { PosterOverlay } from './components/PosterOverlay';
 export { PosterFullOverlay } from './components/PosterFullOverlay';
 export { BrainTabSwitcher, ViewModeSwitcher } from './components/BrainTabSwitcher';
 export type { BrainTab } from './components/BrainTabSwitcher';
 export { WhatIfPanel } from './components/WhatIfPanel';
-export { AutoplayControls } from './components/AutoplayControls';
-export type { AutoplayControlsProps } from './components/AutoplayControls';
 export { AutoplaySetupModal } from './components/AutoplaySetupModal';
 export type { AutoplaySetupModalProps, AutoplayModalMode } from './components/AutoplaySetupModal';
 export { ActivityLogSidebar } from './components/ActivityLogSidebar';

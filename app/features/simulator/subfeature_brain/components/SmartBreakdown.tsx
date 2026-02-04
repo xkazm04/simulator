@@ -22,7 +22,32 @@ import { getDimensionPreset } from '../../subfeature_dimensions/lib/defaultDimen
 import { v4 as uuidv4 } from 'uuid';
 import { semanticColors } from '../../lib/semanticColors';
 import { expandCollapse, slideDown, transitions } from '../../lib/motion';
-import { getDiverseExamples, VisionExample } from '../lib/visionExamples';
+
+/** Example vision sentences to inspire users */
+const VISION_EXAMPLES = [
+  "Baldur's Gate but in the Star Wars universe",
+  "Pokemon but photorealistic like a nature documentary",
+  "The Last of Us reimagined as a Studio Ghibli film",
+  "Minecraft world rendered in Unreal Engine 5 hyperrealism",
+  "Zelda: Breath of the Wild in cyberpunk Tokyo setting",
+  "Dark Souls but in a cute Animal Crossing style",
+  "GTA San Andreas as a 1920s noir detective story",
+  "Horizon Zero Dawn machines in a medieval fantasy world",
+  "Stardew Valley but in the Warhammer 40K universe",
+  "Elden Ring reimagined as a watercolor painting",
+  "Resident Evil mansion in cozy cottage core aesthetic",
+  "Mario Kart tracks as realistic Formula 1 circuits",
+];
+
+/** Get random examples using Fisher-Yates shuffle */
+function getRandomExamples(count: number = 3): string[] {
+  const shuffled = [...VISION_EXAMPLES];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled.slice(0, count);
+}
 
 interface SmartBreakdownProps {
   onApply: (
@@ -43,11 +68,11 @@ export function SmartBreakdown({ onApply, initialVisionSentence, isDisabled }: S
   const [result, setResult] = useState<SmartBreakdownResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isExpanded, setIsExpanded] = useState(false);
-  const [examples, setExamples] = useState<VisionExample[]>([]);
+  const [examples, setExamples] = useState<string[]>([]);
 
   // Initialize examples on mount (client-side only to avoid hydration mismatch)
   useEffect(() => {
-    setExamples(getDiverseExamples(3));
+    setExamples(getRandomExamples(3));
   }, []);
 
   // Sync input with saved vision sentence when project loads
@@ -58,7 +83,7 @@ export function SmartBreakdown({ onApply, initialVisionSentence, isDisabled }: S
   }, [initialVisionSentence]);
 
   const handleShuffleExamples = useCallback(() => {
-    setExamples(getDiverseExamples(3));
+    setExamples(getRandomExamples(3));
   }, []);
 
   const handleExampleClick = useCallback((exampleText: string) => {
@@ -205,17 +230,17 @@ export function SmartBreakdown({ onApply, initialVisionSentence, isDisabled }: S
                 <div className="flex flex-wrap gap-1.5 flex-1">
                   {examples.map((example, idx) => (
                     <button
-                      key={`${example.text}-${idx}`}
-                      onClick={() => handleExampleClick(example.text)}
+                      key={`${example}-${idx}`}
+                      onClick={() => handleExampleClick(example)}
                       disabled={isProcessing || isDisabled}
                       className="px-2.5 py-1 bg-slate-800/40 border border-slate-700/40
                                 rounded-md font-mono type-label text-slate-400
                                 hover:bg-purple-500/10 hover:border-purple-500/30 hover:text-purple-300
                                 transition-colors disabled:opacity-50 disabled:cursor-not-allowed
                                 text-left"
-                      title={`Click to use: "${example.text}"`}
+                      title={`Click to use: "${example}"`}
                     >
-                      {example.text}
+                      {example}
                     </button>
                   ))}
                 </div>

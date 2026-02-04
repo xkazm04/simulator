@@ -14,7 +14,6 @@ import {
   GeneratedPrompt,
   GeneratedImage,
   ProjectPoster,
-  InteractiveMode,
   PanelSlot,
 } from '../../types';
 import { PosterGeneration } from '../../hooks/usePoster';
@@ -51,11 +50,6 @@ export interface CmdCoreProps {
   onSelectPoster?: (index: number) => void;
   onSavePoster?: () => void;
   onCancelPosterGeneration?: () => void;
-
-  // Interactive prototype props
-  interactiveMode: InteractiveMode;
-  availableInteractiveModes: InteractiveMode[];
-  onInteractiveModeChange?: (mode: InteractiveMode) => void;
 
   // Comparison props
   onOpenComparison?: () => void;
@@ -125,9 +119,6 @@ function CmdCoreComponent({
   onSelectPoster,
   onSavePoster,
   onCancelPosterGeneration,
-  interactiveMode,
-  availableInteractiveModes,
-  onInteractiveModeChange,
   onOpenComparison,
   onViewPrompt,
   leftPanelSlots,
@@ -206,9 +197,6 @@ function CmdCoreComponent({
 
         {/* Center Core: Brain (Breakdown + Feedback) */}
         <CentralBrain
-          interactiveMode={interactiveMode}
-          availableInteractiveModes={availableInteractiveModes}
-          onInteractiveModeChange={onInteractiveModeChange}
           generatedImages={generatedImages}
           isGeneratingImages={isGeneratingImages}
           onDeleteGenerations={onDeleteGenerations}

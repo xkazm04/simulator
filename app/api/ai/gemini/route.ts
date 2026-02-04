@@ -7,6 +7,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenAI } from '@google/genai';
+import { fetchImageAsBase64 } from '@/app/lib/ai/image-utils';
 
 // Gemini 2.5 Flash has native image generation capability
 const GEMINI_IMAGE_MODEL = 'gemini-2.5-flash-image';
@@ -18,23 +19,6 @@ interface GeminiRequest {
   sourceImageUrl: string;
   aspectRatio?: '16:9' | '9:16' | '1:1' | '4:3' | '3:4';
   mode?: RegenerationMode; // 'transform' = redesign the image, 'overlay' = add elements on top
-}
-
-// Convert URL to base64 data URL
-async function urlToBase64(url: string): Promise<{ mimeType: string; data: string }> {
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`Failed to fetch image: ${response.statusText}`);
-  }
-
-  const contentType = response.headers.get('content-type') || 'image/jpeg';
-  const arrayBuffer = await response.arrayBuffer();
-  const base64 = Buffer.from(arrayBuffer).toString('base64');
-
-  return {
-    mimeType: contentType,
-    data: base64,
-  };
 }
 
 export async function POST(request: NextRequest) {
@@ -67,7 +51,7 @@ export async function POST(request: NextRequest) {
     // Fetch and convert source image to base64
     let imageData: { mimeType: string; data: string };
     try {
-      imageData = await urlToBase64(sourceImageUrl);
+      imageData = await fetchImageAsBase64(sourceImageUrl);
     } catch (error) {
       console.error('Failed to fetch source image:', error);
       return NextResponse.json(

@@ -85,6 +85,14 @@ POSTER MODE:
 - Style: key art, promotional artwork, theatrical poster
 - Negative: screenshot, sketch, casual
 
+REALISTIC MODE:
+- IDENTICAL scene structure to GAMEPLAY mode (same camera angles, same composition, same dimensions)
+- ONLY DIFFERENCE: Replace game HUD/UI with photorealistic rendering quality
+- Include: ray tracing, global illumination, ultra-detailed textures, subsurface scattering, physically based rendering, Unreal Engine 5 quality
+- Style: next-gen game graphics, hyperrealistic AAA visuals, photorealistic game rendering
+- CRITICAL: Use EXACT same scene/camera/content as gameplay would, just rendered photorealistically
+- Negative: cartoon, anime, stylized, low poly, retro, pixel art, sketch, HUD, UI elements
+
 PROMPT GENERATION RULES:
 - Generate exactly 4 prompts with scene types: "Cinematic Wide Shot", "Hero Portrait", "Action Sequence", "Environmental Storytelling"
 - Each prompt MUST follow the output mode's style requirements above
@@ -118,6 +126,8 @@ function getModeInstructions(outputMode: string): string {
       return 'TRAILER - Photorealistic cinematic movie still with lens flare, shallow DOF, dramatic rim lighting, film grain. NO game UI. Style: Hollywood blockbuster.';
     case 'poster':
       return 'POSTER - Official movie poster with dramatic composition, iconic poses, title space. Style: theatrical key art.';
+    case 'realistic':
+      return 'REALISTIC - IDENTICAL to GAMEPLAY structure (same camera, scene, dimensions) but rendered with next-gen photorealistic graphics. Ray tracing, global illumination, UE5 quality, physically based rendering. NO HUD/UI - replace with hyperrealistic rendering.';
     default:
       return 'CONCEPT - Clean concept art without game UI.';
   }

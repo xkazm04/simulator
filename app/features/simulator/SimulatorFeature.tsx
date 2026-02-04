@@ -7,9 +7,8 @@
 'use client';
 
 import React, { useState, useCallback, lazy, Suspense } from 'react';
-import { GeneratedPrompt, SavedPanelImage, InteractiveMode } from './types';
+import { GeneratedPrompt, SavedPanelImage } from './types';
 import { useImageGeneration } from './hooks/useImageGeneration';
-import { useInteractivePrototype } from './hooks/useInteractivePrototype';
 import { useProjectManager } from './hooks/useProjectManager';
 import { usePosterHandlers } from './hooks/usePosterHandlers';
 import { useImageEffects } from './hooks/useImageEffects';
@@ -30,27 +29,24 @@ import { ViewModeProvider } from './stores';
 
 const PromptDetailModal = lazy(() => import('./subfeature_prompts').then(m => ({ default: m.PromptDetailModal })));
 const SavedImageModal = lazy(() => import('./subfeature_panels').then(m => ({ default: m.SavedImageModal })));
-const InteractivePreviewModal = lazy(() => import('./subfeature_interactive').then(m => ({ default: m.InteractivePreviewModal })));
 const ComparisonModal = lazy(() => import('./subfeature_comparison').then(m => ({ default: m.ComparisonModal })));
 
 function SimulatorContent() {
   const [selectedPrompt, setSelectedPrompt] = useState<GeneratedPrompt | null>(null);
   const [selectedPanelImage, setSelectedPanelImage] = useState<SavedPanelImage | null>(null);
-  const [interactivePreviewPromptId, setInteractivePreviewPromptId] = useState<string | null>(null);
   const [showComparisonModal, setShowComparisonModal] = useState(false);
 
   const dimensions = useDimensionsContext();
   const brain = useBrainContext();
   const prompts = usePromptsContext();
   const simulator = useSimulatorContext();
-  const interactive = useInteractivePrototype();
   const { showToast, toastProps } = useToast();
 
   // Track current project for image generation (will be set by projectManager)
   const [currentProjectId, setCurrentProjectId] = React.useState<string | null>(null);
 
   // Callback to sync saved images to database
-  const handleImageSaved = useCallback(async (info: { id: string; side: 'left' | 'right'; slotIndex: number; imageUrl: string; prompt: string; type?: 'gameplay' | 'trailer' | 'sketch' | 'poster' | null }) => {
+  const handleImageSaved = useCallback(async (info: { id: string; side: 'left' | 'right'; slotIndex: number; imageUrl: string; prompt: string; type?: 'gameplay' | 'trailer' | 'sketch' | 'poster' | 'realistic' | null }) => {
     if (!currentProjectId) return;
 
     try {
@@ -183,30 +179,7 @@ function SimulatorContent() {
 
   const selectedPromptImage = selectedPrompt ? imageGen.generatedImages.find(img => img.promptId === selectedPrompt.id) : undefined;
 
-  const availableInteractiveModes = useCallback((): InteractiveMode[] => {
-    const sceneTypes = prompts.generatedPrompts.map(p => p.sceneType);
-    if (sceneTypes.length === 0) return ['static'];
-    const modes = new Set<InteractiveMode>(['static']);
-    sceneTypes.forEach(st => interactive.getAvailableModes(st).forEach(m => modes.add(m)));
-    return Array.from(modes);
-  }, [prompts.generatedPrompts, interactive]);
-
   const handleCopyWithToast = useCallback(() => showToast('Prompt copied to clipboard', 'success'), [showToast]);
-
-  const interactiveModalPrompt = interactivePreviewPromptId ? prompts.generatedPrompts.find(p => p.id === interactivePreviewPromptId) : undefined;
-  const interactiveModalImage = interactivePreviewPromptId ? imageGen.generatedImages.find(img => img.promptId === interactivePreviewPromptId) : undefined;
-  const interactiveModalPrototype = interactivePreviewPromptId ? interactive.getPrototype(interactivePreviewPromptId) : undefined;
-
-  const handleGeneratePrototype = useCallback(async () => {
-    if (!interactivePreviewPromptId || !interactiveModalPrompt) return;
-    await interactive.generatePrototype({
-      promptId: interactivePreviewPromptId,
-      imageUrl: interactiveModalImage?.url ?? undefined,
-      prompt: interactiveModalPrompt.prompt,
-      sceneType: interactiveModalPrompt.sceneType,
-      dimensions: dimensions.dimensions.map(d => ({ type: d.type, reference: d.reference })),
-    });
-  }, [interactivePreviewPromptId, interactiveModalPrompt, interactiveModalImage, dimensions.dimensions, interactive]);
 
   return (
     <div className="h-full w-full flex flex-col ms-surface font-sans">
@@ -249,9 +222,6 @@ function SimulatorContent() {
           onSelectPoster={ph.handleSelectPoster}
           onSavePoster={ph.handleSavePoster}
           onCancelPosterGeneration={ph.handleCancelPosterGeneration}
-          interactiveMode={interactive.interactiveMode}
-          availableInteractiveModes={availableInteractiveModes()}
-          onInteractiveModeChange={interactive.setInteractiveMode}
           onOpenComparison={() => setShowComparisonModal(true)}
           onViewPrompt={setSelectedPrompt}
           onUploadImageToPanel={imageGen.uploadImageToPanel}
@@ -294,20 +264,6 @@ function SimulatorContent() {
         )}
 
         <Toast {...toastProps} data-testid="simulator-toast" />
-
-        {interactivePreviewPromptId && interactive.interactiveMode !== 'static' && (
-          <Suspense fallback={<ModalLoadingFallback />}>
-            <InteractivePreviewModal
-              isOpen={true}
-              onClose={() => setInteractivePreviewPromptId(null)}
-              prompt={interactiveModalPrompt}
-              generatedImage={interactiveModalImage}
-              prototype={interactiveModalPrototype}
-              mode={interactive.interactiveMode}
-              onGeneratePrototype={handleGeneratePrototype}
-            />
-          </Suspense>
-        )}
 
         {showComparisonModal && (
           <Suspense fallback={<ModalLoadingFallback />}>

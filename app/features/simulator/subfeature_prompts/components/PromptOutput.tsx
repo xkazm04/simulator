@@ -9,7 +9,7 @@
 import React, { memo, useMemo, useCallback } from 'react';
 import { AnimatePresence } from 'framer-motion';
 import { GitCompare } from 'lucide-react';
-import { GeneratedPrompt, PromptElement, GeneratedImage, InteractiveMode, InteractivePrototype } from '../../types';
+import { GeneratedPrompt, PromptElement, GeneratedImage } from '../../types';
 import { PromptCard, SkeletonPromptCard } from './PromptCard';
 
 interface PromptOutputProps {
@@ -27,10 +27,6 @@ interface PromptOutputProps {
   onDeleteImage?: (promptId: string) => void;
   savedPromptIds?: Set<string>;  // IDs of prompts that have been saved to panel
   allSlotsFull?: boolean;  // All panel slots are occupied
-  // Interactive prototype props
-  interactiveMode?: InteractiveMode;
-  interactivePrototypes?: Map<string, InteractivePrototype>;
-  onInteractiveClick?: (promptId: string) => void;
   // Comparison props
   onOpenComparison?: () => void;
   // Loading state
@@ -52,9 +48,6 @@ function PromptOutputComponent({
   onDeleteImage,
   savedPromptIds = new Set(),
   allSlotsFull = false,
-  interactiveMode = 'static',
-  interactivePrototypes,
-  onInteractiveClick,
   onOpenComparison,
   isGenerating = false,
   skeletonCount = 4,
@@ -122,7 +115,6 @@ function PromptOutputComponent({
             // Use memoized map lookup instead of .find() on each render
             const generatedImage = generatedImagesByPromptId.get(prompt.id);
             const isSavedToPanel = savedPromptIds.has(prompt.id);
-            const interactivePrototype = interactivePrototypes?.get(prompt.id);
 
             return (
               <PromptCard
@@ -141,9 +133,6 @@ function PromptOutputComponent({
                 onDeleteImage={onDeleteImage}
                 isSavedToPanel={isSavedToPanel}
                 allSlotsFull={allSlotsFull}
-                interactiveMode={interactiveMode}
-                interactivePrototype={interactivePrototype}
-                onInteractiveClick={onInteractiveClick}
               />
             );
           })}
@@ -182,7 +171,6 @@ function arePropsEqual(
   if (prevProps.isGenerating !== nextProps.isGenerating) return false;
   if (prevProps.skeletonCount !== nextProps.skeletonCount) return false;
   if (prevProps.acceptingElementId !== nextProps.acceptingElementId) return false;
-  if (prevProps.interactiveMode !== nextProps.interactiveMode) return false;
 
   // Compare generated images by reference
   if (prevProps.generatedImages !== nextProps.generatedImages) return false;
@@ -192,9 +180,6 @@ function arePropsEqual(
 
   // Compare allSlotsFull flag
   if (prevProps.allSlotsFull !== nextProps.allSlotsFull) return false;
-
-  // Compare interactive prototypes map by reference
-  if (prevProps.interactivePrototypes !== nextProps.interactivePrototypes) return false;
 
   return true;
 }

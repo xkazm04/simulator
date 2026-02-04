@@ -407,6 +407,7 @@ function buildElements(
     sketch: 'sketch: hand-drawn concept art',
     trailer: 'trailer: cinematic scene',
     poster: 'poster: key art composition',
+    realistic: 'realistic: next-gen photorealistic game graphics',
   };
   elements.push({
     id: uuidv4(),

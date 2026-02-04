@@ -8,7 +8,8 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getGeminiProvider } from '@/app/lib/ai/providers/gemini';
+import { getGeminiProvider, parseJsonFromGeminiResponse } from '@/app/lib/ai';
+import { fetchImageAsDataUrl } from '@/app/lib/ai/image-utils';
 import {
   PosterSelectionRequest,
   PosterSelectionResponse,
@@ -16,42 +17,19 @@ import {
 } from '@/app/features/simulator/subfeature_brain/lib/posterEvaluator';
 import { PosterSelectionResult } from '@/app/features/simulator/types';
 
-/**
- * Fetch image from URL and convert to base64 data URL
- */
-async function fetchImageAsDataUrl(imageUrl: string): Promise<string> {
-  const response = await fetch(imageUrl);
-  if (!response.ok) {
-    throw new Error(`Failed to fetch image: ${response.status}`);
-  }
-
-  const contentType = response.headers.get('content-type') || 'image/png';
-  const arrayBuffer = await response.arrayBuffer();
-  const base64 = Buffer.from(arrayBuffer).toString('base64');
-
-  return `data:${contentType};base64,${base64}`;
+/** Expected shape of Gemini's poster selection response */
+interface GeminiPosterSelectionResponse {
+  selectedIndex?: number;
+  reasoning?: string;
+  confidence?: number;
 }
 
 /**
  * Parse Gemini response into PosterSelectionResult
  */
 function parseSelectionResponse(text: string, posterCount: number): PosterSelectionResult {
-  // Try to extract JSON from the response
-  let jsonStr = text.trim();
-
-  // Remove markdown code blocks if present
-  if (jsonStr.startsWith('```json')) {
-    jsonStr = jsonStr.slice(7);
-  } else if (jsonStr.startsWith('```')) {
-    jsonStr = jsonStr.slice(3);
-  }
-  if (jsonStr.endsWith('```')) {
-    jsonStr = jsonStr.slice(0, -3);
-  }
-  jsonStr = jsonStr.trim();
-
   try {
-    const parsed = JSON.parse(jsonStr);
+    const parsed = parseJsonFromGeminiResponse<GeminiPosterSelectionResponse>(text);
 
     // Validate selectedIndex is within bounds
     const selectedIndex = typeof parsed.selectedIndex === 'number'

@@ -52,7 +52,7 @@ export interface SavedPanelImageInfo {
   slotIndex: number;
   imageUrl: string;
   prompt: string;
-  type?: 'gameplay' | 'trailer' | 'sketch' | 'poster' | null;
+  type?: 'gameplay' | 'trailer' | 'sketch' | 'poster' | 'realistic' | null;
 }
 
 interface UseImageGenerationOptions {
@@ -61,7 +61,7 @@ interface UseImageGenerationOptions {
   /** Optional callback fired when an image is saved to panel - for database sync */
   onImageSaved?: (info: SavedPanelImageInfo) => void;
   /** Current output mode - saved with panel images for filtering */
-  outputMode?: 'gameplay' | 'trailer' | 'sketch' | 'poster';
+  outputMode?: 'gameplay' | 'trailer' | 'sketch' | 'poster' | 'realistic';
 }
 
 interface UseImageGenerationReturn {

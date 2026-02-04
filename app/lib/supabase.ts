@@ -106,7 +106,7 @@ export interface DbPanelImage {
   image_url: string;
   video_url: string | null;
   prompt: string | null;
-  type: 'gameplay' | 'trailer' | 'sketch' | 'poster' | null;
+  type: 'gameplay' | 'trailer' | 'sketch' | 'poster' | 'realistic' | null;
   created_at: string;
 }
 

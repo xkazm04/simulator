@@ -174,6 +174,24 @@ const response = await generateContent([
 
 ## Key Patterns
 
+### Async Workflow Pattern (Orchestrator Separation)
+
+For complex async workflows involving API calls, use a two-hook separation:
+
+1. **State Machine Hook** (`use<Feature>.ts`) - Pure state with `useReducer`
+   - Handles all state transitions
+   - No side effects or API calls
+   - Testable in isolation
+
+2. **Orchestrator Hook** (`use<Feature>Orchestrator.ts`) - Side effects
+   - Listens to state changes
+   - Triggers API calls based on state
+   - Wires external services together
+
+**Example:** `useAutoplay.ts` (state machine) + `useAutoplayOrchestrator.ts` (effects)
+
+See `app/features/simulator/hooks/PATTERNS.md` for full documentation.
+
 ### Adding a New Dimension Type
 
 1. Add type to `types.ts`:

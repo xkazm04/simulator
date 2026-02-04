@@ -31,14 +31,12 @@ import {
   Film,
 } from 'lucide-react';
 import {
-  InteractiveMode,
   GeneratedImage,
   OutputMode,
   Dimension,
   ExtendedAutoplayConfig,
   AutoplayLogEntry,
 } from '../../types';
-import { InteractiveModeToggle } from '../../subfeature_interactive';
 import { SmartSuggestionPanel } from '../../components/SmartSuggestionPanel';
 import { useBrainContext } from '../BrainContext';
 import { DEFAULT_DIMENSIONS, EXTRA_DIMENSIONS } from '../../subfeature_dimensions/lib/defaultDimensions';
@@ -53,11 +51,6 @@ import { AutoplaySetupModal } from './AutoplaySetupModal';
 import { useModalInstance } from '@/app/providers';
 
 export interface DirectorControlProps {
-  // Interactive mode props
-  interactiveMode: InteractiveMode;
-  availableInteractiveModes: InteractiveMode[];
-  onInteractiveModeChange?: (mode: InteractiveMode) => void;
-
   // Image generation props
   generatedImages: GeneratedImage[];
   isGeneratingImages: boolean;
@@ -93,9 +86,6 @@ export interface DirectorControlProps {
 }
 
 export function DirectorControl({
-  interactiveMode,
-  availableInteractiveModes,
-  onInteractiveModeChange,
   generatedImages,
   isGeneratingImages,
   onDeleteGenerations,
@@ -413,18 +403,6 @@ export function DirectorControl({
 
       {/* Action area */}
       <div className="space-y-2">
-        {/* Interactive Mode Toggle (if available) */}
-        {onInteractiveModeChange && availableInteractiveModes.length > 1 && (
-          <div className="flex gap-2 items-center mb-2">
-            <InteractiveModeToggle
-              mode={interactiveMode}
-              availableModes={availableInteractiveModes}
-              onModeChange={onInteractiveModeChange}
-              disabled={isAnyGenerating}
-            />
-          </div>
-        )}
-
         {/* Output Mode Toggle - only show when NOT in autoplay mode */}
         {!isAutoplayLocked && (
           <div className="flex gap-2 items-center mb-2">
@@ -471,6 +449,20 @@ export function DirectorControl({
               >
                 <Clapperboard size={12} />
                 <span>Trailer</span>
+              </button>
+              <button
+                onClick={() => brain.setOutputMode('realistic')}
+                disabled={isAnyGenerating}
+                data-testid="output-mode-realistic"
+                className={`px-2.5 py-1.5 flex items-center justify-center gap-1 text-xs font-mono uppercase tracking-wide transition-colors border-r
+                            ${brain.outputMode === 'realistic'
+                              ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
+                              : 'text-slate-500 hover:text-slate-300 border-slate-800'
+                            } disabled:opacity-50 disabled:cursor-not-allowed`}
+                title="Next-gen Photorealistic Game Graphics"
+              >
+                <Sparkles size={12} />
+                <span>Realistic</span>
               </button>
               <button
                 onClick={() => brain.setOutputMode('poster')}

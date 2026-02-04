@@ -15,7 +15,7 @@ import React, { useState, useRef, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useDrag } from '@use-gesture/react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { GeneratedPrompt, GeneratedImage, InteractiveMode, InteractivePrototype } from '../../types';
+import { GeneratedPrompt, GeneratedImage } from '../../types';
 import { PromptCard, SkeletonPromptCard } from '../../subfeature_prompts/components/PromptCard';
 import { useHapticFeedback } from '../../hooks/useResponsive';
 import { snapToNearest, GESTURE_PRESETS } from '../../lib/gestureController';
@@ -31,9 +31,6 @@ interface MobilePromptCarouselProps {
   generatedImages?: GeneratedImage[];
   onStartImage?: (promptId: string) => void;
   savedPromptIds?: Set<string>;
-  interactiveMode?: InteractiveMode;
-  interactivePrototypes?: Map<string, InteractivePrototype>;
-  onInteractiveClick?: (promptId: string) => void;
   isGenerating?: boolean;
   skeletonCount?: number;
 }
@@ -48,9 +45,6 @@ export function MobilePromptCarousel({
   generatedImages = [],
   onStartImage,
   savedPromptIds = new Set(),
-  interactiveMode = 'static',
-  interactivePrototypes,
-  onInteractiveClick,
   isGenerating = false,
   skeletonCount = 2,
 }: MobilePromptCarouselProps) {
@@ -210,9 +204,6 @@ export function MobilePromptCarousel({
                       generatedImage={getImageForPrompt(prompt.id)}
                       onStartImage={onStartImage}
                       isSavedToPanel={savedPromptIds.has(prompt.id)}
-                      interactiveMode={interactiveMode}
-                      interactivePrototype={interactivePrototypes?.get(prompt.id)}
-                      onInteractiveClick={onInteractiveClick}
                     />
                   </div>
                 </div>

@@ -1,6 +1,6 @@
 /**
- * Simulator Stores - Zustand state management
+ * Simulator Stores - State management
  */
 
-export { useViewModeStore } from './useViewModeStore';
+export { useViewModeStore, ViewModeProvider } from './useViewModeStore';
 export type { ViewMode } from './useViewModeStore';

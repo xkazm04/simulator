@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getUnifiedProvider, isGeminiAvailable, AIError } from '@/app/lib/ai';
+import { getUnifiedProvider, isGeminiAvailable, AIError, parseAIJsonResponse } from '@/app/lib/ai';
 import { createErrorResponse, HTTP_STATUS } from '@/app/utils/apiErrorHandling';
 
 /**
@@ -127,14 +127,8 @@ export async function POST(request: NextRequest) {
         metadata: { feature: 'image-describe' },
       });
 
-      // Parse JSON from response (handle potential markdown wrapping)
-      let jsonStr = result.text;
-      const jsonMatch = result.text.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        jsonStr = jsonMatch[0];
-      }
-
-      const parsed = JSON.parse(jsonStr);
+      // Parse JSON from response with robust handling
+      const parsed = parseAIJsonResponse(result.text);
       return NextResponse.json(parsed);
     } catch (error) {
       console.error('AI provider error:', error);

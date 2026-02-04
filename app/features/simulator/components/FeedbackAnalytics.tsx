@@ -34,8 +34,8 @@ import {
 import { FeedbackAnalytics as FeedbackAnalyticsType, UserPreference, PromptPattern } from '../types';
 import { semanticColors } from '../lib/semanticColors';
 import { expandCollapse, transitions } from '../lib/motion';
-import { generateFeedbackAnalytics } from '../lib/feedbackLearning';
 import {
+  generateFeedbackAnalytics,
   clearAllLearning,
   exportPreferences,
   importPreferences,

@@ -14,7 +14,6 @@
 
 import React, { useCallback, memo, useState, useEffect } from 'react';
 import {
-  InteractiveMode,
   GeneratedImage,
   ProjectPoster,
 } from '../../types';
@@ -30,11 +29,6 @@ import { useSimulatorContext } from '../../SimulatorContext';
 import { useProjectContext } from '../../contexts';
 
 export interface CentralBrainProps {
-  // Interactive mode props (passed from layout since they're project-level concerns)
-  interactiveMode: InteractiveMode;
-  availableInteractiveModes: InteractiveMode[];
-  onInteractiveModeChange?: (mode: InteractiveMode) => void;
-
   // Image generation (external to subfeatures)
   generatedImages: GeneratedImage[];
   isGeneratingImages: boolean;
@@ -98,9 +92,6 @@ export interface CentralBrainProps {
 }
 
 function CentralBrainComponent({
-  interactiveMode,
-  availableInteractiveModes,
-  onInteractiveModeChange,
   generatedImages,
   isGeneratingImages,
   onDeleteGenerations,
@@ -242,9 +233,6 @@ function CentralBrainComponent({
 
         {/* Bottom Half: Director Control */}
         <DirectorControl
-          interactiveMode={interactiveMode}
-          availableInteractiveModes={availableInteractiveModes}
-          onInteractiveModeChange={onInteractiveModeChange}
           generatedImages={generatedImages}
           isGeneratingImages={isGeneratingImages}
           onDeleteGenerations={onDeleteGenerations}
@@ -266,12 +254,6 @@ function arePropsEqual(
   prevProps: CentralBrainProps,
   nextProps: CentralBrainProps
 ): boolean {
-  // Compare interactive mode
-  if (prevProps.interactiveMode !== nextProps.interactiveMode) return false;
-
-  // Compare available modes by reference
-  if (prevProps.availableInteractiveModes !== nextProps.availableInteractiveModes) return false;
-
   // Compare generated images by reference
   if (prevProps.generatedImages !== nextProps.generatedImages) return false;
 

@@ -239,6 +239,41 @@ const MODE_CONFIGS: Record<OutputMode, ModeConfig> = {
     ],
     dimensionUsage: 'full',
   },
+
+  realistic: {
+    styleKeywords: [
+      'next-gen game engine',
+      'photorealistic game graphics',
+      'Unreal Engine 5 quality',
+      'AAA game visuals',
+      'hyperrealistic rendering',
+    ],
+    technicalKeywords: [
+      'ray tracing',
+      'global illumination',
+      'ultra-detailed textures',
+      'subsurface scattering',
+      'realistic materials',
+      'physically based rendering',
+      '8K resolution',
+      'nanite geometry',
+    ],
+    negativeKeywords: [
+      'cartoon',
+      'anime',
+      'stylized',
+      'low poly',
+      'retro graphics',
+      'pixel art',
+      'hand-drawn',
+      'sketch',
+      'painting',
+      'HUD',
+      'UI elements',
+    ],
+    dimensionUsage: 'full',
+    // Use same scene structure as gameplay, just with realistic rendering
+  },
 };
 
 /**
@@ -566,6 +601,7 @@ function buildElements(
       case 'sketch': return 'hand-drawn sketch';
       case 'trailer': return 'cinematic film still';
       case 'poster': return 'poster composition';
+      case 'realistic': return 'photorealistic';
       default: return 'concept art';
     }
   })();
@@ -783,6 +819,56 @@ export function buildMockPromptWithElements(
 
     promptParts.push(...modeConfig.technicalKeywords.slice(0, 3));
     promptParts.push(variation.focus);
+
+  } else if (outputMode === 'realistic') {
+    // REALISTIC MODE: Same structure as GAMEPLAY but with photorealistic rendering
+    // Uses EXACT same scene/camera/dimensions as gameplay, just different rendering style
+    // Structure: [camera] + [base] + [scene] + [dimensions] + [style] + [REALISTIC RENDERING] + [quality]
+
+    // 1. Camera angle (SAME as gameplay)
+    const cameraClause = cameraDim ? buildWeightedClause(cameraDim, 30) : null;
+    promptParts.push(cameraClause || variety.camera);
+
+    // 2. Base description (SAME as gameplay)
+    const baseDesc = baseImage.length > 200 ? baseImage.substring(0, 200) : baseImage;
+    promptParts.push(baseDesc);
+
+    // 3. Filter preservation hints (SAME as gameplay)
+    const filterHints = buildFilterHints(activeDimensions);
+    if (filterHints.length > 0) {
+      promptParts.push(filterHints.join(' and '));
+    }
+
+    // 4. Scene type (SAME as gameplay - uses defaultVariation, not mode override)
+    promptParts.push(defaultVariation.moment);
+
+    // 5. Content swaps (SAME as gameplay)
+    const swaps = buildContentSwaps(activeDimensions);
+    if (swaps.length > 0) {
+      promptParts.push(swaps.join(', '));
+    }
+
+    // 6. Style and mood (SAME as gameplay)
+    if (styleDim?.reference) {
+      const styleClause = buildWeightedClause(styleDim, 50);
+      if (styleClause) promptParts.push(styleClause);
+    }
+    if (moodDim?.reference) {
+      const moodClause = buildWeightedClause(moodDim, 30);
+      if (moodClause) promptParts.push(moodClause);
+    }
+
+    // 7. Variety modifiers (SAME as gameplay)
+    promptParts.push(variety.time);
+    promptParts.push(variety.atmosphere);
+
+    // 8. REALISTIC RENDERING (INSTEAD of game UI - this is the ONLY difference from gameplay)
+    promptParts.push(...modeConfig.styleKeywords.slice(0, 2));
+    promptParts.push(...modeConfig.technicalKeywords.slice(0, 4));
+
+    // 9. Quality (SAME as gameplay)
+    promptParts.push(defaultVariation.focus);
+    promptParts.push('detailed');
 
   } else {
     // GAMEPLAY MODE (default): Authentic game screenshot with visible UI

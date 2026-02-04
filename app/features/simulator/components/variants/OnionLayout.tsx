@@ -17,7 +17,6 @@ import {
   GeneratedPrompt,
   GeneratedImage,
   ProjectPoster,
-  InteractiveMode,
   PanelSlot,
   SavedPanelImage,
 } from '../../types';
@@ -70,11 +69,6 @@ export interface OnionLayoutProps {
   onSelectPoster?: (index: number) => void;
   onSavePoster?: () => void;
   onCancelPosterGeneration?: () => void;
-
-  // Interactive prototype props (project-level)
-  interactiveMode?: InteractiveMode;
-  availableInteractiveModes?: InteractiveMode[];
-  onInteractiveModeChange?: (mode: InteractiveMode) => void;
 
   // Comparison props
   onOpenComparison?: () => void;
@@ -153,10 +147,6 @@ function OnionLayoutComponent({
   onSelectPoster,
   onSavePoster,
   onCancelPosterGeneration,
-  // Interactive prototype props
-  interactiveMode = 'static',
-  availableInteractiveModes = ['static'],
-  onInteractiveModeChange,
   // Comparison props
   onOpenComparison,
   // Modal handlers
@@ -267,9 +257,6 @@ function OnionLayoutComponent({
           onSelectPoster={onSelectPoster}
           onSavePoster={onSavePoster}
           onCancelPosterGeneration={onCancelPosterGeneration}
-          interactiveMode={interactiveMode}
-          availableInteractiveModes={availableInteractiveModes}
-          onInteractiveModeChange={onInteractiveModeChange}
           onOpenComparison={onOpenComparison}
           onViewPrompt={onViewPrompt}
           leftPanelSlots={leftPanelSlots}
@@ -360,17 +347,11 @@ function arePropsEqual(
   if (prevProps.isGeneratingPoster !== nextProps.isGeneratingPoster) return false;
   if (prevProps.showPosterOverlay !== nextProps.showPosterOverlay) return false;
 
-  // Compare interactive mode
-  if (prevProps.interactiveMode !== nextProps.interactiveMode) return false;
-
   // Compare saved prompt IDs by size first (fast check)
   if (prevProps.savedPromptIds?.size !== nextProps.savedPromptIds?.size) return false;
 
   // Compare poster by reference
   if (prevProps.projectPoster !== nextProps.projectPoster) return false;
-
-  // Compare available modes array by reference
-  if (prevProps.availableInteractiveModes !== nextProps.availableInteractiveModes) return false;
 
   // Compare autoplay by reference
   if (prevProps.autoplay !== nextProps.autoplay) return false;
