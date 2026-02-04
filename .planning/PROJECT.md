@@ -8,17 +8,16 @@ A "What If" image visualization tool that combines cultural references (games, m
 
 Transform fuzzy creative visions into concrete, curated AI-generated imagery through intelligent prompt building and automated refinement.
 
-## Current Milestone: v1.2 Video Showcase
+## Current Milestone: v1.2 Autoplay Stability & Polish
 
-**Goal:** Transform the project showcase into an automated video experience using Remotion, with client-side rendering and no server infrastructure.
+**Goal:** Fix the broken autoplay orchestration so the automated generate-evaluate-refine loop actually works, with proper UI state reflection and visual polish.
 
 **Target features:**
-- Remotion integration for video composition (client-side)
-- Poster image as default, video on button click
-- On-demand video generation from project images
-- Full-screen video player in showcase modal
-- MP4 download to user's device (no server storage)
-- Cinematic transitions between images (fade, slide, clockWipe)
+- Fix orchestration chain so API calls fire on state transitions
+- Generate button state reflects actual autoplay progress
+- UI components lock during autoplay (view-only mode)
+- Review and fix autoplay architecture design flaws
+- Activity Modal UI matches main page visual quality
 
 ## Requirements
 
@@ -32,54 +31,45 @@ Transform fuzzy creative visions into concrete, curated AI-generated imagery thr
 - [x] Direction center for refinement feedback — v1.0
 - [x] Panel image saving system — v1.0
 - [x] Gemini AI provider integration — v1.0
-- [x] Autoplay orchestration loop (generate → evaluate → refine) — v1.0
-- [x] Autoplay UI controls with target picker — v1.0
-- [x] Step indicator and progress display — v1.0
-- [x] UI lock during autoplay — v1.0
 
 ### Active
 
-<!-- v1.2 Video Showcase scope -->
+<!-- v1.2 Autoplay Stability & Polish scope -->
 
-- [ ] Remotion integration for programmatic video generation
-- [ ] Video composition from project panel images
-- [ ] On-demand "Generate Video" button in showcase
-- [ ] Full-screen video player replacing static hero card
-- [ ] MP4 export functionality for sharing
-- [ ] Cinematic transitions between images
+- [ ] Fix autoplay orchestration chain (API calls fire on state transitions)
+- [ ] Generate button state reflects actual autoplay progress
+- [ ] UI components lock during autoplay (view-only mode)
+- [ ] Review and fix autoplay architecture design flaws
+- [ ] Activity Modal UI visual polish (match main page quality)
 
 ### Out of Scope
 
-- Server-side video storage — client-only for v1.2
-- AWS Lambda rendering — keeping it simple with browser rendering
-- Video persistence/history — no database storage needed
-- Auto-play on showcase open — poster first, user triggers video
-- Background music — licensing complexity, defer to v2+
-- Custom video templates UI — automated composition only
+- Video Showcase features — deferred to v1.3
+- New autoplay features — stability first, enhancements later
+- Autoplay performance optimization — focus on correctness first
+- Additional autoplay modes — fix existing multi-phase flow first
 
 ## Context
 
-**Current Showcase Architecture:**
-- `/posters` page with grid gallery of saved projects
-- `ProjectShowcaseModal` opens full-screen portal on click
-- `ShowcaseCinematic` renders hero zone, floating gallery, dimension ribbon
-- `MediaSkeleton` shows gray loading state before content
-- Existing `CinematicVideo` component for HTML5 video playback
-- `ShowcaseLightbox` for full-screen image viewing with navigation
+**Current Autoplay Architecture:**
+- Two-hook pattern: state machine (`useAutoplay.ts`) + orchestrator (`useAutoplayOrchestrator.ts`)
+- Multi-phase coordinator: `useMultiPhaseAutoplay.ts` manages concept→gameplay→poster→HUD phases
+- Activity logging: `useAutoplayEventLog.ts` tracks events for modal display
+- Modal: `AutoplaySetupModal.tsx` with Setup Mode → Activity Mode transition
 
-**Video Showcase Goal:**
-- Poster image displays by default when opening showcase
-- "Generate Video" button triggers video composition
-- Compose project panel images into cinematic sequence
-- Use Remotion Player for preview, WebCodecs for export
-- Client-side only: no server storage, no AWS infrastructure
-- Output: In-app playback + MP4 download to user's device
+**Known Issues:**
+- Modal stays open but orchestrator doesn't trigger API calls
+- State machine transitions (button shows "simulating") but no actual generation
+- "sketch" phase times out after 2 minutes because API never fires
+- UI components not locked during autoplay
+- Activity Modal UI visually behind main page quality
 
 **Key integration points:**
-- `app/posters/components/ShowcaseCinematic.tsx` — main showcase view
-- `app/posters/components/cinematic/HeroZone.tsx` — will become video player
-- `app/posters/components/ProjectShowcaseModal.tsx` — modal wrapper
-- `app/api/projects/[id]/route.ts` — project data with panelImages
+- `app/features/simulator/hooks/useAutoplayOrchestrator.ts` — effect chain that should trigger APIs
+- `app/features/simulator/hooks/useMultiPhaseAutoplay.ts` — phase coordination
+- `app/features/simulator/subfeature_brain/components/AutoplaySetupModal.tsx` — modal UI
+- `app/features/simulator/subfeature_brain/components/DirectorControl.tsx` — autoplay trigger
+- `app/features/simulator/SimulatorFeature.tsx` — root wiring of hooks and contexts
 
 ## Constraints
 
@@ -96,6 +86,7 @@ Transform fuzzy creative visions into concrete, curated AI-generated imagery thr
 | useReducer state machine | Matches codebase patterns | ✓ Good |
 | Delete Presets entirely | Reduces complexity, user preference | — Pending |
 | Smart Breakdown as source of truth | Richer evaluation context | — Pending |
+| Defer Video Showcase to v1.3 | Autoplay stability is prerequisite for meaningful showcase | — Pending |
 
 ---
-*Last updated: 2026-01-31 after v1.2 milestone initialization*
+*Last updated: 2026-02-05 after v1.2 milestone pivot to Autoplay Stability*
