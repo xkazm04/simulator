@@ -138,6 +138,208 @@ When refactoring existing hooks:
 
 ---
 
+## Autoplay Orchestrator Deep Dive
+
+This section documents the autoplay orchestrator architecture in detail, including data flow diagrams and critical callback wiring patterns.
+
+### Architecture Overview
+
+The autoplay system uses a three-layer orchestration pattern:
+
+```
+SimulatorContext (Root Coordinator)
+        |
+        v
+useMultiPhaseAutoplay (Multi-Phase State + Orchestration)
+        |
+        +--> useAutoplayOrchestrator (Single-Phase Effects)
+        |           |
+        |           +--> useAutoplay (State Machine)
+        |
+        +--> useAutoHudGeneration (HUD Phase)
+        +--> posterEvaluator (Poster Phase)
+```
+
+**Layer Responsibilities:**
+
+| Layer | Role | Side Effects? |
+|-------|------|---------------|
+| `useAutoplay` | Pure state machine (status, iteration, totals) | NO |
+| `useAutoplayOrchestrator` | Single-phase effect orchestration | YES |
+| `useMultiPhaseAutoplay` | Multi-phase coordination + delegation | YES |
+
+### Effect Chain Sequence
+
+The complete sequence from user action to image generation:
+
+```
+1. User clicks "Start Autoplay" in AutoplaySetupModal
+   |
+   v
+2. multiPhaseAutoplay.onStart(config) dispatches START
+   |
+   v
+3. useMultiPhaseAutoplay reducer sets phase='sketch' or 'gameplay'
+   |
+   v
+4. useEffect in useMultiPhaseAutoplay detects phase change
+   |
+   v
+5. Calls singlePhaseOrchestrator.startAutoplay()
+   |
+   v
+6. useAutoplay reducer sets status='generating'
+   |
+   v
+7. useAutoplayOrchestrator effect detects status='generating'
+   |
+   v
+8. Calls onRegeneratePrompts with onPromptsReady callback
+   |
+   v
+9. SimulatorContext.handleGenerate generates prompts
+   |
+   v
+10. onPromptsReady fires with new prompts (synchronous!)
+    |
+    v
+11. generateImagesFromPrompts called with fresh prompts
+    |
+    v
+12. useAutoplayOrchestrator effect detects isGeneratingImages=false
+    |
+    v
+13. autoplay.onGenerationComplete(promptIds)
+    |
+    v
+14. useAutoplay reducer sets status='evaluating'
+    |
+    v
+15. useAutoplayOrchestrator effect calls evaluateImages()
+    |
+    v
+16. autoplay.onEvaluationComplete(evaluations, polishCandidates?)
+    |
+    v
+17. If polishCandidates: status='polishing', else status='refining'
+    |
+    v
+18. Polish phase (optional): polishImageWithTimeout() for each candidate
+    |
+    v
+19. autoplay.onPolishComplete(results)
+    |
+    v
+20. status='refining': save approved images, apply feedback
+    |
+    v
+21. autoplay.onIterationComplete()
+    |
+    v
+22. Check completion conditions:
+    - totalSaved >= targetSavedCount? -> complete
+    - currentIteration >= maxIterations? -> complete
+    - abortRequested? -> complete
+    - else -> status='generating' (next iteration)
+    |
+    v
+23. Loop back to step 7 OR complete
+    |
+    v
+24. Multi-phase: advance to next phase or complete
+```
+
+**Single-Phase State Transitions:**
+```
+idle -> generating -> evaluating -> polishing (optional) -> refining -> (loop or complete)
+```
+
+**Multi-Phase Transitions:**
+```
+idle -> sketch -> gameplay -> poster -> hud -> complete
+                      |
+                      v (if error)
+                    error
+```
+
+### Critical Callback Wiring
+
+These callbacks MUST be wired correctly for autoplay to function:
+
+| Callback | Source | Purpose | Critical |
+|----------|--------|---------|----------|
+| `onRegeneratePrompts` | SimulatorContext | Triggers prompt + image generation | YES |
+| `saveImageToPanel` | useImageGeneration | Saves approved images to panel | YES |
+| `setFeedback` | useBrain | Applies refinement feedback for next iteration | YES |
+| `generateImagesFromPrompts` | useImageGeneration | Direct image generation from prompts | YES |
+| `onLogEvent` | Optional | Activity logging for sidebar | NO |
+
+**Callback Wiring in SimulatorContext:**
+
+```typescript
+// SimulatorContext.tsx
+const handleGenerate = useCallback(async (overrides?: {
+  feedback?: { positive: string; negative: string };
+  onPromptsReady?: (prompts: GeneratedPrompt[]) => void;
+}) => {
+  // ... generate prompts ...
+  setGeneratedPrompts(newPrompts);
+
+  // Fire callback AFTER setState but BEFORE waiting for React's state update
+  overrides?.onPromptsReady?.(newPrompts);
+}, [/* deps */]);
+```
+
+### Key Wiring Pattern: onPromptsReady
+
+The `onPromptsReady` callback pattern solves React's async state update timing issue:
+
+```typescript
+// PROBLEM: Effect-based approach has timing issues
+// The orchestrator would need to wait for state to propagate
+useEffect(() => {
+  if (status === 'generating' && generatedPrompts.length > 0) {
+    // BUG: generatedPrompts might be stale due to React batching
+    generateImagesFromPrompts(generatedPrompts);
+  }
+}, [status, generatedPrompts]);
+
+// SOLUTION: Callback gets fresh data synchronously
+onRegeneratePrompts({
+  feedback: feedbackOverride || undefined,
+  onPromptsReady: (newPrompts) => {
+    // newPrompts is fresh - came directly from handleGenerate
+    // No waiting for React state update
+    generateImagesFromPrompts(newPrompts.map(p => ({ id: p.id, prompt: p.prompt })));
+  },
+});
+```
+
+**Why this works:**
+1. `handleGenerate` computes new prompts
+2. Calls `setState(newPrompts)` to update React state
+3. Immediately calls `onPromptsReady(newPrompts)` with the same data
+4. Orchestrator receives fresh prompts synchronously
+5. React state update happens eventually (for UI), but orchestrator doesn't wait
+
+### Critical Refs Pattern
+
+The orchestrator uses refs to avoid stale closure issues in effects:
+
+```typescript
+// Track current prompts via ref
+const generatedPromptsRef = useRef(generatedPrompts);
+generatedPromptsRef.current = generatedPrompts; // Update every render
+
+// Track pending feedback between iterations
+const pendingFeedbackRef = useRef<Feedback | null>(null);
+
+// In effects, use ref instead of state:
+const currentPrompts = generatedPromptsRef.current; // Always fresh
+```
+
+---
+
 ## The State Snapshot Pattern (Undo/Memento)
 
 **For operations that need undo support, use the unified `useUndoStack` hook.**
