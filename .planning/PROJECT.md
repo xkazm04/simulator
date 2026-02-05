@@ -2,22 +2,33 @@
 
 ## What This Is
 
-A "What If" image visualization tool that combines cultural references (games, movies, art) to generate unique prompts for AI image generators. Users describe a vision through Smart Breakdown, adjust dimensions, and generate images in Gameplay (mechanics-focused) or Concept (artstyle-focused) modes. Autoplay automates the generate-evaluate-refine loop.
+A "What If" image visualization tool that combines cultural references (games, movies, art) to generate unique prompts for AI image generators. Users describe a vision through Smart Breakdown, adjust dimensions, and generate images in Gameplay (mechanics-focused) or Concept (artstyle-focused) modes. Autoplay automates the generate-evaluate-refine loop with full progress tracking and UI locking.
 
 ## Core Value
 
 Transform fuzzy creative visions into concrete, curated AI-generated imagery through intelligent prompt building and automated refinement.
 
-## Current Milestone: v1.2 Autoplay Stability & Polish
+## Current State (v1.2 Shipped)
 
-**Goal:** Fix the broken autoplay orchestration so the automated generate-evaluate-refine loop actually works, with proper UI state reflection and visual polish.
+**Shipped:** 2026-02-05
 
-**Target features:**
-- Fix orchestration chain so API calls fire on state transitions
-- Generate button state reflects actual autoplay progress
-- UI components lock during autoplay (view-only mode)
-- Review and fix autoplay architecture design flaws
-- Activity Modal UI matches main page visual quality
+Autoplay now works end-to-end:
+- Callback-based orchestration triggers image generation within 5 seconds
+- Multi-phase flow progresses through sketch→gameplay→poster→HUD automatically
+- Generate button shows accurate phase status (GENERATING, SELECTING POSTER, etc.)
+- UI inputs locked during autoplay (dimensions, SmartBreakdown, generate button)
+- Abort properly stops all orchestration
+- Activity Modal polished with WCAG-compliant typography
+
+**Codebase:** ~15,000 LOC TypeScript/React (Next.js 16, Tailwind, Framer Motion)
+
+## Next Milestone Goals (v1.3)
+
+Video Showcase — Remotion integration for programmatic video generation:
+- Compose video from panel images
+- Cinematic transitions between images
+- "Generate Video" button in showcase
+- MP4 export for sharing
 
 ## Requirements
 
@@ -31,51 +42,44 @@ Transform fuzzy creative visions into concrete, curated AI-generated imagery thr
 - [x] Direction center for refinement feedback — v1.0
 - [x] Panel image saving system — v1.0
 - [x] Gemini AI provider integration — v1.0
+- [x] Autoplay orchestration (API calls fire on state transitions) — v1.2
+- [x] Generate button reflects autoplay progress — v1.2
+- [x] UI lock during autoplay (dimensions, SmartBreakdown, generate) — v1.2
+- [x] Activity Modal visual polish (WCAG typography) — v1.2
+- [x] Orchestrator architecture documented (PATTERNS.md) — v1.2
 
 ### Active
 
-<!-- v1.2 Autoplay Stability & Polish scope -->
+<!-- v1.3 Video Showcase scope — define in /gsd:new-milestone -->
 
-- [ ] Fix autoplay orchestration chain (API calls fire on state transitions)
-- [ ] Generate button state reflects actual autoplay progress
-- [ ] UI components lock during autoplay (view-only mode)
-- [ ] Review and fix autoplay architecture design flaws
-- [ ] Activity Modal UI visual polish (match main page quality)
+(None yet — run /gsd:new-milestone to define v1.3 requirements)
 
 ### Out of Scope
 
-- Video Showcase features — deferred to v1.3
-- New autoplay features — stability first, enhancements later
-- Autoplay performance optimization — focus on correctness first
-- Additional autoplay modes — fix existing multi-phase flow first
+- New autoplay features beyond stability — stability shipped, enhancements in future
+- Autoplay performance optimization — correctness achieved, performance later
+- Mobile app — web-first approach
 
 ## Context
 
-**Current Autoplay Architecture:**
-- Two-hook pattern: state machine (`useAutoplay.ts`) + orchestrator (`useAutoplayOrchestrator.ts`)
-- Multi-phase coordinator: `useMultiPhaseAutoplay.ts` manages concept→gameplay→poster→HUD phases
-- Activity logging: `useAutoplayEventLog.ts` tracks events for modal display
-- Modal: `AutoplaySetupModal.tsx` with Setup Mode → Activity Mode transition
+**Autoplay Architecture (v1.2):**
+- Three-layer pattern: `useAutoplay.ts` (state) → `useAutoplayOrchestrator.ts` (effects) → `useMultiPhaseAutoplay.ts` (coordination)
+- Callback-based prompt propagation bypasses React state batching
+- 120s timeouts for slow AI services
+- Full documentation in `app/features/simulator/hooks/PATTERNS.md`
 
-**Known Issues:**
-- Modal stays open but orchestrator doesn't trigger API calls
-- State machine transitions (button shows "simulating") but no actual generation
-- "sketch" phase times out after 2 minutes because API never fires
-- UI components not locked during autoplay
-- Activity Modal UI visually behind main page quality
-
-**Key integration points:**
-- `app/features/simulator/hooks/useAutoplayOrchestrator.ts` — effect chain that should trigger APIs
-- `app/features/simulator/hooks/useMultiPhaseAutoplay.ts` — phase coordination
-- `app/features/simulator/subfeature_brain/components/AutoplaySetupModal.tsx` — modal UI
-- `app/features/simulator/subfeature_brain/components/DirectorControl.tsx` — autoplay trigger
-- `app/features/simulator/SimulatorFeature.tsx` — root wiring of hooks and contexts
+**Key Files:**
+- `SimulatorContext.tsx` — Central state with onPromptsReady callback
+- `useAutoplayOrchestrator.ts` — Effect chain for generate→evaluate→refine
+- `useMultiPhaseAutoplay.ts` — Multi-phase coordination with delegation
+- `DirectorControl.tsx` — Generate button with status labels
+- `AutoplaySetupModal.tsx` — Activity Modal with progress tracking
 
 ## Constraints
 
-- **Tech stack**: Existing Next.js / React / Tailwind / Framer Motion
-- **AI Provider**: Use existing Gemini provider
-- **Backward compatibility**: Existing saved projects should still load
+- **Tech stack**: Next.js / React / Tailwind / Framer Motion
+- **AI Provider**: Gemini for evaluation, Leonardo for generation
+- **Backward compatibility**: Existing saved projects must load
 
 ## Key Decisions
 
@@ -84,9 +88,11 @@ Transform fuzzy creative visions into concrete, curated AI-generated imagery thr
 | Gemini for evaluation | Already integrated, vision capable | ✓ Good |
 | 3 iteration limit | Balance automation vs cost | ✓ Good |
 | useReducer state machine | Matches codebase patterns | ✓ Good |
-| Delete Presets entirely | Reduces complexity, user preference | — Pending |
-| Smart Breakdown as source of truth | Richer evaluation context | — Pending |
-| Defer Video Showcase to v1.3 | Autoplay stability is prerequisite for meaningful showcase | — Pending |
+| Callback-based prompt propagation | Bypasses React async batching | ✓ Good (v1.2) |
+| Multi-phase delegates to single-phase | Reuses generate→evaluate→refine loop | ✓ Good (v1.2) |
+| Thread disabled prop (not context) | Explicit data flow, simpler | ✓ Good (v1.2) |
+| type-label for smallest text | WCAG AA compliance (11px min) | ✓ Good (v1.2) |
+| Defer Video Showcase to v1.3 | Autoplay stability was prerequisite | ✓ Good (v1.2) |
 
 ---
-*Last updated: 2026-02-05 after v1.2 milestone pivot to Autoplay Stability*
+*Last updated: 2026-02-05 after v1.2 milestone completion*
