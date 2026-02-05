@@ -581,23 +581,21 @@ export function AutoplaySetupModal({
         >
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800 bg-slate-900/50 shrink-0">
-            <div className="flex items-center gap-2">
-              <Sparkles size={18} className={isActivityMode ? semanticColors.processing.text : semanticColors.primary.text} />
-              <span className="font-medium text-slate-200">
-                {isActivityMode ? 'Autoplay Activity' : 'Autoplay Setup'}
+            <span className="text-md uppercase tracking-widest text-white font-medium flex items-center gap-2 drop-shadow-[0_0_8px_rgba(255,255,255,0.4)]">
+              <div className={`w-2 h-2 rounded-full ${isActivityMode ? 'bg-purple-500 shadow-[0_0_8px_rgba(168,85,247,0.6)]' : 'bg-cyan-500 shadow-[0_0_8px_rgba(6,182,212,0.6)]'}`} />
+              {isActivityMode ? 'Autoplay Activity' : 'Autoplay Setup'}
+            </span>
+            {isActivityMode && currentPhase !== 'idle' && (
+              <span className={`ml-2 px-2 py-0.5 radius-sm text-xs font-mono ${
+                currentPhase === 'complete'
+                  ? `${semanticColors.success.bg} ${semanticColors.success.text}`
+                  : currentPhase === 'error'
+                    ? `${semanticColors.error.bg} ${semanticColors.error.text}`
+                    : `${semanticColors.processing.bg} ${semanticColors.processing.text}`
+              }`}>
+                {currentPhase.toUpperCase()}
               </span>
-              {isActivityMode && currentPhase !== 'idle' && (
-                <span className={`ml-2 px-2 py-0.5 radius-sm text-xs font-mono ${
-                  currentPhase === 'complete'
-                    ? `${semanticColors.success.bg} ${semanticColors.success.text}`
-                    : currentPhase === 'error'
-                      ? `${semanticColors.error.bg} ${semanticColors.error.text}`
-                      : `${semanticColors.processing.bg} ${semanticColors.processing.text}`
-                }`}>
-                  {currentPhase.toUpperCase()}
-                </span>
-              )}
-            </div>
+            )}
             <button
               onClick={onClose}
               className="p-1.5 radius-sm text-slate-500 hover:text-slate-300 hover:bg-slate-800 transition-colors"
