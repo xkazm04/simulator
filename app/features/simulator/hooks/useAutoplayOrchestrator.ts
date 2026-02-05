@@ -573,10 +573,10 @@ export function useAutoplayOrchestrator(
   useEffect(() => {
     if (autoplay.state.status !== 'generating') return;
 
-    const TIMEOUT_MS = 60000; // 60 seconds
+    const TIMEOUT_MS = 120000; // 120 seconds - generous for slow AI services
     const timeoutId = setTimeout(() => {
       console.error('[Autoplay] Timeout: stuck in generating state for', TIMEOUT_MS / 1000, 'seconds');
-      logEvent('timeout', 'Generation timed out after 60 seconds');
+      logEvent('timeout', 'Generation timed out after 120 seconds');
       autoplay.setError('Generation timed out - please try again');
     }, TIMEOUT_MS);
 
