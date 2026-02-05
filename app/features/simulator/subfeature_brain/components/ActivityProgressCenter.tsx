@@ -186,7 +186,7 @@ function StatusIndicator({
       }>
         {isComplete ? <CheckCircle size={14} /> : isActive ? <Loader2 size={14} className="animate-spin" /> : icon}
       </span>
-      <span className={`text-xs ${
+      <span className={`type-label ${
         isComplete
           ? 'text-green-300'
           : isActive
