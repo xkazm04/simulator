@@ -130,6 +130,9 @@ function CmdCoreComponent({
   const prompts = usePromptsContext();
   const panels = useResponsivePanels();
 
+  // Derive autoplay lock state from multi-phase autoplay
+  const isAutoplayLocked = multiPhaseAutoplay?.isRunning ?? false;
+
   // Memoize dimension splitting
   const { leftDimensions, rightDimensions } = useMemo(() => {
     const midPoint = Math.ceil(dimensions.dimensions.length / 2);
@@ -193,6 +196,7 @@ function CmdCoreComponent({
           onReorder={handleLeftReorder}
           isExpanded={panels.sidebarsExpanded}
           onToggleExpand={panels.toggleSidebars}
+          disabled={isAutoplayLocked}
         />
 
         {/* Center Core: Brain (Breakdown + Feedback) */}
@@ -225,6 +229,7 @@ function CmdCoreComponent({
           onReorder={handleRightReorder}
           isExpanded={panels.sidebarsExpanded}
           onToggleExpand={panels.toggleSidebars}
+          disabled={isAutoplayLocked}
         />
       </div>
 

@@ -108,6 +108,9 @@ function CentralBrainComponent({
   const simulator = useSimulatorContext();
   const project = useProjectContext();
 
+  // Derive autoplay lock state from multi-phase autoplay
+  const isAutoplayLocked = multiPhaseAutoplay?.isRunning ?? false;
+
   // Content mode: 'command' (default) or 'whatif' (replaces Source Analysis section only)
   // Poster is handled as an overlay, not a content mode
   const [contentMode, setContentMode] = useState<'command' | 'whatif'>('command');
@@ -204,7 +207,7 @@ function CentralBrainComponent({
               <SmartBreakdown
                 onApply={handleSmartBreakdownApply}
                 initialVisionSentence={brain.visionSentence}
-                isDisabled={simulator.isGenerating}
+                isDisabled={simulator.isGenerating || isAutoplayLocked}
               />
 
               <div className="mt-lg">
