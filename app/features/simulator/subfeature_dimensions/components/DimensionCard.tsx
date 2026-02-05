@@ -59,6 +59,8 @@ interface DimensionCardProps {
   onDropElement?: (element: PromptElement, dimensionId: string) => void;
   /** Callback when a reference image is added or removed */
   onReferenceImageChange?: (id: string, imageDataUrl: string | null) => void;
+  /** Whether the card inputs are disabled (e.g., during autoplay) */
+  disabled?: boolean;
 }
 
 function DimensionCardComponent({
@@ -71,6 +73,7 @@ function DimensionCardComponent({
   index,
   onDropElement,
   onReferenceImageChange,
+  disabled,
 }: DimensionCardProps) {
   const [isDragOver, setIsDragOver] = useState(false);
   const [showLensControls, setShowLensControls] = useState(false);
@@ -251,9 +254,10 @@ function DimensionCardComponent({
               variant={hasImage ? 'solid' : 'subtle'}
               colorScheme="processing"
               onClick={handleImageUpload}
+              disabled={disabled}
               data-testid={`dimension-image-upload-${dimension.id}`}
               label={hasImage ? 'Reference image attached (click to remove)' : 'Add reference image'}
-              className={!hasImage ? 'opacity-0 group-hover:opacity-100' : ''}
+              className={`${!hasImage ? 'opacity-0 group-hover:opacity-100' : ''} ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
               {hasImage ? <ImageIcon size={12} /> : <ImagePlus size={12} />}
             </IconButton>
@@ -306,13 +310,15 @@ function DimensionCardComponent({
                     max="100"
                     value={weight}
                     onChange={(e) => onWeightChange?.(dimension.id, parseInt(e.target.value))}
+                    disabled={disabled}
                     data-testid={`dimension-weight-slider-${dimension.id}`}
-                    className="w-full h-1.5 bg-slate-700 rounded-full appearance-none cursor-pointer
+                    className={`w-full h-1.5 bg-slate-700 rounded-full appearance-none cursor-pointer
                               focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/50 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900
                               [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3
                               [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:bg-cyan-400
                               [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:cursor-pointer
-                              [&::-webkit-slider-thumb]:hover:bg-cyan-300"
+                              [&::-webkit-slider-thumb]:hover:bg-cyan-300
+                              ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
                   />
                   <div className="flex justify-between type-label text-slate-600 font-mono">
                     <span>preserve</span>
@@ -330,12 +336,13 @@ function DimensionCardComponent({
                       <button
                         key={mode}
                         onClick={() => onFilterModeChange?.(dimension.id, mode)}
+                        disabled={disabled}
                         data-testid={`dimension-filter-${mode}-${dimension.id}`}
                         className={`px-1.5 py-0.5 radius-sm font-mono type-label border focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/50 focus-visible:ring-offset-1 focus-visible:ring-offset-slate-900 ${
                           filterMode === mode
                             ? 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30'
                             : 'bg-slate-700/50 text-slate-400 border-slate-600/30 btn-outline'
-                        }`}
+                        } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
                         title={FILTER_MODE_LABELS[mode].description}
                       >
                         {FILTER_MODE_LABELS[mode].label}
@@ -354,12 +361,13 @@ function DimensionCardComponent({
                       <button
                         key={mode}
                         onClick={() => onTransformModeChange?.(dimension.id, mode)}
+                        disabled={disabled}
                         data-testid={`dimension-transform-${mode}-${dimension.id}`}
                         className={`px-1.5 py-0.5 radius-sm font-mono type-label border focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-500/50 focus-visible:ring-offset-1 focus-visible:ring-offset-slate-900 ${
                           transformMode === mode
                             ? 'bg-purple-500/20 text-purple-400 border-purple-500/30'
                             : 'bg-slate-700/50 text-slate-400 border-slate-600/30 btn-outline-purple'
-                        }`}
+                        } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
                         title={TRANSFORM_MODE_LABELS[mode].description}
                       >
                         {TRANSFORM_MODE_LABELS[mode].label}
@@ -423,8 +431,10 @@ function DimensionCardComponent({
             onChange={(e) => onChange(dimension.id, e.target.value)}
             placeholder={dimension.placeholder || `Describe ${dimension.label.toLowerCase()}...`}
             rows={8}
-            className="w-full bg-transparent text-xs text-slate-300 placeholder-slate-600
-                      resize-none outline-none font-mono leading-relaxed flex-1 h-full min-h-[140px]"
+            disabled={disabled}
+            className={`w-full bg-transparent text-xs text-slate-300 placeholder-slate-600
+                      resize-none outline-none font-mono leading-relaxed flex-1 h-full min-h-[140px]
+                      ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
           />
         </div>
 
@@ -471,6 +481,9 @@ function arePropsEqual(
 
   // Compare index (affects animation stagger)
   if (prevProps.index !== nextProps.index) return false;
+
+  // Compare disabled state
+  if (prevProps.disabled !== nextProps.disabled) return false;
 
   // Callback references don't need deep comparison if parent memoizes them
   // But if they change, we should re-render to ensure latest handlers
