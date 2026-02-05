@@ -395,9 +395,11 @@ export function useMultiPhaseAutoplay(
    * Abort autoplay
    */
   const abort = useCallback(() => {
+    // Stop single-phase orchestrator first to prevent background generation
+    singlePhaseOrchestrator.abortAutoplay();
     hudGenerator.abort();
     dispatch({ type: 'ABORT' });
-  }, [hudGenerator]);
+  }, [singlePhaseOrchestrator, hudGenerator]);
 
   /**
    * Reset state
