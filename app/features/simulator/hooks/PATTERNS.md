@@ -461,3 +461,157 @@ useUndoStack<T>({
 - Simple toggles (modal open/close)
 - Additive operations (adding items to a list)
 - Operations with explicit confirmation dialogs
+
+---
+
+## Lessons Learned (v1.2 Autoplay)
+
+This section captures key insights from implementing the autoplay orchestration fix in v1.2. These lessons apply broadly to any async workflow in React.
+
+### Lesson 1: Callback Over Effect for Async Chains
+
+**Problem:** Effect-based state watching caused timing issues due to React batching.
+
+When the orchestrator watched `generatedPrompts` state to trigger image generation:
+- The effect fired, but `generatedPrompts` was stale (previous render's value)
+- React's concurrent rendering batched the state update, delaying effect execution
+- Result: 2-minute timeouts with no image generation
+
+**Solution:** Pass callbacks (`onPromptsReady`) to get fresh data synchronously.
+
+```typescript
+// BEFORE: Effect-based (broken)
+useEffect(() => {
+  if (status === 'generating') {
+    // generatedPrompts might be stale!
+    generateImages(generatedPrompts);
+  }
+}, [status, generatedPrompts]);
+
+// AFTER: Callback-based (works)
+onRegeneratePrompts({
+  onPromptsReady: (freshPrompts) => {
+    // freshPrompts came directly from the source
+    generateImages(freshPrompts);
+  },
+});
+```
+
+**When to apply:** Any time you need immediate access to freshly-computed state in an async chain. If "state seems one step behind," consider a callback pattern.
+
+**v1.2 implementation:** `SimulatorContext.handleGenerate` now accepts `onPromptsReady` callback, fired synchronously after `setGeneratedPrompts`.
+
+### Lesson 2: Delegation Pattern for Multi-Level Orchestration
+
+**Problem:** Multi-phase autoplay duplicated single-phase logic.
+
+Initial implementation had `useMultiPhaseAutoplay` reimplementing the entire generate-evaluate-refine loop, leading to:
+- Duplicated timeout handling
+- Inconsistent callback wiring
+- Bugs in one layer not fixed in the other
+
+**Solution:** Multi-phase instantiates and controls single-phase orchestrator.
+
+```typescript
+// useMultiPhaseAutoplay.ts
+const singlePhaseOrchestrator = useAutoplayOrchestrator(deps);
+
+// Delegation effect: when phase changes, start single-phase
+useEffect(() => {
+  if (phase === 'sketch' || phase === 'gameplay') {
+    singlePhaseOrchestrator.startAutoplay(config);
+  }
+}, [phase]);
+
+// Completion effect: when single-phase finishes, advance
+useEffect(() => {
+  if (!singlePhaseOrchestrator.isRunning && completionReason) {
+    advanceToNextPhase();
+    singlePhaseOrchestrator.resetAutoplay();
+  }
+}, [singlePhaseOrchestrator.isRunning, completionReason]);
+```
+
+**Benefit:** Single-phase logic tested once, multi-phase just manages transitions.
+
+**Key insight:** Watch `isRunning` + `completionReason` for orchestrator state, not individual status values.
+
+**v1.2 implementation:** `useMultiPhaseAutoplay` now delegates to `useAutoplayOrchestrator` for all image generation phases.
+
+### Lesson 3: Refs for Values in Effects
+
+**Problem:** State values in effects are stale due to closure semantics.
+
+```typescript
+// BUG: generatedPrompts captured at effect creation time
+useEffect(() => {
+  const prompt = generatedPrompts.find(p => p.id === targetId);
+  // prompt might be from a previous render!
+}, [someOtherDep]);
+```
+
+**Solution:** Use refs (`generatedPromptsRef`, `pendingFeedbackRef`) for effect-accessed values.
+
+```typescript
+// Track state in ref, update every render
+const generatedPromptsRef = useRef(generatedPrompts);
+generatedPromptsRef.current = generatedPrompts;
+
+// In effects, read from ref (always current)
+useEffect(() => {
+  const currentPrompts = generatedPromptsRef.current;
+  const prompt = currentPrompts.find(p => p.id === targetId);
+  // prompt is always from latest state
+}, [someOtherDep]);
+```
+
+**Warning signs:** State values that seem "one step behind," effects using state that doesn't match what UI shows.
+
+**Pattern:** Update ref in same render cycle as state update (before return statement).
+
+**v1.2 implementation:** `useAutoplayOrchestrator` uses `generatedPromptsRef`, `pendingFeedbackRef`, and `generatedImagesRef`.
+
+### Lesson 4: Generous Timeouts for AI Services
+
+**Problem:** 60s timeout was too aggressive for slow AI providers.
+
+Image generation through Leonardo AI can take 30-90 seconds depending on:
+- Queue depth
+- Model complexity
+- Server load
+
+A 60-second timeout caused legitimate operations to abort.
+
+**Solution:** 120s timeout as safety net, not primary control.
+
+```typescript
+// Safety net timeout - generous to avoid false positives
+const TIMEOUT_MS = 120000; // 120 seconds
+
+const timeoutId = setTimeout(() => {
+  // This should rarely fire - it's a safety net
+  autoplay.setError('Generation timed out - please try again');
+}, TIMEOUT_MS);
+```
+
+**Principle:** Timeouts prevent hangs, not control flow. Let the actual operation complete, use timeout only to recover from true failures.
+
+**v1.2 implementation:** Both `useAutoplayOrchestrator` (120s) and `useMultiPhaseAutoplay` (120s per phase) use generous timeouts.
+
+### Common Pitfalls
+
+A quick reference for debugging autoplay-related issues:
+
+| Pitfall | Symptom | Solution |
+|---------|---------|----------|
+| Stale closures in effects | State seems "one step behind" | Use refs to track current state |
+| Relying on state updates for chain propagation | Async chain breaks between steps | Use callbacks for immediate data delivery |
+| Tight timeouts for external services | Legitimate operations abort | Use generous safety-net timeouts (120s+) |
+| Duplicating logic across orchestration levels | Same bug appears in multiple places | Delegate lower-level orchestrators |
+| Watching too-specific state for completion | Miss completion in edge cases | Watch `isRunning` + `completionReason` |
+
+**Debugging checklist:**
+1. Is the state value being read from a ref? (check closure staleness)
+2. Is there a callback path for immediate data? (check async chain)
+3. Is the timeout long enough? (check AI service latency)
+4. Is there duplication between orchestrators? (check delegation)
