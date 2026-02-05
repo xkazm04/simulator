@@ -11,7 +11,7 @@ This milestone fixes the broken autoplay orchestration chain so the automated ge
 - Decimal phases (2.1, 2.2): Urgent insertions (marked with INSERTED)
 
 - [x] **Phase 1: Orchestration Fix** - Make API calls fire on state transitions ✓
-- [ ] **Phase 2: UI State & Lock** - Accurate state reflection and view-only mode
+- [x] **Phase 2: UI State & Lock** - Accurate state reflection and view-only mode ✓
 - [ ] **Phase 3: Polish & Documentation** - Visual consistency and architecture docs
 
 ## Phase Details
@@ -44,8 +44,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 02-01-PLAN.md — Wire autoplay status to generate button label and iteration counter
-- [ ] 02-02-PLAN.md — Lock dimension inputs and SmartBreakdown during autoplay
+- [x] 02-01-PLAN.md — Wire autoplay status to generate button label and iteration counter
+- [x] 02-02-PLAN.md — Lock dimension inputs and SmartBreakdown during autoplay
 
 ### Phase 3: Polish & Documentation
 **Goal**: Activity Modal matches main page visual quality and architecture is documented
@@ -57,19 +57,20 @@ Plans:
   3. Activity Modal color scheme is consistent with app theme (slate backgrounds, cyan/purple accents)
   4. Orchestrator effect chain is documented with data flow diagram
   5. PATTERNS.md includes lessons learned from this milestone
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 03-01: TBD
+- [ ] 03-01-PLAN.md — Update PATTERNS.md with orchestrator data flow diagram and lessons learned
+- [ ] 03-02-PLAN.md — Polish Activity Modal typography, spacing, and colors to match main page
 
 ## Progress
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Orchestration Fix | 2/2 | ✓ Complete | 2026-02-05 |
-| 2. UI State & Lock | 0/2 | Ready to execute | - |
-| 3. Polish & Documentation | 0/TBD | Not started | - |
+| 2. UI State & Lock | 2/2 | ✓ Complete | 2026-02-05 |
+| 3. Polish & Documentation | 0/2 | Ready to execute | - |
 
 ---
 *Roadmap created: 2026-02-05*
-*Last updated: 2026-02-05 after Phase 2 planning*
+*Last updated: 2026-02-05 after Phase 3 planning*
