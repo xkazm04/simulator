@@ -34,6 +34,10 @@ export interface ActivityProgressCenterProps {
   error?: string;
   /** Target number of HUDs (equal to gameplay count if HUD enabled) */
   hudTarget: number;
+  /** Current iteration number (1-based) */
+  currentIteration?: number;
+  /** Total iterations configured */
+  maxIterations?: number;
 }
 
 /**
@@ -203,6 +207,8 @@ export function ActivityProgressCenter({
   hudGenerated,
   error,
   hudTarget,
+  currentIteration,
+  maxIterations,
 }: ActivityProgressCenterProps) {
   const phaseInfo = getPhaseInfo(currentPhase);
 
@@ -235,6 +241,18 @@ export function ActivityProgressCenter({
             {phaseInfo.label}
           </span>
         </div>
+
+        {/* Iteration Counter */}
+        {currentIteration !== undefined && currentIteration > 0 && (
+          <div className="mt-2">
+            <span className="font-mono text-sm text-cyan-400">
+              Iteration {currentIteration}
+              {maxIterations !== undefined && maxIterations > 0 && (
+                <span className="text-slate-500"> of {maxIterations}</span>
+              )}
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Error display */}
