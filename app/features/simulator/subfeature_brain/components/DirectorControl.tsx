@@ -113,6 +113,41 @@ export function DirectorControl({
 
   const isAnyGenerating = simulator.isGenerating || isGeneratingPoster || isRefining || isAutoplayLocked;
 
+  /**
+   * Derive human-readable status label from autoplay state
+   * Returns appropriate label based on current operation
+   */
+  const getStatusLabel = useCallback((): { label: string; colorClass: string } => {
+    // Multi-phase autoplay running - derive from phase
+    if (multiPhaseAutoplay?.isRunning) {
+      switch (multiPhaseAutoplay.phase) {
+        case 'sketch':
+        case 'gameplay':
+          return { label: 'GENERATING...', colorClass: 'from-cyan-400 to-purple-400' };
+        case 'poster':
+          return { label: 'SELECTING POSTER...', colorClass: 'from-rose-400 to-amber-400' };
+        case 'hud':
+          return { label: 'GENERATING HUD...', colorClass: 'from-green-400 to-emerald-400' };
+        default:
+          return { label: 'SIMULATING...', colorClass: 'from-cyan-400 to-purple-400' };
+      }
+    }
+
+    // Local state checks (refining, poster generation, regular generation)
+    if (isRefining) {
+      return { label: 'REFINING...', colorClass: 'from-amber-400 to-orange-400' };
+    }
+    if (isGeneratingPoster) {
+      return { label: 'GENERATING POSTER...', colorClass: 'from-rose-400 to-amber-400' };
+    }
+    if (simulator.isGenerating) {
+      return { label: 'SIMULATING...', colorClass: 'from-cyan-400 to-purple-400' };
+    }
+
+    // Idle state
+    return { label: 'GENERATE', colorClass: '' };
+  }, [multiPhaseAutoplay?.isRunning, multiPhaseAutoplay?.phase, isRefining, isGeneratingPoster, simulator.isGenerating]);
+
   // Smart suggestion handlers
   const handleAcceptDimensionSuggestion = useCallback((dimensionType: DimensionType, weight?: number) => {
     // Find preset for this dimension type in all available presets
@@ -594,12 +629,22 @@ export function DirectorControl({
             <div className="absolute inset-0 bg-gradient-to-r from-cyan-500 via-purple-500 to-amber-500 opacity-60 group-hover:opacity-100 transition-opacity duration-300" />
             <div className="relative h-10 bg-black/90 radius-md flex items-center justify-center gap-3 group-hover:bg-black/80 transition-colors px-6">
               {isAnyGenerating ? (
-                <>
-                  <Loader2 className={`animate-spin ${isRefining ? 'text-amber-400' : isGeneratingPoster ? 'text-rose-400' : 'text-cyan-400'}`} size={18} />
-                  <span className={`font-mono text-md tracking-wider text-transparent bg-clip-text bg-gradient-to-r ${isRefining ? 'from-amber-400 to-orange-400' : isGeneratingPoster ? 'from-rose-400 to-amber-400' : 'from-cyan-400 to-purple-400'}`}>
-                    {isRefining ? 'REFINING...' : isGeneratingPoster ? 'GENERATING POSTER...' : 'SIMULATING...'}
-                  </span>
-                </>
+                (() => {
+                  const status = getStatusLabel();
+                  return (
+                    <>
+                      <Loader2 className={`animate-spin ${
+                        status.colorClass.includes('amber') ? 'text-amber-400' :
+                        status.colorClass.includes('rose') ? 'text-rose-400' :
+                        status.colorClass.includes('green') ? 'text-green-400' :
+                        'text-cyan-400'
+                      }`} size={18} />
+                      <span className={`font-mono text-md tracking-wider text-transparent bg-clip-text bg-gradient-to-r ${status.colorClass}`}>
+                        {status.label}
+                      </span>
+                    </>
+                  );
+                })()
               ) : (
                 <>
                   <Wand2 className={`group-hover:rotate-12 transition-transform duration-300 ${simulator.canGenerate ? 'text-cyan-400' : 'text-slate-600'}`} size={18} />
