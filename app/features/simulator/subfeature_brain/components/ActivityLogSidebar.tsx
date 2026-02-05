@@ -200,8 +200,8 @@ function EventEntry({ event }: { event: AutoplayLogEntry }) {
         )}
         <Icon size={14} className={`${colors.icon} shrink-0 mt-0.5`} />
         <div className="flex-1 min-w-0">
-          <p className={`text-xs ${colors.text} break-words`}>{event.message}</p>
-          <span className="text-[10px] text-slate-600 font-mono">
+          <p className={`type-label ${colors.text} break-words`}>{event.message}</p>
+          <span className="type-label text-slate-600 font-mono">
             {formatTimestamp(event.timestamp)}
           </span>
         </div>
@@ -217,7 +217,7 @@ function EventEntry({ event }: { event: AutoplayLogEntry }) {
             transition={transitions.fast}
             className="mt-2 pt-2 border-t border-slate-700/50"
           >
-            <div className="space-y-1 text-[10px] font-mono">
+            <div className="space-y-1 type-label font-mono">
               {event.details.phase && (
                 <div className="flex gap-2">
                   <span className="text-slate-500">Phase:</span>
