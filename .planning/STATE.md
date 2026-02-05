@@ -5,22 +5,22 @@
 See: .planning/PROJECT.md (updated 2026-02-05)
 
 **Core value:** Transform fuzzy creative visions into concrete, curated AI-generated imagery through intelligent prompt building and automated refinement.
-**Current focus:** Phase 2 - UI State & Lock
+**Current focus:** Phase 3 - Polish & Documentation
 
 ## Current Position
 
-Phase: 2 of 3 (UI State & Lock)
-Plan: 2 of 2 in current phase
+Phase: 3 of 3 (Polish & Documentation)
+Plan: 1 of 1 in current phase
 Status: Phase complete
-Last activity: 2026-02-05 - Completed 02-02-PLAN.md
+Last activity: 2026-02-05 - Completed 03-01-PLAN.md
 
-Progress: [######----] 57%
+Progress: [##########] 100%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 4
-- Average duration: 7.25 min
+- Total plans completed: 5
+- Average duration: 5.8 min
 - Total execution time: 0.5 hours
 
 **By Phase:**
@@ -29,11 +29,11 @@ Progress: [######----] 57%
 |-------|-------|-------|----------|
 | 1. Orchestration Fix | 2/2 | 14 min | 7 min |
 | 2. UI State & Lock | 2/2 | 15 min | 7.5 min |
-| 3. Polish & Documentation | 0/TBD | - | - |
+| 3. Polish & Documentation | 1/1 | 2 min | 2 min |
 
 **Recent Trend:**
-- Last 5 plans: 6 min, 8 min, 8 min, 7 min
-- Trend: Stable
+- Last 5 plans: 6 min, 8 min, 8 min, 7 min, 2 min
+- Trend: Stable (docs plan faster as expected)
 
 *Updated after each plan completion*
 
@@ -55,6 +55,8 @@ Recent decisions affecting current work:
 - [02-01]: Iteration props optional with graceful hiding when not provided
 - [02-02]: Thread disabled prop through component hierarchy rather than using context
 - [02-02]: isAutoplayLocked derivation pattern: multiPhaseAutoplay?.isRunning ?? false
+- [03-01]: Use ASCII diagrams instead of Mermaid for simpler tooling requirements
+- [03-01]: Document both effect chain sequence and critical callback wiring
 
 ### Known Issues (from prior investigation)
 
@@ -66,14 +68,14 @@ Recent decisions affecting current work:
 
 ### Pending Todos
 
-- Wire iteration data from useAutoplay state through useMultiPhaseAutoplay to UI (enhancement for Phase 3)
+None - all v1.2 milestone tasks complete.
 
 ### Blockers/Concerns
 
-All known orchestration and UI lock issues resolved. Ready for Phase 3 (Polish & Documentation).
+None - v1.2 milestone complete.
 
 ## Session Continuity
 
 Last session: 2026-02-05
-Stopped at: Completed 02-02-PLAN.md (Phase 2 complete)
+Stopped at: Completed 03-01-PLAN.md (v1.2 milestone complete)
 Resume file: None
