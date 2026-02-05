@@ -665,6 +665,8 @@ export function useMultiPhaseAutoplay(
       return;
     }
 
+    // Phase timeout: 2 minutes allows for multiple image generations + evaluations
+    // This is a safety net, not the normal exit path
     const PHASE_TIMEOUT_MS = 120000; // 2 minutes per phase
     const timeoutId = setTimeout(() => {
       console.error(`[MultiPhase] Phase '${phase}' timed out after ${PHASE_TIMEOUT_MS / 1000}s`);
