@@ -78,6 +78,12 @@ export interface AutoplaySetupModalProps {
   imageEvents?: AutoplayLogEntry[];
   onStop?: () => void;
   onReset?: () => void;
+
+  // Iteration tracking (optional)
+  /** Current iteration number (1-based) */
+  currentIteration?: number;
+  /** Max iterations configured */
+  maxIterations?: number;
 }
 
 const DEFAULT_CONFIG: ExtendedAutoplayConfig = {
@@ -389,6 +395,8 @@ function ActivityModeContent({
   error,
   textEvents,
   imageEvents,
+  currentIteration,
+  maxIterations,
 }: {
   currentPhase: AutoplayPhase;
   sketchProgress: PhaseProgress;
@@ -399,6 +407,8 @@ function ActivityModeContent({
   error?: string;
   textEvents: AutoplayLogEntry[];
   imageEvents: AutoplayLogEntry[];
+  currentIteration?: number;
+  maxIterations?: number;
 }) {
   return (
     <div className="flex-1 flex min-h-0">
@@ -422,6 +432,8 @@ function ActivityModeContent({
           hudGenerated={hudGenerated}
           hudTarget={hudTarget}
           error={error}
+          currentIteration={currentIteration}
+          maxIterations={maxIterations}
         />
       </div>
 
@@ -460,6 +472,9 @@ export function AutoplaySetupModal({
   imageEvents = [],
   onStop,
   onReset,
+  // Iteration tracking
+  currentIteration,
+  maxIterations,
 }: AutoplaySetupModalProps) {
   const [config, setConfig] = useState<ExtendedAutoplayConfig>(DEFAULT_CONFIG);
   const [isProcessingBreakdown, setIsProcessingBreakdown] = useState(false);
@@ -603,6 +618,8 @@ export function AutoplaySetupModal({
               error={error}
               textEvents={textEvents}
               imageEvents={imageEvents}
+              currentIteration={currentIteration}
+              maxIterations={maxIterations}
             />
           ) : (
             <SetupModeContent

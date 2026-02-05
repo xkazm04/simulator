@@ -75,6 +75,10 @@ export interface DirectorControlProps {
     onStart: (config: ExtendedAutoplayConfig) => void;
     onStop: () => void;
     onReset: () => void;
+    /** Current iteration number (1-based) - optional */
+    currentIteration?: number;
+    /** Max iterations configured - optional */
+    maxIterations?: number;
   };
 
   // Event log for activity modal (optional)
@@ -553,6 +557,9 @@ export function DirectorControl({
                         multiPhaseAutoplay.onReset();
                         eventLog?.clearEvents();
                       }}
+                      // Iteration tracking
+                      currentIteration={multiPhaseAutoplay.currentIteration}
+                      maxIterations={multiPhaseAutoplay.maxIterations}
                     />
                   )}
                   className={`flex items-center gap-1.5 px-3 py-1 radius-sm border transition-colors
@@ -597,6 +604,9 @@ export function DirectorControl({
                         multiPhaseAutoplay.onReset();
                         eventLog?.clearEvents();
                       }}
+                      // Iteration tracking (will be undefined when not running, which is fine)
+                      currentIteration={multiPhaseAutoplay.currentIteration}
+                      maxIterations={multiPhaseAutoplay.maxIterations}
                     />
                   )}
                   disabled={!multiPhaseAutoplay.canStart || (isAnyGenerating && !isAutoplayLocked)}
