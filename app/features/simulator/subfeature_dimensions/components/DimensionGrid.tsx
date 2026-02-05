@@ -26,6 +26,8 @@ interface DimensionGridProps {
   onReorder?: (reorderedDimensions: Dimension[]) => void;
   /** Handler for dropping an element onto a dimension (bidirectional flow) */
   onDropElement?: (element: PromptElement, dimensionId: string) => void;
+  /** Whether all dimension cards are disabled (e.g., during autoplay) */
+  disabled?: boolean;
 }
 
 function DimensionGridComponent({
@@ -39,6 +41,7 @@ function DimensionGridComponent({
   onAdd,
   onReorder,
   onDropElement,
+  disabled,
 }: DimensionGridProps) {
   const [showAddMenu, setShowAddMenu] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -131,6 +134,7 @@ function DimensionGridComponent({
               onRemove={onRemove}
               index={index}
               onDropElement={onDropElement}
+              disabled={disabled}
             />
           </Reorder.Item>
         ))}

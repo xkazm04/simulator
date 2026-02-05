@@ -33,6 +33,8 @@ export interface DimensionColumnProps {
   isExpanded?: boolean;
   /** Callback when expand state changes (required if isExpanded is provided) */
   onToggleExpand?: () => void;
+  /** Whether dimension inputs are disabled (e.g., during autoplay) */
+  disabled?: boolean;
 }
 
 export function DimensionColumn({
@@ -43,6 +45,7 @@ export function DimensionColumn({
   onReorder,
   isExpanded: controlledExpanded,
   onToggleExpand: controlledToggle,
+  disabled,
 }: DimensionColumnProps) {
   // Get dimension handlers from context
   const dimensionsCtx = useDimensionsContext();
@@ -181,6 +184,7 @@ export function DimensionColumn({
                 onAdd={dimensionsCtx.handleDimensionAdd}
                 onReorder={onReorder}
                 onDropElement={simulatorCtx.onDropElementOnDimension}
+                disabled={disabled}
               />
             </div>
           </motion.div>
