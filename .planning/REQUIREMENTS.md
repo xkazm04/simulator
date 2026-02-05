@@ -9,10 +9,10 @@ Requirements for Autoplay Stability & Polish milestone.
 
 ### Orchestration
 
-- [ ] **ORCH-01**: When autoplay starts, orchestrator triggers image generation API within 5 seconds of state transition
-- [ ] **ORCH-02**: Each autoplay iteration completes the full cycle: generate → evaluate → refine
-- [ ] **ORCH-03**: Multi-phase flow progresses through configured phases without manual intervention
-- [ ] **ORCH-04**: No timeout errors during normal autoplay operation
+- [x] **ORCH-01**: When autoplay starts, orchestrator triggers image generation API within 5 seconds of state transition
+- [x] **ORCH-02**: Each autoplay iteration completes the full cycle: generate → evaluate → refine
+- [x] **ORCH-03**: Multi-phase flow progresses through configured phases without manual intervention
+- [x] **ORCH-04**: No timeout errors during normal autoplay operation
 
 ### State Reflection
 
@@ -69,10 +69,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| ORCH-01 | Phase 1 | Pending |
-| ORCH-02 | Phase 1 | Pending |
-| ORCH-03 | Phase 1 | Pending |
-| ORCH-04 | Phase 1 | Pending |
+| ORCH-01 | Phase 1 | Complete |
+| ORCH-02 | Phase 1 | Complete |
+| ORCH-03 | Phase 1 | Complete |
+| ORCH-04 | Phase 1 | Complete |
 | STATE-01 | Phase 2 | Pending |
 | STATE-02 | Phase 2 | Pending |
 | STATE-03 | Phase 2 | Pending |
@@ -94,4 +94,4 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 ---
 *Requirements defined: 2026-02-05*
-*Last updated: 2026-02-05 after roadmap creation*
+*Last updated: 2026-02-05 after Phase 1 completion*

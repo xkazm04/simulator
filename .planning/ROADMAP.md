@@ -10,7 +10,7 @@ This milestone fixes the broken autoplay orchestration chain so the automated ge
 - Integer phases (1, 2, 3): Planned milestone work
 - Decimal phases (2.1, 2.2): Urgent insertions (marked with INSERTED)
 
-- [ ] **Phase 1: Orchestration Fix** - Make API calls fire on state transitions
+- [x] **Phase 1: Orchestration Fix** - Make API calls fire on state transitions ✓
 - [ ] **Phase 2: UI State & Lock** - Accurate state reflection and view-only mode
 - [ ] **Phase 3: Polish & Documentation** - Visual consistency and architecture docs
 
@@ -28,8 +28,8 @@ This milestone fixes the broken autoplay orchestration chain so the automated ge
 **Plans**: 2 plans
 
 Plans:
-- [ ] 01-01-PLAN.md — Fix single-phase orchestration with callback-based prompt propagation
-- [ ] 01-02-PLAN.md — Wire multi-phase to delegate to single-phase orchestrator
+- [x] 01-01-PLAN.md — Fix single-phase orchestration with callback-based prompt propagation
+- [x] 01-02-PLAN.md — Wire multi-phase to delegate to single-phase orchestrator
 
 ### Phase 2: UI State & Lock
 **Goal**: User sees accurate progress and cannot interfere with running autoplay
@@ -65,10 +65,10 @@ Plans:
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Orchestration Fix | 0/2 | Planned | - |
+| 1. Orchestration Fix | 2/2 | ✓ Complete | 2026-02-05 |
 | 2. UI State & Lock | 0/TBD | Not started | - |
 | 3. Polish & Documentation | 0/TBD | Not started | - |
 
 ---
 *Roadmap created: 2026-02-05*
-*Last updated: 2026-02-05*
+*Last updated: 2026-02-05 after Phase 1 completion*
