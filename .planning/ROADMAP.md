@@ -41,10 +41,11 @@ Plans:
   3. Iteration counter increments each time a cycle completes
   4. Dimension inputs, manual generate button, and Smart Breakdown are disabled during autoplay
   5. Abort button remains clickable and stops autoplay immediately
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 02-01: TBD
+- [ ] 02-01-PLAN.md — Wire autoplay status to generate button label and iteration counter
+- [ ] 02-02-PLAN.md — Lock dimension inputs and SmartBreakdown during autoplay
 
 ### Phase 3: Polish & Documentation
 **Goal**: Activity Modal matches main page visual quality and architecture is documented
@@ -66,9 +67,9 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Orchestration Fix | 2/2 | ✓ Complete | 2026-02-05 |
-| 2. UI State & Lock | 0/TBD | Not started | - |
+| 2. UI State & Lock | 0/2 | Ready to execute | - |
 | 3. Polish & Documentation | 0/TBD | Not started | - |
 
 ---
 *Roadmap created: 2026-02-05*
-*Last updated: 2026-02-05 after Phase 1 completion*
+*Last updated: 2026-02-05 after Phase 2 planning*
