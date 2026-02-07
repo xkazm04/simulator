@@ -127,17 +127,17 @@ EVALUATION CRITERIA:
 3. AESTHETIC APPEAL (0-100): Composition, lighting, color harmony, visual interest
 4. MODE COMPLIANCE: Does it correctly include/exclude UI elements based on the mode?
 
-RESPOND IN THIS EXACT JSON FORMAT (no markdown, no code blocks):
+RESPOND IN THIS EXACT JSON FORMAT (no markdown, no code blocks).
+IMPORTANT: Keep feedback under 50 words, max 2 items per array:
 {
   "approved": true/false,
   "score": <overall score 0-100>,
   "technicalScore": <0-100>,
   "goalFitScore": <0-100>,
-  "aestheticScore": <0-100>,
   "modeCompliance": true/false,
-  "feedback": "<specific feedback for improvement if not approved>",
-  "improvements": ["<specific aspect to improve>", "<another aspect>"],
-  "strengths": ["<what worked well>", "<another strength>"]
+  "feedback": "<brief feedback, max 50 words>",
+  "improvements": ["<key improvement>"],
+  "strengths": ["<key strength>"]
 }
 
 APPROVAL LOGIC:

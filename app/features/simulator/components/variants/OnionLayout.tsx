@@ -25,10 +25,8 @@ import { SidePanel, UploadImageModal } from '../../subfeature_panels';
 import { Toast, useToast } from '@/app/components/ui';
 import { useResponsivePanels } from '../../lib/useResponsivePanels';
 
-// Core view components
+// Core view component
 import { CmdCore } from './CmdCore';
-import { PosterCore } from './PosterCore';
-import { WhatifCore } from './WhatifCore';
 
 // Legacy components for poster overlay
 import { PosterFullOverlay } from '../../subfeature_brain/components/PosterFullOverlay';
@@ -108,9 +106,13 @@ export interface OnionLayoutProps {
     posterSelected: boolean;
     hudGenerated: number;
     error?: string;
+    errorPhase?: string;
     onStart: (config: import('../../types').ExtendedAutoplayConfig) => void;
     onStop: () => void;
     onReset: () => void;
+    onRetry?: () => void;
+    currentIteration?: number;
+    maxIterations?: number;
     // Event log for activity modal
     eventLog?: {
       textEvents: import('../../types').AutoplayLogEntry[];
@@ -161,8 +163,8 @@ function OnionLayoutComponent({
   // Get simulator actions from context
   const simulator = useSimulatorContext();
 
-  // Get view mode from Zustand store
-  const { viewMode } = useViewModeStore();
+  // Get view mode from store
+  const { viewMode, setViewMode } = useViewModeStore();
 
   // Responsive panel management
   const panels = useResponsivePanels();
@@ -225,72 +227,39 @@ function OnionLayoutComponent({
       {/* Copy Toast */}
       <Toast {...toastProps} data-testid="copy-toast" />
 
-      {/* Left Border: Image Placeholders - only shown in CMD mode */}
-      {viewMode === 'cmd' && (
-        <SidePanel
-          side="left"
-          slots={leftPanelSlots}
-          onRemoveImage={onRemovePanelImage}
-          onViewImage={onViewPanelImage}
-          onEmptySlotClick={handleEmptySlotClick}
-        />
-      )}
+      {/* Left Border: Image Placeholders */}
+      <SidePanel
+        side="left"
+        slots={leftPanelSlots}
+        onRemoveImage={onRemovePanelImage}
+        onViewImage={onViewPanelImage}
+        onEmptySlotClick={handleEmptySlotClick}
+      />
 
-      {/* Main Layout - switches based on view mode */}
-      {viewMode === 'cmd' && (
-        <CmdCore
-          generatedImages={generatedImages}
-          isGeneratingImages={isGeneratingImages}
-          onStartImage={onStartImage}
-          onDeleteImage={onDeleteImage}
-          savedPromptIds={savedPromptIds}
-          onDeleteGenerations={onDeleteGenerations}
-          projectPoster={projectPoster}
-          showPosterOverlay={showPosterOverlay}
-          onTogglePosterOverlay={onTogglePosterOverlay}
-          isGeneratingPoster={isGeneratingPoster}
-          onUploadPoster={onUploadPoster}
-          onGeneratePoster={onGeneratePoster}
-          posterGenerations={posterGenerations}
-          selectedPosterIndex={selectedPosterIndex}
-          isSavingPoster={isSavingPoster}
-          onSelectPoster={onSelectPoster}
-          onSavePoster={onSavePoster}
-          onCancelPosterGeneration={onCancelPosterGeneration}
-          onOpenComparison={onOpenComparison}
-          onViewPrompt={onViewPrompt}
-          leftPanelSlots={leftPanelSlots}
-          rightPanelSlots={rightPanelSlots}
-          autoplay={autoplay}
-          multiPhaseAutoplay={multiPhaseAutoplay}
-        />
-      )}
+      {/* Main Layout - always CmdCore, content switches via viewMode in CentralBrain */}
+      <CmdCore
+        generatedImages={generatedImages}
+        isGeneratingImages={isGeneratingImages}
+        onStartImage={onStartImage}
+        onDeleteImage={onDeleteImage}
+        savedPromptIds={savedPromptIds}
+        onDeleteGenerations={onDeleteGenerations}
+        isGeneratingPoster={isGeneratingPoster}
+        onGeneratePoster={onGeneratePoster}
+        onOpenComparison={onOpenComparison}
+        onViewPrompt={onViewPrompt}
+        leftPanelSlots={leftPanelSlots}
+        rightPanelSlots={rightPanelSlots}
+        autoplay={autoplay}
+        multiPhaseAutoplay={multiPhaseAutoplay}
+      />
 
-      {viewMode === 'poster' && (
-        <PosterCore
-          projectPoster={projectPoster}
-          posterGenerations={posterGenerations}
-          selectedPosterIndex={selectedPosterIndex}
-          isGeneratingPoster={isGeneratingPoster}
-          isSavingPoster={isSavingPoster}
-          onSelectPoster={onSelectPoster}
-          onSavePoster={onSavePoster}
-          onCancelPosterGeneration={onCancelPosterGeneration}
-          onUploadPoster={onUploadPoster}
-          onGeneratePoster={onGeneratePoster}
-        />
-      )}
-
-      {viewMode === 'whatif' && (
-        <WhatifCore />
-      )}
-
-      {/* Poster Overlay - covers center when active (for CMD mode backward compat) */}
+      {/* Poster Overlay - covers center when poster tab is active */}
       <AnimatePresence>
-        {viewMode === 'cmd' && showPosterOverlay && (
+        {viewMode === 'poster' && (
           <PosterFullOverlay
-            isOpen={showPosterOverlay}
-            onClose={onTogglePosterOverlay}
+            isOpen={true}
+            onClose={() => setViewMode('cmd')}
             poster={projectPoster || null}
             posterGenerations={posterGenerations}
             selectedIndex={selectedPosterIndex}
@@ -304,16 +273,14 @@ function OnionLayoutComponent({
         )}
       </AnimatePresence>
 
-      {/* Right Border: Image Placeholders - only shown in CMD mode */}
-      {viewMode === 'cmd' && (
-        <SidePanel
-          side="right"
-          slots={rightPanelSlots}
-          onRemoveImage={onRemovePanelImage}
-          onViewImage={onViewPanelImage}
-          onEmptySlotClick={handleEmptySlotClick}
-        />
-      )}
+      {/* Right Border: Image Placeholders */}
+      <SidePanel
+        side="right"
+        slots={rightPanelSlots}
+        onRemoveImage={onRemovePanelImage}
+        onViewImage={onViewPanelImage}
+        onEmptySlotClick={handleEmptySlotClick}
+      />
 
       {/* Upload Image Modal */}
       <UploadImageModal

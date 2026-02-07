@@ -15,7 +15,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenAI } from '@google/genai';
-import { getGeminiProvider } from '@/app/lib/ai/providers/gemini';
+import { getGeminiProvider, parseJsonFromGeminiResponse } from '@/app/lib/ai';
 import { ImageEvaluation, PolishResult } from '@/app/features/simulator/types';
 import { buildEvaluationPrompt, EvaluationCriteria } from '@/app/features/simulator/subfeature_brain/lib/imageEvaluator';
 
@@ -163,28 +163,25 @@ async function evaluatePolishedImage(
     type: 'vision',
     imageDataUrl,
     prompt: evaluationPrompt,
-    systemInstruction: 'You are an expert image quality evaluator. Always respond with valid JSON only, no markdown or extra text.',
+    systemInstruction: 'You are an expert image quality evaluator. Always respond with valid JSON only, no markdown or extra text. Keep feedback concise (under 100 words).',
     temperature: 0.3,
-    maxTokens: 1024,
+    maxTokens: 2048, // Increased from 1024 to prevent truncation
     metadata: { feature: 'polish-evaluation' },
   });
 
-  // Parse JSON response
-  let jsonStr = visionResponse.text.trim();
-
-  // Remove markdown code blocks if present
-  if (jsonStr.startsWith('```json')) {
-    jsonStr = jsonStr.slice(7);
-  } else if (jsonStr.startsWith('```')) {
-    jsonStr = jsonStr.slice(3);
-  }
-  if (jsonStr.endsWith('```')) {
-    jsonStr = jsonStr.slice(0, -3);
-  }
-  jsonStr = jsonStr.trim();
-
   try {
-    const parsed = JSON.parse(jsonStr);
+    // Use robust JSON parser that handles truncation and markdown
+    interface EvalResponse {
+      score?: number;
+      technicalScore?: number;
+      goalFitScore?: number;
+      aestheticScore?: number;
+      modeCompliance?: boolean;
+      feedback?: string;
+      improvements?: string[];
+      strengths?: string[];
+    }
+    const parsed = parseJsonFromGeminiResponse<EvalResponse>(visionResponse.text);
     const score = typeof parsed.score === 'number' ? parsed.score : 50;
     const threshold = criteria.approvalThreshold ?? 70;
 

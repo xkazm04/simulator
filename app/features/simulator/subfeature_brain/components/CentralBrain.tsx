@@ -2,31 +2,30 @@
  * CentralBrain - Central control area with source analysis and director control
  *
  * Uses BrainContext, PromptsContext, DimensionsContext, and SimulatorContext
- * to access state and handlers.
+ * to access state and handlers. Content switches based on global viewMode:
+ * - cmd/poster: Source Analysis (SmartBreakdown + BaseImageInput)
+ * - whatif: WhatIfPanel (Before/After comparison)
  *
  * Contains:
  * - Source Analysis section (SmartBreakdown + BaseImageInput)
  * - Director Control section (extracted to DirectorControl component)
- * - Tab switcher for Command/Poster/WhatIf views
  */
 
 'use client';
 
-import React, { useCallback, memo, useState, useEffect } from 'react';
+import React, { useCallback, memo } from 'react';
 import {
   GeneratedImage,
-  ProjectPoster,
 } from '../../types';
-import { PosterGeneration } from '../../hooks/usePoster';
 import { BaseImageInput } from './BaseImageInput';
 import { SmartBreakdown } from './SmartBreakdown';
 import { DirectorControl } from './DirectorControl';
-import { BrainTabSwitcher, BrainTab } from './BrainTabSwitcher';
 import { WhatIfPanel } from './WhatIfPanel';
 import { useBrainContext } from '../BrainContext';
 import { useDimensionsContext } from '../../subfeature_dimensions/DimensionsContext';
 import { useSimulatorContext } from '../../SimulatorContext';
 import { useProjectContext } from '../../contexts';
+import { useViewModeStore } from '../../stores';
 
 export interface CentralBrainProps {
   // Image generation (external to subfeatures)
@@ -34,21 +33,9 @@ export interface CentralBrainProps {
   isGeneratingImages: boolean;
   onDeleteGenerations?: () => void;
 
-  // Poster mode toggle (actual poster display handled by PosterFullOverlay in OnionLayout)
-  projectPoster?: ProjectPoster | null;
-  showPosterOverlay: boolean;
-  onTogglePosterOverlay?: () => void;
+  // Poster generation (for DirectorControl)
   isGeneratingPoster: boolean;
-  onUploadPoster?: (imageDataUrl: string) => void;
   onGeneratePoster?: () => Promise<void>;
-
-  // Poster generation state (passed through for OnionLayout compatibility)
-  posterGenerations?: PosterGeneration[];
-  selectedPosterIndex?: number | null;
-  isSavingPoster?: boolean;
-  onSelectPoster?: (index: number) => void;
-  onSavePoster?: () => void;
-  onCancelPosterGeneration?: () => void;
 
   // Autoplay orchestrator props (legacy single-mode)
   autoplay?: {
@@ -79,9 +66,13 @@ export interface CentralBrainProps {
     posterSelected: boolean;
     hudGenerated: number;
     error?: string;
+    errorPhase?: string;
     onStart: (config: import('../../types').ExtendedAutoplayConfig) => void;
     onStop: () => void;
     onReset: () => void;
+    onRetry?: () => void;
+    currentIteration?: number;
+    maxIterations?: number;
     // Event log for activity modal
     eventLog?: {
       textEvents: import('../../types').AutoplayLogEntry[];
@@ -95,8 +86,6 @@ function CentralBrainComponent({
   generatedImages,
   isGeneratingImages,
   onDeleteGenerations,
-  showPosterOverlay,
-  onTogglePosterOverlay,
   isGeneratingPoster,
   onGeneratePoster,
   autoplay,
@@ -111,29 +100,8 @@ function CentralBrainComponent({
   // Derive autoplay lock state from multi-phase autoplay
   const isAutoplayLocked = multiPhaseAutoplay?.isRunning ?? false;
 
-  // Content mode: 'command' (default) or 'whatif' (replaces Source Analysis section only)
-  // Poster is handled as an overlay, not a content mode
-  const [contentMode, setContentMode] = useState<'command' | 'whatif'>('command');
-
-  // Derive active tab from contentMode and showPosterOverlay
-  const activeTab: BrainTab = showPosterOverlay ? 'poster' : contentMode;
-
-  // Handle tab changes
-  const handleTabChange = useCallback((tab: BrainTab) => {
-    if (tab === 'poster') {
-      // Poster shows as overlay on top of current content
-      if (!showPosterOverlay && onTogglePosterOverlay) {
-        onTogglePosterOverlay();
-      }
-    } else {
-      // Close poster overlay if open
-      if (showPosterOverlay && onTogglePosterOverlay) {
-        onTogglePosterOverlay();
-      }
-      // Switch content mode
-      setContentMode(tab as 'command' | 'whatif');
-    }
-  }, [showPosterOverlay, onTogglePosterOverlay]);
+  // Read view mode from global store (single source of truth from header tab switcher)
+  const { viewMode } = useViewModeStore();
 
   // Smart breakdown handler - bridges brain to dimensions (memoized)
   const handleSmartBreakdownApply = useCallback(
@@ -189,21 +157,14 @@ function CentralBrainComponent({
           <div className="mb-md flex items-center justify-between gap-4">
             <span className="text-md uppercase tracking-widest text-white font-medium flex items-center gap-2 drop-shadow-[0_0_8px_rgba(255,255,255,0.4)]">
               <div className="w-2 h-2 rounded-full bg-cyan-500 shadow-[0_0_8px_rgba(6,182,212,0.6)]" />
-              {contentMode === 'command' && 'Source Analysis'}
-              {contentMode === 'whatif' && 'What If'}
+              {viewMode === 'whatif' ? 'What If' : 'Source Analysis'}
             </span>
-
-            {/* Tab Switcher */}
-            <BrainTabSwitcher
-              activeTab={activeTab}
-              onTabChange={handleTabChange}
-            />
           </div>
 
-          {/* Content Area - always shows based on contentMode (poster is overlay) */}
-          {contentMode === 'command' && (
+          {/* Content Area - switches based on global viewMode */}
+          {viewMode !== 'whatif' ? (
             <>
-              {/* Source Analysis Content */}
+              {/* Source Analysis Content (shown for cmd and poster modes) */}
               <SmartBreakdown
                 onApply={handleSmartBreakdownApply}
                 initialVisionSentence={brain.visionSentence}
@@ -224,9 +185,7 @@ function CentralBrainComponent({
                 />
               </div>
             </>
-          )}
-
-          {contentMode === 'whatif' && (
+          ) : (
             <WhatIfPanel projectId={project.currentProject?.id || null} />
           )}
         </div>
@@ -263,15 +222,6 @@ function arePropsEqual(
   // Compare boolean flags
   if (prevProps.isGeneratingImages !== nextProps.isGeneratingImages) return false;
   if (prevProps.isGeneratingPoster !== nextProps.isGeneratingPoster) return false;
-  if (prevProps.showPosterOverlay !== nextProps.showPosterOverlay) return false;
-  if (prevProps.isSavingPoster !== nextProps.isSavingPoster) return false;
-
-  // Compare poster by reference
-  if (prevProps.projectPoster !== nextProps.projectPoster) return false;
-
-  // Compare poster generations by reference
-  if (prevProps.posterGenerations !== nextProps.posterGenerations) return false;
-  if (prevProps.selectedPosterIndex !== nextProps.selectedPosterIndex) return false;
 
   // Compare autoplay by reference
   if (prevProps.autoplay !== nextProps.autoplay) return false;

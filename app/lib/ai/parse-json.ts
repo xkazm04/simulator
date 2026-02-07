@@ -69,10 +69,38 @@ export function parseAIJsonResponse<T = unknown>(text: string): T {
   }
 
   if (endIdx === -1) {
-    throw new Error(`Incomplete JSON object (unclosed braces: ${braceCount})`);
-  }
+    // Attempt to complete truncated JSON by closing unclosed braces
+    // This helps recover from truncated AI responses
+    if (braceCount > 0 && braceCount <= 3) {
+      // Find the last complete key-value pair by looking for last complete string value
+      // Remove any trailing incomplete content (unfinished strings, keys without values)
+      let repairStr = jsonStr.slice(startIdx);
 
-  jsonStr = jsonStr.slice(startIdx, endIdx + 1);
+      // If we're in an unfinished string, try to close it
+      if (inString) {
+        // Find the last unescaped quote that opened a string
+        const lastQuoteMatch = repairStr.match(/[^\\]"[^"]*$/);
+        if (lastQuoteMatch && lastQuoteMatch.index !== undefined) {
+          repairStr = repairStr.slice(0, lastQuoteMatch.index + 2); // Keep up to and including the quote
+        }
+      }
+
+      // Remove trailing partial content after last complete value
+      repairStr = repairStr.replace(/,\s*"[^"]*"?\s*:?\s*[^,}\]]*$/, ''); // Remove incomplete key-value
+      repairStr = repairStr.replace(/,\s*$/, ''); // Remove trailing comma
+
+      // Add missing closing braces
+      for (let i = 0; i < braceCount; i++) {
+        repairStr += '}';
+      }
+
+      jsonStr = repairStr;
+    } else {
+      throw new Error(`Incomplete JSON object (unclosed braces: ${braceCount})`);
+    }
+  } else {
+    jsonStr = jsonStr.slice(startIdx, endIdx + 1);
+  }
 
   // Step 3: Fix common JSON issues - trailing commas before } or ]
   jsonStr = jsonStr.replace(/,(\s*[}\]])/g, '$1');

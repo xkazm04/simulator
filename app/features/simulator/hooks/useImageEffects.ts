@@ -67,8 +67,10 @@ export function useImageEffects({
 
   // Handle saving an image to panel
   const handleStartImage = useCallback((promptId: string) => {
+    console.log('[handleStartImage] Called with promptId:', promptId);
     const prompt = prompts.generatedPrompts.find((p) => p.id === promptId);
     const promptText = prompt?.prompt || '';
+    console.log('[handleStartImage] Found prompt:', !!prompt, 'text length:', promptText.length);
     imageGen.saveImageToPanel(promptId, promptText);
     setSavedPromptIds((prev) => new Set(prev).add(promptId));
   }, [imageGen, prompts.generatedPrompts, setSavedPromptIds]);

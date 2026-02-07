@@ -33,6 +33,7 @@ import { useAutoplayOrchestrator, AutoplayOrchestratorDeps } from './useAutoplay
 import { useAutoHudGeneration } from './useAutoHudGeneration';
 import { selectBestPoster, fallbackPosterSelection } from '../subfeature_brain/lib/posterEvaluator';
 import { PosterGeneration } from './usePoster';
+import { useIntelligentOrchestratorDeps, createIntelligentConfig } from './useIntelligentOrchestratorDeps';
 
 // Default configuration
 const DEFAULT_CONFIG: ExtendedAutoplayConfig = {
@@ -149,11 +150,17 @@ function multiPhaseReducer(
     }
 
     case 'ERROR': {
-      return { ...state, phase: 'error', error: action.error };
+      return { ...state, phase: 'error', error: action.error, errorPhase: action.phase || state.phase };
     }
 
     case 'ABORT': {
       return { ...state, phase: 'complete' };
+    }
+
+    case 'RETRY': {
+      // Retry from the phase that errored, preserving all progress
+      const retryPhase = state.errorPhase || 'gameplay';
+      return { ...state, phase: retryPhase, error: undefined, errorPhase: undefined };
     }
 
     case 'RESET': {
@@ -170,9 +177,11 @@ export interface MultiPhaseAutoplayDeps {
   generatedImages: GeneratedImage[];
   isGeneratingImages: boolean;
   generateImagesFromPrompts: (prompts: Array<{ id: string; prompt: string }>) => Promise<void>;
-  saveImageToPanel: (promptId: string, promptText: string) => void;
+  saveImageToPanel: (promptId: string, promptText: string) => boolean;
   leftPanelSlots: Array<{ image: { url: string } | null }>;
   rightPanelSlots: Array<{ image: { url: string } | null }>;
+  /** Rebuild save tracking refs from actual slot state — call before new sessions */
+  resetSaveTracking: () => void;
 
   // From useBrain
   setFeedback: (feedback: { positive: string; negative: string }) => void;
@@ -230,10 +239,15 @@ export interface UseMultiPhaseAutoplayReturn {
   targetSaved: number;
   completionReason: string | null;
 
+  /** Phase that errored (for retry) */
+  errorPhase?: AutoplayPhase;
+
   // Actions
   startMultiPhase: (config: ExtendedAutoplayConfig) => void;
   abort: () => void;
   reset: () => void;
+  /** Retry from the phase that errored, preserving all progress */
+  retry: () => void;
 }
 
 export function useMultiPhaseAutoplay(
@@ -246,6 +260,7 @@ export function useMultiPhaseAutoplay(
     saveImageToPanel,
     leftPanelSlots,
     rightPanelSlots,
+    resetSaveTracking,
     setFeedback,
     setOutputMode,
     baseImage,
@@ -287,14 +302,18 @@ export function useMultiPhaseAutoplay(
   const gameUIDimension = dimensions.find(d => d.type === 'gameUI')?.reference;
   const hudGenerator = useAutoHudGeneration({ gameUIDimension });
 
-  // Create orchestrator deps that change based on current phase
-  const orchestratorDeps: AutoplayOrchestratorDeps = useMemo(() => ({
+  // Create base orchestrator deps that change based on current phase
+  const baseOrchestratorDeps: AutoplayOrchestratorDeps = useMemo(() => ({
     generatedImages,
     isGeneratingImages,
     generateImagesFromPrompts,
-    saveImageToPanel: (promptId: string, promptText: string) => {
-      saveImageToPanel(promptId, promptText);
-      // Track save for current phase
+    saveImageToPanel: (promptId: string, promptText: string): boolean => {
+      const saved = saveImageToPanel(promptId, promptText);
+      if (!saved) {
+        console.log('[MultiPhase] saveImageToPanel returned false, skipping count increment for', promptId);
+        return false;
+      }
+      // Track save for current phase — only when actually saved
       const currentPhase = currentPhaseRef.current;
       if (currentPhase === 'sketch' || currentPhase === 'gameplay') {
         savedImagesThisPhaseRef.current++;
@@ -305,6 +324,7 @@ export function useMultiPhaseAutoplay(
           promptId,
         });
       }
+      return true;
     },
     setFeedback,
     generatedPrompts,
@@ -331,8 +351,19 @@ export function useMultiPhaseAutoplay(
     logEvent,
   ]);
 
-  // ACTUALLY USE the orchestrator for image generation
-  const singlePhaseOrchestrator = useAutoplayOrchestrator(orchestratorDeps);
+  // Calculate target count for intelligent features
+  const targetCount = state.config.sketchCount + state.config.gameplayCount;
+
+  // Wrap deps with intelligent features (diversity director + prompt evolution)
+  const intelligentConfig = useMemo(() => createIntelligentConfig(
+    targetCount,
+    { diversityEnabled: true, evolutionEnabled: true }
+  ), [targetCount]);
+
+  const intelligentDeps = useIntelligentOrchestratorDeps(baseOrchestratorDeps, intelligentConfig);
+
+  // ACTUALLY USE the orchestrator for image generation (with intelligent enhancements)
+  const singlePhaseOrchestrator = useAutoplayOrchestrator(intelligentDeps);
 
   // Derived state
   const isRunning = state.phase !== 'idle' && state.phase !== 'complete' && state.phase !== 'error';
@@ -379,6 +410,9 @@ export function useMultiPhaseAutoplay(
 
     console.log('[MultiPhase] Starting with config:', config);
 
+    // Reset save tracking to clear stale entries from previous sessions
+    resetSaveTracking();
+
     // Set output mode based on first phase
     const firstPhase = config.sketchCount > 0 ? 'sketch' : 'gameplay';
     setOutputMode(firstPhase === 'sketch' ? 'sketch' : 'gameplay');
@@ -389,7 +423,7 @@ export function useMultiPhaseAutoplay(
     });
 
     dispatch({ type: 'START', config });
-  }, [canStart, baseImage, generatedPrompts, setOutputMode]);
+  }, [canStart, baseImage, generatedPrompts, setOutputMode, resetSaveTracking]);
 
   /**
    * Abort autoplay
@@ -408,6 +442,15 @@ export function useMultiPhaseAutoplay(
     hudGenerator.reset();
     dispatch({ type: 'RESET' });
   }, [hudGenerator]);
+
+  /**
+   * Retry from the errored phase, preserving progress
+   */
+  const retry = useCallback(() => {
+    if (state.phase !== 'error') return;
+    logEvent('phase_started', `Retrying from ${state.errorPhase || 'last'} phase`);
+    dispatch({ type: 'RETRY' });
+  }, [state.phase, state.errorPhase, logEvent]);
 
   /**
    * Effect: Handle phase transitions
@@ -467,6 +510,11 @@ export function useMultiPhaseAutoplay(
    * Effect: Delegate image generation phases to single-phase orchestrator
    * When multi-phase enters 'sketch' or 'gameplay', start the single-phase orchestrator
    * which handles the actual generate -> evaluate -> refine loop
+   *
+   * This effect re-runs when:
+   * - Phase changes (new phase started)
+   * - Progress updates (images saved)
+   * - Orchestrator state changes (after reset, it becomes startable again)
    */
   useEffect(() => {
     const { phase, config, sketchProgress, gameplayProgress } = state;
@@ -476,52 +524,77 @@ export function useMultiPhaseAutoplay(
       return;
     }
 
-    // Calculate target for current phase
-    const targetForPhase = phase === 'sketch'
-      ? config.sketchCount - sketchProgress.saved
-      : config.gameplayCount - gameplayProgress.saved;
+    // Calculate remaining target for current phase
+    const saved = phase === 'sketch' ? sketchProgress.saved : gameplayProgress.saved;
+    const target = phase === 'sketch' ? config.sketchCount : config.gameplayCount;
+    const remaining = target - saved;
 
     // If we've already met the target, don't start orchestrator
-    if (targetForPhase <= 0) {
+    // (the phase transition effect will handle advancing)
+    if (remaining <= 0) {
+      console.log(`[MultiPhase] ${phase} phase target already met (${saved}/${target})`);
       return;
     }
 
-    // Only start if not already running
+    // Only start if orchestrator is ready (not running, can start)
     if (!singlePhaseOrchestrator.isRunning && singlePhaseOrchestrator.canStart) {
-      console.log(`[MultiPhase] Delegating ${phase} phase to single-phase orchestrator (target: ${targetForPhase})`);
+      console.log(`[MultiPhase] Starting ${phase} phase generation (${saved}/${target}, need ${remaining} more)`);
+      logEvent('phase_started', `Generating ${remaining} ${phase} image(s)`, { phase });
+
       singlePhaseOrchestrator.startAutoplay({
-        targetSavedCount: targetForPhase,
+        targetSavedCount: remaining,
         maxIterations: config.maxIterationsPerImage,
       });
     }
-  }, [state.phase, state.config, state.sketchProgress, state.gameplayProgress, singlePhaseOrchestrator]);
+  }, [state.phase, state.config, state.sketchProgress, state.gameplayProgress, singlePhaseOrchestrator, logEvent]);
 
   /**
-   * Effect: Detect single-phase completion and advance multi-phase
+   * Effect: Detect single-phase completion and handle appropriately
+   *
+   * Key logic:
+   * - Only advance phase when target is MET (saved >= target)
+   * - If max_iterations reached but target not met, restart orchestrator
+   * - This ensures we keep trying until we have enough saved images
    */
   useEffect(() => {
-    const { phase } = state;
+    const { phase, config, sketchProgress, gameplayProgress } = state;
 
     if (phase !== 'sketch' && phase !== 'gameplay') {
       return;
     }
 
-    // When single-phase orchestrator completes, advance to next phase
+    // When single-phase orchestrator completes, check if we should advance or retry
     if (!singlePhaseOrchestrator.isRunning && singlePhaseOrchestrator.completionReason) {
-      console.log(`[MultiPhase] Single-phase completed: ${singlePhaseOrchestrator.completionReason}`);
+      const completionReason = singlePhaseOrchestrator.completionReason;
+      console.log(`[MultiPhase] Single-phase completed: ${completionReason}`);
 
-      // Check if we should advance based on saved count
-      const progress = phase === 'sketch' ? state.sketchProgress : state.gameplayProgress;
-      const target = phase === 'sketch' ? state.config.sketchCount : state.config.gameplayCount;
-
-      if (progress.saved >= target || singlePhaseOrchestrator.completionReason !== 'target_met') {
-        dispatch({ type: 'ADVANCE_PHASE' });
-      }
-
-      // Reset single-phase for potential reuse
+      // Reset orchestrator first (so it can be reused)
       singlePhaseOrchestrator.resetAutoplay();
+
+      // Check progress against target
+      const progress = phase === 'sketch' ? sketchProgress : gameplayProgress;
+      const target = phase === 'sketch' ? config.sketchCount : config.gameplayCount;
+
+      if (progress.saved >= target) {
+        // Target met - advance to next phase
+        console.log(`[MultiPhase] Phase ${phase} target met (${progress.saved}/${target}), advancing`);
+        dispatch({ type: 'ADVANCE_PHASE' });
+      } else if (completionReason === 'error' || completionReason === 'aborted') {
+        // Error or abort - stop the whole flow
+        console.log(`[MultiPhase] Phase ${phase} ${completionReason}, stopping`);
+        if (completionReason === 'error') {
+          dispatch({ type: 'ERROR', error: singlePhaseOrchestrator.error || 'Single-phase error', phase });
+        } else {
+          dispatch({ type: 'ABORT' });
+        }
+      } else {
+        // max_iterations reached but target not met - keep going
+        // The next effect cycle will restart the orchestrator with remaining target
+        console.log(`[MultiPhase] Phase ${phase} needs more images (${progress.saved}/${target}), will retry`);
+        logEvent('iteration_complete', `Iteration complete, need ${target - progress.saved} more ${phase} images`);
+      }
     }
-  }, [state, singlePhaseOrchestrator.isRunning, singlePhaseOrchestrator.completionReason, singlePhaseOrchestrator.resetAutoplay]);
+  }, [state, singlePhaseOrchestrator.isRunning, singlePhaseOrchestrator.completionReason, singlePhaseOrchestrator.error, singlePhaseOrchestrator.resetAutoplay, logEvent]);
 
   /**
    * Effect: Handle poster phase
@@ -673,7 +746,7 @@ export function useMultiPhaseAutoplay(
     const timeoutId = setTimeout(() => {
       console.error(`[MultiPhase] Phase '${phase}' timed out after ${PHASE_TIMEOUT_MS / 1000}s`);
       logEvent('timeout', `Phase '${phase}' timed out after 2 minutes`, { phase });
-      dispatch({ type: 'ERROR', error: `Phase '${phase}' timed out - please try again` });
+      dispatch({ type: 'ERROR', error: `Phase '${phase}' timed out - please try again`, phase });
     }, PHASE_TIMEOUT_MS);
 
     return () => clearTimeout(timeoutId);
@@ -691,6 +764,7 @@ export function useMultiPhaseAutoplay(
     posterSelected: state.posterSelected,
     hudGenerated: state.hudGenerated,
     error: state.error,
+    errorPhase: state.errorPhase,
 
     // For AutoplayControls compatibility
     status: state.phase,
@@ -704,5 +778,6 @@ export function useMultiPhaseAutoplay(
     startMultiPhase,
     abort,
     reset,
+    retry,
   };
 }

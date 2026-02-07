@@ -1,20 +1,17 @@
 /**
  * ActivityLogSidebar - Scrollable log display for autoplay events
  *
- * Displays events in a scrollable sidebar with:
- * - Auto-scroll to bottom on new events
- * - Color-coded event types
- * - Timestamp display
- * - Expandable details for events with extra info
+ * Improvements:
+ * - 11px minimum text for readability
+ * - Alternating row backgrounds for scan-ability
+ * - React.memo to prevent unnecessary re-renders
+ * - Timestamps always visible (compact)
  */
 
 'use client';
 
-import React, { useRef, useEffect, useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import React, { useState, useRef, useEffect, memo } from 'react';
 import {
-  ChevronDown,
-  ChevronRight,
   AlertCircle,
   CheckCircle,
   XCircle,
@@ -26,8 +23,6 @@ import {
   Wand2,
 } from 'lucide-react';
 import { AutoplayLogEntry, AutoplayEventType } from '../../types';
-import { fadeIn, transitions } from '../../lib/motion';
-import { semanticColors } from '../../lib/semanticColors';
 
 export interface ActivityLogSidebarProps {
   title: string;
@@ -37,78 +32,45 @@ export interface ActivityLogSidebarProps {
 }
 
 /**
- * Get color classes for an event type
+ * Get color class for an event type
  */
-function getEventColors(type: AutoplayEventType): {
-  icon: string;
-  text: string;
-  bg: string;
-} {
+function getEventColor(type: AutoplayEventType): string {
   switch (type) {
-    // Success events (green)
     case 'image_approved':
     case 'image_saved':
     case 'image_complete':
     case 'poster_selected':
     case 'hud_complete':
     case 'phase_completed':
-    case 'image_polished': // Polish success
-      return {
-        icon: semanticColors.success.text,
-        text: 'text-green-300',
-        bg: semanticColors.success.bg,
-      };
+    case 'image_polished':
+      return 'text-green-400';
 
-    // Error events (red)
     case 'image_failed':
     case 'image_rejected':
     case 'error':
     case 'timeout':
-    case 'polish_error': // Polish failure
-      return {
-        icon: semanticColors.error.text,
-        text: 'text-red-300',
-        bg: semanticColors.error.bg,
-      };
+    case 'polish_error':
+      return 'text-red-400';
 
-    // Processing events (purple)
     case 'image_generating':
     case 'poster_generating':
     case 'hud_generating':
-    case 'polish_started': // Polish in progress
-      return {
-        icon: semanticColors.processing.text,
-        text: 'text-purple-300',
-        bg: semanticColors.processing.bg,
-      };
+    case 'polish_started':
+      return 'text-purple-400';
 
-    // Info events (cyan)
     case 'prompt_generated':
     case 'phase_started':
     case 'iteration_complete':
-    case 'polish_skipped': // Polish skipped (neutral)
-      return {
-        icon: semanticColors.primary.text,
-        text: 'text-cyan-300',
-        bg: semanticColors.primary.bg,
-      };
+    case 'polish_skipped':
+      return 'text-cyan-400';
 
-    // Warning/change events (amber)
     case 'dimension_adjusted':
     case 'feedback_applied':
-    case 'polish_no_improvement': // Polish didn't help (warning)
-      return {
-        icon: semanticColors.warning.text,
-        text: 'text-amber-300',
-        bg: semanticColors.warning.bg,
-      };
+    case 'polish_no_improvement':
+      return 'text-amber-400';
 
     default:
-      return {
-        icon: 'text-slate-400',
-        text: 'text-slate-300',
-        bg: 'bg-slate-800/50',
-      };
+      return 'text-slate-400';
   }
 }
 
@@ -122,13 +84,13 @@ function getEventIcon(type: AutoplayEventType) {
     case 'phase_completed':
     case 'poster_selected':
     case 'hud_complete':
-    case 'image_polished': // Polish success
+    case 'image_polished':
       return CheckCircle;
 
     case 'image_failed':
     case 'image_rejected':
     case 'error':
-    case 'polish_error': // Polish failure
+    case 'polish_error':
       return XCircle;
 
     case 'timeout':
@@ -150,7 +112,6 @@ function getEventIcon(type: AutoplayEventType) {
     case 'feedback_applied':
       return Zap;
 
-    // Polish events
     case 'polish_started':
     case 'polish_no_improvement':
     case 'polish_skipped':
@@ -162,9 +123,9 @@ function getEventIcon(type: AutoplayEventType) {
 }
 
 /**
- * Format timestamp for display
+ * Format timestamp compactly
  */
-function formatTimestamp(date: Date): string {
+function formatTime(date: Date): string {
   return date.toLocaleTimeString('en-US', {
     hour: '2-digit',
     minute: '2-digit',
@@ -174,86 +135,72 @@ function formatTimestamp(date: Date): string {
 }
 
 /**
- * Single event entry
+ * Score bar - compact visual score indicator
  */
-function EventEntry({ event }: { event: AutoplayLogEntry }) {
-  const [isExpanded, setIsExpanded] = useState(false);
-  const colors = getEventColors(event.type);
-  const Icon = getEventIcon(event.type);
-  const hasDetails = event.details && Object.keys(event.details).length > 0;
+function ScoreBar({ score, label }: { score: number; label?: string }) {
+  const color = score >= 70 ? 'bg-green-500' : score >= 50 ? 'bg-amber-500' : 'bg-red-500';
+  const textColor = score >= 70 ? 'text-green-400' : score >= 50 ? 'text-amber-400' : 'text-red-400';
 
   return (
-    <motion.div
-      variants={fadeIn}
-      initial="initial"
-      animate="animate"
-      className={`p-2 radius-sm border border-slate-800/50 ${colors.bg}`}
-    >
-      <div
-        className={`flex items-start gap-2 ${hasDetails ? 'cursor-pointer' : ''}`}
-        onClick={() => hasDetails && setIsExpanded(!isExpanded)}
-      >
-        {hasDetails && (
-          <span className="text-slate-500 mt-0.5">
-            {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-          </span>
-        )}
-        <Icon size={14} className={`${colors.icon} shrink-0 mt-0.5`} />
-        <div className="flex-1 min-w-0">
-          <p className={`type-label ${colors.text} break-words`}>{event.message}</p>
-          <span className="type-label text-slate-600 font-mono">
-            {formatTimestamp(event.timestamp)}
-          </span>
-        </div>
+    <div className="flex items-center gap-1.5">
+      {label && <span className="text-[9px] text-slate-600 w-8">{label}</span>}
+      <div className="flex-1 h-1.5 bg-slate-800 rounded-full overflow-hidden">
+        <div className={`h-full rounded-full ${color}`} style={{ width: `${Math.min(100, score)}%` }} />
       </div>
-
-      {/* Expandable details */}
-      <AnimatePresence>
-        {isExpanded && event.details && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
-            transition={transitions.fast}
-            className="mt-2 pt-2 border-t border-slate-700/50"
-          >
-            <div className="space-y-1 type-label font-mono">
-              {event.details.phase && (
-                <div className="flex gap-2">
-                  <span className="text-slate-500">Phase:</span>
-                  <span className="text-slate-300">{event.details.phase}</span>
-                </div>
-              )}
-              {event.details.score !== undefined && (
-                <div className="flex gap-2">
-                  <span className="text-slate-500">Score:</span>
-                  <span className={event.details.score >= 70 ? 'text-green-400' : 'text-amber-400'}>
-                    {event.details.score}/100
-                  </span>
-                </div>
-              )}
-              {event.details.feedback && (
-                <div className="flex flex-col gap-1">
-                  <span className="text-slate-500">Feedback:</span>
-                  <span className="text-slate-300 whitespace-pre-wrap">{event.details.feedback}</span>
-                </div>
-              )}
-              {event.details.dimension && (
-                <div className="flex flex-col gap-1">
-                  <span className="text-slate-500">{event.details.dimension.type}:</span>
-                  <span className="text-slate-500 line-through">{event.details.dimension.oldValue}</span>
-                  <span className="text-amber-300">{event.details.dimension.newValue}</span>
-                </div>
-              )}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </motion.div>
+      <span className={`text-[9px] font-mono ${textColor}`}>{score}</span>
+    </div>
   );
 }
 
-export function ActivityLogSidebar({
+/**
+ * Single-row event entry with expandable evaluation details
+ */
+const EventRow = memo(function EventRow({ event, isOdd }: { event: AutoplayLogEntry; isOdd: boolean }) {
+  const [expanded, setExpanded] = useState(false);
+  const color = getEventColor(event.type);
+  const Icon = getEventIcon(event.type);
+
+  // Only evaluation events are expandable
+  const hasDetails = (event.type === 'image_approved' || event.type === 'image_rejected')
+    && event.details?.score !== undefined;
+
+  return (
+    <div
+      className={`px-1.5 py-1 rounded group ${
+        isOdd ? 'bg-white/[0.02]' : ''
+      } hover:bg-white/[0.05] transition-colors ${hasDetails ? 'cursor-pointer' : ''}`}
+      title={hasDetails ? 'Click to expand details' : event.message}
+      onClick={hasDetails ? () => setExpanded(!expanded) : undefined}
+    >
+      {/* Main row */}
+      <div className="flex items-start gap-1.5">
+        <Icon size={11} className={`${color} shrink-0 mt-0.5`} />
+        <div className="flex-1 min-w-0">
+          <span className={`text-[11px] leading-tight block truncate ${color}`}>
+            {event.message}
+          </span>
+        </div>
+        <span className="text-[9px] text-slate-600 font-mono shrink-0 mt-0.5">
+          {formatTime(event.timestamp).slice(0, 5)}
+        </span>
+      </div>
+
+      {/* Expandable details */}
+      {expanded && hasDetails && event.details && (
+        <div className="mt-1 ml-4 space-y-1 pb-0.5">
+          <ScoreBar score={event.details.score!} label="Score" />
+          {event.details.feedback && (
+            <p className="text-[9px] text-slate-500 leading-tight line-clamp-3">
+              {event.details.feedback}
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+});
+
+function ActivityLogSidebarInner({
   title,
   events,
   side,
@@ -269,18 +216,18 @@ export function ActivityLogSidebar({
   }, [events.length]);
 
   return (
-    <div className={`flex flex-col h-full ${side === 'left' ? 'border-r' : 'border-l'} border-slate-800`}>
+    <div className="flex flex-col h-full bg-black/20">
       {/* Header */}
-      <div className="px-3 py-2 border-b border-slate-800 bg-slate-900/50 shrink-0">
-        <h3 className="text-xs font-medium text-slate-400 uppercase tracking-wider flex items-center gap-2">
+      <div className="px-2 py-1.5 border-b border-slate-800/50 bg-black/30 shrink-0">
+        <h3 className="text-[10px] font-medium text-slate-500 uppercase tracking-wider flex items-center gap-1">
           {side === 'left' ? (
-            <Sparkles size={12} className={semanticColors.primary.text} />
+            <Sparkles size={10} className="text-cyan-400" />
           ) : (
-            <Image size={12} className={semanticColors.processing.text} />
+            <Image size={10} className="text-purple-400" />
           )}
           {title}
           {events.length > 0 && (
-            <span className="ml-auto text-slate-600 font-mono">({events.length})</span>
+            <span className="ml-auto text-slate-600 font-mono text-[10px]">{events.length}</span>
           )}
         </h3>
       </div>
@@ -288,21 +235,34 @@ export function ActivityLogSidebar({
       {/* Events list */}
       <div
         ref={scrollRef}
-        className="flex-1 overflow-y-auto p-2 space-y-2"
+        className="flex-1 overflow-y-auto px-0.5 py-0.5"
         style={{ scrollBehavior: 'smooth' }}
       >
         {events.length === 0 ? (
           <div className="flex items-center justify-center h-full">
-            <p className="text-xs text-slate-600 text-center px-4">{emptyMessage}</p>
+            <p className="text-[10px] text-slate-600 text-center px-2">{emptyMessage}</p>
           </div>
         ) : (
-          events.map(event => (
-            <EventEntry key={event.id} event={event} />
+          events.map((event, index) => (
+            <EventRow key={event.id} event={event} isOdd={index % 2 === 1} />
           ))
         )}
       </div>
     </div>
   );
 }
+
+/** Memoized to prevent re-renders when parent state changes but events haven't */
+export const ActivityLogSidebar = memo(ActivityLogSidebarInner, (prev, next) => {
+  return (
+    prev.events.length === next.events.length &&
+    prev.title === next.title &&
+    prev.side === next.side &&
+    prev.emptyMessage === next.emptyMessage &&
+    // Check last event ID to detect actual changes
+    (prev.events.length === 0 ||
+      prev.events[prev.events.length - 1].id === next.events[next.events.length - 1].id)
+  );
+});
 
 export default ActivityLogSidebar;

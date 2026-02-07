@@ -110,9 +110,9 @@ export async function POST(request: NextRequest): Promise<NextResponse<Evaluatio
       type: 'vision',
       imageDataUrl,
       prompt: evaluationPrompt,
-      systemInstruction: 'You are an expert image quality evaluator. Always respond with valid JSON only, no markdown or extra text.',
+      systemInstruction: 'You are an expert image quality evaluator. Always respond with valid JSON only, no markdown or extra text. Keep feedback concise (under 100 words).',
       temperature: 0.3, // Lower temperature for more consistent evaluations
-      maxTokens: 1024,
+      maxTokens: 2048, // Increased from 1024 to prevent truncation
       metadata: { feature: 'autoplay-evaluation' },
     });
 

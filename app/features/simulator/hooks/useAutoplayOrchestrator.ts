@@ -55,7 +55,7 @@ export interface AutoplayOrchestratorDeps {
   generatedImages: GeneratedImage[];
   isGeneratingImages: boolean;
   generateImagesFromPrompts: (prompts: Array<{ id: string; prompt: string }>) => Promise<void>;
-  saveImageToPanel: (promptId: string, promptText: string) => void;
+  saveImageToPanel: (promptId: string, promptText: string) => boolean;
 
   // From useBrain
   setFeedback: (feedback: { positive: string; negative: string }) => void;
@@ -162,6 +162,10 @@ export function useAutoplayOrchestrator(
   const generatedImagesRef = useRef(generatedImages);
   generatedImagesRef.current = generatedImages;
 
+  // Flag: prompt regeneration in progress — prevents completion detector and backup trigger
+  // from acting on stale images/prompts from a previous phase
+  const regeneratingRef = useRef(false);
+
   // Track polish attempts per prompt (prevents re-polishing same image)
   const polishAttemptsRef = useRef<Map<string, number>>(new Map());
 
@@ -198,23 +202,27 @@ export function useAutoplayOrchestrator(
 
             logEvent('image_generating', `Starting image generation (iteration ${autoplay.state.currentIteration})`);
 
-            // For iteration > 1, we need to regenerate prompts
-            // For iteration 1, prompts might already exist from user's Generate action,
-            // OR we need to generate them if user started autoplay from base image directly
-            if (autoplay.state.currentIteration > 1 || generatedPrompts.length === 0) {
-              logEvent('prompt_generated', 'Regenerating prompts with feedback');
-              // Pass pending feedback directly to avoid React state timing issues
-              const feedbackOverride = pendingFeedbackRef.current;
-              pendingFeedbackRef.current = null; // Clear after using
-              // Pass callback to receive prompts immediately after generation
-              onRegeneratePrompts({
-                feedback: feedbackOverride || undefined,
-                onPromptsReady: (newPrompts) => {
-                  console.log('[Autoplay] Prompts ready, triggering image generation for', newPrompts.length, 'prompts');
-                  generateImagesFromPrompts(newPrompts.map(p => ({ id: p.id, prompt: p.prompt })));
-                },
-              });
-            }
+            // Always regenerate prompts — ensures fresh prompts for each iteration
+            // and each phase transition (multi-phase reuses orchestrator across phases,
+            // so old prompts from the previous phase would be stale).
+            logEvent('prompt_generated', 'Regenerating prompts with feedback');
+            // Pass pending feedback directly to avoid React state timing issues
+            const feedbackOverride = pendingFeedbackRef.current;
+            pendingFeedbackRef.current = null; // Clear after using
+
+            // Set flag to prevent completion detector / backup trigger from acting
+            // on stale images while we regenerate prompts
+            regeneratingRef.current = true;
+
+            // Pass callback to receive prompts immediately after generation
+            onRegeneratePrompts({
+              feedback: feedbackOverride || undefined,
+              onPromptsReady: (newPrompts) => {
+                console.log('[Autoplay] Prompts ready, triggering image generation for', newPrompts.length, 'prompts');
+                regeneratingRef.current = false;
+                generateImagesFromPrompts(newPrompts.map(p => ({ id: p.id, prompt: p.prompt })));
+              },
+            });
           }
           break;
         }
@@ -449,8 +457,10 @@ export function useAutoplayOrchestrator(
             // Find the prompt text for this promptId
             const prompt = currentPrompts.find(p => p.id === eval_.promptId);
             if (prompt) {
-              saveImageToPanel(eval_.promptId, prompt.prompt);
-              savedCount++;
+              const saved = saveImageToPanel(eval_.promptId, prompt.prompt);
+              if (saved) {
+                savedCount++;
+              }
             }
           }
 
@@ -524,6 +534,7 @@ export function useAutoplayOrchestrator(
   useEffect(() => {
     if (autoplay.state.status !== 'generating') return;
     if (isGeneratingImages) return; // Already generating
+    if (regeneratingRef.current) return; // Main path is regenerating prompts, don't interfere
 
     // Use ref to get current prompts (fresh, not from closure)
     const currentPrompts = generatedPromptsRef.current;
@@ -534,7 +545,7 @@ export function useAutoplayOrchestrator(
     const hasImagesForPrompts = generatedImages.some(img => promptIds.has(img.promptId));
     if (hasImagesForPrompts) return; // Already have images for these prompts
 
-    console.log('[Autoplay] Triggering image generation for', currentPrompts.length, 'prompts');
+    console.log('[Autoplay] Backup trigger: generating images for', currentPrompts.length, 'prompts');
 
     // Trigger image generation
     generateImagesFromPrompts(
@@ -551,6 +562,7 @@ export function useAutoplayOrchestrator(
   useEffect(() => {
     if (autoplay.state.status !== 'generating') return;
     if (isGeneratingImages) return; // Still generating
+    if (regeneratingRef.current) return; // Prompts being regenerated, old images are stale
 
     // Generation finished - check if we have completed images
     const completedImages = generatedImages.filter(
@@ -566,6 +578,17 @@ export function useAutoplayOrchestrator(
       autoplay.setError('All image generations failed');
     }
   }, [autoplay, isGeneratingImages, generatedImages, logEvent]);
+
+  /**
+   * Effect: Clear regenerating flag when we leave the generating status.
+   * Safety net: if onPromptsReady never fires (API error, abort), this prevents
+   * the orchestrator from getting stuck with regeneratingRef=true forever.
+   */
+  useEffect(() => {
+    if (autoplay.state.status !== 'generating') {
+      regeneratingRef.current = false;
+    }
+  }, [autoplay.state.status]);
 
   /**
    * Effect: Timeout safety net - abort if stuck in generating for too long

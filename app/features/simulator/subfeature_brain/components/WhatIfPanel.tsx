@@ -7,8 +7,8 @@
 
 'use client';
 
-import React, { useCallback, useRef } from 'react';
-import { Upload, X, ImageIcon, Loader2 } from 'lucide-react';
+import React, { useCallback, useRef, useState } from 'react';
+import { Upload, X, ImageIcon, Loader2, Maximize2 } from 'lucide-react';
 import { useWhatif, WhatifPair } from '../hooks/useWhatif';
 
 interface WhatIfPanelProps {
@@ -24,6 +24,7 @@ interface ImageUploadSlotProps {
   onUpload: (file: File) => void;
   onClear: () => void;
   onCaptionChange: (caption: string) => void;
+  onMaximize?: () => void;
 }
 
 function ImageUploadSlot({
@@ -35,6 +36,7 @@ function ImageUploadSlot({
   onUpload,
   onClear,
   onCaptionChange,
+  onMaximize,
 }: ImageUploadSlotProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -81,12 +83,23 @@ function ImageUploadSlot({
           </div>
         ) : imageUrl ? (
           <>
-            {/* Image Display */}
+            {/* Image Display - click to maximize */}
             <img
               src={imageUrl}
               alt={label}
-              className="w-full h-full object-contain bg-slate-950"
+              className="w-full h-full object-contain bg-slate-950 cursor-pointer"
+              onClick={onMaximize}
             />
+            {/* Maximize Button */}
+            {onMaximize && (
+              <button
+                onClick={onMaximize}
+                className="absolute top-2 left-2 p-1.5 bg-slate-900/80 hover:bg-slate-800 radius-sm transition-colors opacity-0 group-hover:opacity-100"
+                title="View full size"
+              >
+                <Maximize2 size={14} className="text-slate-400" />
+              </button>
+            )}
             {/* Clear Button */}
             <button
               onClick={onClear}
@@ -154,6 +167,9 @@ export function WhatIfPanel({ projectId }: WhatIfPanelProps) {
     clearImage,
   } = useWhatif({ projectId });
 
+  // Lightbox state for maximized image view
+  const [maximizedImage, setMaximizedImage] = useState<{ url: string; label: string } | null>(null);
+
   if (!projectId) {
     return (
       <div className="flex-1 flex items-center justify-center text-slate-500">
@@ -199,6 +215,7 @@ export function WhatIfPanel({ projectId }: WhatIfPanelProps) {
           onUpload={uploadBeforeImage}
           onClear={() => clearImage('before')}
           onCaptionChange={(caption) => updateCaption('before', caption)}
+          onMaximize={whatif?.beforeImageUrl ? () => setMaximizedImage({ url: whatif.beforeImageUrl!, label: 'Before' }) : undefined}
         />
 
         {/* Divider */}
@@ -214,8 +231,34 @@ export function WhatIfPanel({ projectId }: WhatIfPanelProps) {
           onUpload={uploadAfterImage}
           onClear={() => clearImage('after')}
           onCaptionChange={(caption) => updateCaption('after', caption)}
+          onMaximize={whatif?.afterImageUrl ? () => setMaximizedImage({ url: whatif.afterImageUrl!, label: 'After' }) : undefined}
         />
       </div>
+
+      {/* Lightbox Modal - maximized image view */}
+      {maximizedImage && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm cursor-pointer"
+          onClick={() => setMaximizedImage(null)}
+        >
+          <button
+            onClick={() => setMaximizedImage(null)}
+            className="absolute top-4 right-4 p-2 bg-slate-800/80 hover:bg-slate-700 rounded-lg transition-colors z-10"
+            title="Close"
+          >
+            <X size={20} className="text-slate-300" />
+          </button>
+          <div className="absolute top-4 left-4 px-3 py-1.5 bg-slate-800/80 rounded-lg z-10">
+            <span className="font-mono text-xs uppercase tracking-wider text-slate-300">{maximizedImage.label}</span>
+          </div>
+          <img
+            src={maximizedImage.url}
+            alt={maximizedImage.label}
+            className="max-w-[90vw] max-h-[90vh] object-contain rounded-lg"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
     </div>
   );
 }

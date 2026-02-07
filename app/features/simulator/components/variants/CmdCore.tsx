@@ -13,10 +13,8 @@ import React, { useCallback, useMemo, memo } from 'react';
 import {
   GeneratedPrompt,
   GeneratedImage,
-  ProjectPoster,
   PanelSlot,
 } from '../../types';
-import { PosterGeneration } from '../../hooks/usePoster';
 import { useResponsivePanels } from '../../lib/useResponsivePanels';
 
 // Context-aware components from subfeatures
@@ -37,19 +35,9 @@ export interface CmdCoreProps {
   savedPromptIds: Set<string>;
   onDeleteGenerations?: () => void;
 
-  // Poster props (for CentralBrain)
-  projectPoster?: ProjectPoster | null;
-  showPosterOverlay: boolean;
-  onTogglePosterOverlay?: () => void;
+  // Poster generation (for DirectorControl via CentralBrain)
   isGeneratingPoster: boolean;
-  onUploadPoster?: (imageDataUrl: string) => void;
   onGeneratePoster?: () => Promise<void>;
-  posterGenerations?: PosterGeneration[];
-  selectedPosterIndex?: number | null;
-  isSavingPoster?: boolean;
-  onSelectPoster?: (index: number) => void;
-  onSavePoster?: () => void;
-  onCancelPosterGeneration?: () => void;
 
   // Comparison props
   onOpenComparison?: () => void;
@@ -89,9 +77,13 @@ export interface CmdCoreProps {
     posterSelected: boolean;
     hudGenerated: number;
     error?: string;
+    errorPhase?: string;
     onStart: (config: import('../../types').ExtendedAutoplayConfig) => void;
     onStop: () => void;
     onReset: () => void;
+    onRetry?: () => void;
+    currentIteration?: number;
+    maxIterations?: number;
     eventLog?: {
       textEvents: import('../../types').AutoplayLogEntry[];
       imageEvents: import('../../types').AutoplayLogEntry[];
@@ -107,18 +99,8 @@ function CmdCoreComponent({
   onDeleteImage,
   savedPromptIds,
   onDeleteGenerations,
-  projectPoster,
-  showPosterOverlay,
-  onTogglePosterOverlay,
   isGeneratingPoster,
-  onUploadPoster,
   onGeneratePoster,
-  posterGenerations,
-  selectedPosterIndex,
-  isSavingPoster,
-  onSelectPoster,
-  onSavePoster,
-  onCancelPosterGeneration,
   onOpenComparison,
   onViewPrompt,
   leftPanelSlots,
@@ -204,18 +186,8 @@ function CmdCoreComponent({
           generatedImages={generatedImages}
           isGeneratingImages={isGeneratingImages}
           onDeleteGenerations={onDeleteGenerations}
-          projectPoster={projectPoster}
-          showPosterOverlay={showPosterOverlay}
-          onTogglePosterOverlay={onTogglePosterOverlay}
           isGeneratingPoster={isGeneratingPoster}
-          onUploadPoster={onUploadPoster}
           onGeneratePoster={onGeneratePoster}
-          posterGenerations={posterGenerations}
-          selectedPosterIndex={selectedPosterIndex}
-          isSavingPoster={isSavingPoster}
-          onSelectPoster={onSelectPoster}
-          onSavePoster={onSavePoster}
-          onCancelPosterGeneration={onCancelPosterGeneration}
           autoplay={autoplay}
           multiPhaseAutoplay={multiPhaseAutoplay}
         />

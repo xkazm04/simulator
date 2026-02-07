@@ -106,13 +106,40 @@ function getVarietyModifiers(index: number): {
 }
 
 /**
- * Truncate prompt to fit within Leonardo's character limit
+ * Truncate prompt to fit within Leonardo's character limit.
+ * Uses weighted section removal — drops low-priority sections first
+ * (variety modifiers) before core content (base description, quality tags).
  */
 function truncatePrompt(prompt: string, maxLength: number = MAX_PROMPT_LENGTH): string {
   if (prompt.length <= maxLength) return prompt;
 
-  // Find the last comma before the limit to avoid cutting mid-phrase
-  const truncated = prompt.substring(0, maxLength);
+  // Split into sections by comma
+  const sections = prompt.split(',').map(s => s.trim()).filter(Boolean);
+
+  // Low-priority keywords that can be dropped first (variety modifiers, atmosphere)
+  const lowPriorityPatterns = [
+    /^(fog|dust|rain|snow|heat haze|smoke|clear|stormy)$/i,
+    /^(golden hour|blue hour|midday|overcast|dawn|night|morning mist|neon night)$/i,
+    /^(rule of thirds|centered|leading lines|layered depth)$/i,
+    /^(low angle|bird's eye|eye-level|dutch angle|wide shot|medium shot|close-up|panoramic)$/i,
+  ];
+
+  // Try removing low-priority sections first
+  let result = prompt;
+  for (const pattern of lowPriorityPatterns) {
+    if (result.length <= maxLength) break;
+    const filtered = sections
+      .filter(s => !pattern.test(s))
+      .join(', ');
+    if (filtered.length < result.length) {
+      result = filtered;
+    }
+  }
+
+  if (result.length <= maxLength) return result;
+
+  // Fallback: find last comma before limit
+  const truncated = result.substring(0, maxLength);
   const lastComma = truncated.lastIndexOf(',');
 
   if (lastComma > maxLength * 0.7) {
@@ -611,4 +638,63 @@ export async function buildPromptWithLearning(
     outputMode,
     learnedContext
   );
+}
+
+// ============================================================================
+// PROMPT DEDUPLICATION
+// ============================================================================
+
+/**
+ * Compute Jaccard similarity between two prompts based on word sets.
+ * Returns 0-1 where 1 is identical.
+ */
+function jaccardSimilarity(a: string, b: string): number {
+  const wordsA = new Set(a.toLowerCase().split(/\s+/).filter(w => w.length > 2));
+  const wordsB = new Set(b.toLowerCase().split(/\s+/).filter(w => w.length > 2));
+  if (wordsA.size === 0 && wordsB.size === 0) return 1;
+
+  let intersection = 0;
+  for (const word of wordsA) {
+    if (wordsB.has(word)) intersection++;
+  }
+
+  const union = wordsA.size + wordsB.size - intersection;
+  return union === 0 ? 0 : intersection / union;
+}
+
+/**
+ * Deduplicate prompts by checking pairwise similarity.
+ * If any pair exceeds the threshold, regenerate the duplicate with a rotated variety modifier.
+ */
+export function deduplicatePrompts(
+  prompts: Array<{ prompt: string; elements: PromptElement[] }>,
+  baseImage: string,
+  filledDimensions: Dimension[],
+  lockedElements: PromptElement[],
+  outputMode: OutputMode,
+  threshold: number = 0.7
+): Array<{ prompt: string; elements: PromptElement[] }> {
+  const sceneTypes = Object.keys(SCENE_VARIATIONS);
+  const result = [...prompts];
+
+  for (let i = 0; i < result.length; i++) {
+    for (let j = i + 1; j < result.length; j++) {
+      const similarity = jaccardSimilarity(result[i].prompt, result[j].prompt);
+      if (similarity > threshold) {
+        // Regenerate the later prompt with a different variety offset
+        const altIndex = j + result.length; // Force different variety modifiers
+        const altSceneType = sceneTypes[(j + 2) % sceneTypes.length];
+        result[j] = buildMockPromptWithElements(
+          baseImage,
+          filledDimensions,
+          altSceneType,
+          altIndex,
+          lockedElements,
+          outputMode
+        );
+      }
+    }
+  }
+
+  return result;
 }

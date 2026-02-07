@@ -1341,6 +1341,8 @@ export interface MultiPhaseAutoplayState {
   hudGenerated: number;
   /** Error message if phase is 'error' */
   error?: string;
+  /** Which phase was active when error occurred (for retry) */
+  errorPhase?: AutoplayPhase;
 }
 
 /**
@@ -1353,9 +1355,10 @@ export type MultiPhaseAutoplayAction =
   | { type: 'POSTER_SELECTED' }
   | { type: 'HUD_GENERATED' }
   | { type: 'ADVANCE_PHASE' }
-  | { type: 'ERROR'; error: string }
+  | { type: 'ERROR'; error: string; phase?: AutoplayPhase }
   | { type: 'ABORT' }
-  | { type: 'RESET' };
+  | { type: 'RESET' }
+  | { type: 'RETRY' };
 
 /**
  * PosterSelectionCriteria - Criteria for LLM poster selection

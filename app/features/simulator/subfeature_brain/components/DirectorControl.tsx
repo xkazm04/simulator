@@ -11,7 +11,7 @@
 
 'use client';
 
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Zap,
@@ -36,6 +36,7 @@ import {
   Dimension,
   ExtendedAutoplayConfig,
   AutoplayLogEntry,
+  AutoplayPhase,
 } from '../../types';
 import { SmartSuggestionPanel } from '../../components/SmartSuggestionPanel';
 import { useBrainContext } from '../BrainContext';
@@ -48,7 +49,6 @@ import { expandCollapse, transitions } from '../../lib/motion';
 import { semanticColors } from '../../lib/semanticColors';
 import { refineFeedback, smartBreakdown } from '../lib/simulatorAI';
 import { AutoplaySetupModal } from './AutoplaySetupModal';
-import { useModalInstance } from '@/app/providers';
 
 export interface DirectorControlProps {
   // Image generation props
@@ -72,9 +72,11 @@ export interface DirectorControlProps {
     posterSelected: boolean;
     hudGenerated: number;
     error?: string;
+    errorPhase?: string;
     onStart: (config: ExtendedAutoplayConfig) => void;
     onStop: () => void;
     onReset: () => void;
+    onRetry?: () => void;
     /** Current iteration number (1-based) - optional */
     currentIteration?: number;
     /** Max iterations configured - optional */
@@ -109,8 +111,25 @@ export function DirectorControl({
   const [isRefining, setIsRefining] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(true);
 
-  // Modal provider for root-level rendering (avoids z-index issues)
-  const autoplayModal = useModalInstance('autoplay-setup');
+  // Autoplay modal state - rendered inline to receive reactive prop updates
+  const [isAutoplayModalOpen, setIsAutoplayModalOpen] = useState(false);
+
+  // Debounced feedback: local draft avoids re-renders during typing
+  const [feedbackDraft, setFeedbackDraft] = useState(brain.feedback.negative || '');
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Sync draft from context when context changes externally (e.g. after refinement clears it)
+  useEffect(() => {
+    setFeedbackDraft(brain.feedback.negative || '');
+  }, [brain.feedback.negative]);
+
+  const handleFeedbackChange = useCallback((value: string) => {
+    setFeedbackDraft(value);
+    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    debounceTimerRef.current = setTimeout(() => {
+      brain.setFeedback({ ...brain.feedback, negative: value });
+    }, 300);
+  }, [brain]);
 
   // Derive autoplay lock state from multi-phase autoplay
   const isAutoplayLocked = multiPhaseAutoplay?.isRunning ?? false;
@@ -392,7 +411,7 @@ export function DirectorControl({
               <RefreshCw size={12} className={semanticColors.warning.text} />
               What to Change
             </label>
-            {brain.feedback.negative && (
+            {feedbackDraft && (
               <span className="type-label text-amber-400 flex items-center gap-1">
                 <Sparkles size={10} />
                 Will refine on generate
@@ -400,12 +419,12 @@ export function DirectorControl({
             )}
           </div>
           <textarea
-            value={brain.feedback.negative}
-            onChange={(e) => brain.setFeedback({ ...brain.feedback, negative: e.target.value })}
+            value={feedbackDraft}
+            onChange={(e) => handleFeedbackChange(e.target.value)}
             placeholder="Describe what should be different... (e.g. 'make it darker', 'change the mood to mysterious', 'add rain effects')"
             className={`w-full h-20 bg-slate-900/50 border radius-md p-3 text-sm placeholder-slate-600 resize-none
                         focus:outline-none focus:ring-1 transition-all
-                        ${brain.feedback.negative ? 'border-amber-500/30 ring-amber-500/30' : 'border-slate-800 focus:border-amber-500/50 focus:ring-amber-500/50'}`}
+                        ${feedbackDraft ? 'border-amber-500/30 ring-amber-500/30' : 'border-slate-800 focus:border-amber-500/50 focus:ring-amber-500/50'}`}
             disabled={isAnyGenerating}
           />
           <p className="font-mono type-label text-slate-600">
@@ -442,87 +461,55 @@ export function DirectorControl({
 
       {/* Action area */}
       <div className="space-y-2">
-        {/* Output Mode Toggle - only show when NOT in autoplay mode */}
-        {!isAutoplayLocked && (
-          <div className="flex gap-2 items-center mb-2">
-            <span className="text-xs font-medium text-slate-500 mr-2">Mode:</span>
-            <div className="flex radius-md border border-slate-800 bg-slate-900/50 overflow-hidden">
-              <button
-                onClick={() => brain.setOutputMode('gameplay')}
-                disabled={isAnyGenerating}
-                data-testid="output-mode-gameplay"
-                className={`px-2.5 py-1.5 flex items-center justify-center gap-1 text-xs font-mono uppercase tracking-wide transition-colors border-r
-                            ${brain.outputMode === 'gameplay'
-                              ? 'bg-purple-500/20 text-purple-400 border-purple-500/30'
-                              : 'text-slate-500 hover:text-slate-300 border-slate-800'
-                            } disabled:opacity-50 disabled:cursor-not-allowed`}
-                title="Gameplay Screenshot with HUD/UI"
-              >
-                <MonitorPlay size={12} />
-                <span>Gameplay</span>
-              </button>
-              <button
-                onClick={() => brain.setOutputMode('sketch')}
-                disabled={isAnyGenerating}
-                data-testid="output-mode-sketch"
-                className={`px-2.5 py-1.5 flex items-center justify-center gap-1 text-xs font-mono uppercase tracking-wide transition-colors border-r
-                            ${brain.outputMode === 'sketch'
-                              ? 'bg-amber-500/20 text-amber-400 border-amber-500/30'
-                              : 'text-slate-500 hover:text-slate-300 border-slate-800'
-                            } disabled:opacity-50 disabled:cursor-not-allowed`}
-                title="Hand-drawn Concept Sketch"
-              >
-                <Pencil size={12} />
-                <span>Sketch</span>
-              </button>
-              <button
-                onClick={() => brain.setOutputMode('trailer')}
-                disabled={isAnyGenerating}
-                data-testid="output-mode-trailer"
-                className={`px-2.5 py-1.5 flex items-center justify-center gap-1 text-xs font-mono uppercase tracking-wide transition-colors border-r
-                            ${brain.outputMode === 'trailer'
-                              ? 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30'
-                              : 'text-slate-500 hover:text-slate-300 border-slate-800'
-                            } disabled:opacity-50 disabled:cursor-not-allowed`}
-                title="Cinematic Trailer Scene"
-              >
-                <Clapperboard size={12} />
-                <span>Trailer</span>
-              </button>
-              <button
-                onClick={() => brain.setOutputMode('realistic')}
-                disabled={isAnyGenerating}
-                data-testid="output-mode-realistic"
-                className={`px-2.5 py-1.5 flex items-center justify-center gap-1 text-xs font-mono uppercase tracking-wide transition-colors border-r
-                            ${brain.outputMode === 'realistic'
-                              ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
-                              : 'text-slate-500 hover:text-slate-300 border-slate-800'
-                            } disabled:opacity-50 disabled:cursor-not-allowed`}
-                title="Next-gen Photorealistic Game Graphics"
-              >
-                <Sparkles size={12} />
-                <span>Realistic</span>
-              </button>
-              <button
-                onClick={() => brain.setOutputMode('poster')}
-                disabled={isAnyGenerating}
-                data-testid="output-mode-poster"
-                className={`px-2.5 py-1.5 flex items-center justify-center gap-1 text-xs font-mono uppercase tracking-wide transition-colors
-                            ${brain.outputMode === 'poster'
-                              ? 'bg-rose-500/20 text-rose-400'
-                              : 'text-slate-500 hover:text-slate-300'
-                            } disabled:opacity-50 disabled:cursor-not-allowed`}
-                title="Key Art Poster"
-              >
-                <Film size={12} />
-                <span>Poster</span>
-              </button>
+        {/* Output Mode Segmented Control - sliding highlight */}
+        {!isAutoplayLocked && (() => {
+          const modes: Array<{ id: OutputMode; label: string; icon: React.ReactNode; color: string; activeColor: string; title: string }> = [
+            { id: 'gameplay', label: 'Gameplay', icon: <MonitorPlay size={12} />, color: 'text-purple-400', activeColor: 'bg-purple-500/25 border-purple-500/40 shadow-[0_0_12px_rgba(168,85,247,0.15)]', title: 'Gameplay Screenshot with HUD/UI' },
+            { id: 'sketch', label: 'Sketch', icon: <Pencil size={12} />, color: 'text-amber-400', activeColor: 'bg-amber-500/25 border-amber-500/40 shadow-[0_0_12px_rgba(245,158,11,0.15)]', title: 'Hand-drawn Concept Sketch' },
+            { id: 'trailer', label: 'Trailer', icon: <Clapperboard size={12} />, color: 'text-cyan-400', activeColor: 'bg-cyan-500/25 border-cyan-500/40 shadow-[0_0_12px_rgba(6,182,212,0.15)]', title: 'Cinematic Trailer Scene' },
+            { id: 'realistic', label: 'Realistic', icon: <Sparkles size={12} />, color: 'text-emerald-400', activeColor: 'bg-emerald-500/25 border-emerald-500/40 shadow-[0_0_12px_rgba(52,211,153,0.15)]', title: 'Next-gen Photorealistic' },
+            { id: 'poster', label: 'Poster', icon: <Film size={12} />, color: 'text-rose-400', activeColor: 'bg-rose-500/25 border-rose-500/40 shadow-[0_0_12px_rgba(251,113,133,0.15)]', title: 'Key Art Poster' },
+          ];
+          const activeIndex = modes.findIndex(m => m.id === brain.outputMode);
+          const activeMode = modes[activeIndex];
+
+          return (
+            <div className="flex gap-2 items-center mb-2">
+              <span className="text-xs font-medium text-slate-500 mr-1">Mode:</span>
+              <div className="relative flex radius-md border border-slate-800 bg-slate-900/50 p-0.5">
+                {/* Sliding highlight */}
+                <motion.div
+                  className={`absolute top-0.5 bottom-0.5 radius-sm border ${activeMode?.activeColor || ''}`}
+                  initial={false}
+                  animate={{
+                    left: `${activeIndex * (100 / modes.length)}%`,
+                    width: `${100 / modes.length}%`,
+                  }}
+                  transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+                  style={{ padding: '2px' }}
+                />
+                {modes.map((mode) => {
+                  const isActive = brain.outputMode === mode.id;
+                  return (
+                    <button
+                      key={mode.id}
+                      onClick={() => brain.setOutputMode(mode.id)}
+                      disabled={isAnyGenerating}
+                      data-testid={`output-mode-${mode.id}`}
+                      title={mode.title}
+                      className={`relative z-10 px-2.5 py-1.5 flex items-center justify-center gap-1 text-xs font-mono uppercase tracking-wide transition-colors
+                        ${isActive ? mode.color : 'text-slate-500 hover:text-slate-300'}
+                        disabled:opacity-50 disabled:cursor-not-allowed`}
+                    >
+                      {mode.icon}
+                      <span>{mode.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-            {isAutoplayLocked && (
-              <span className="text-xs text-slate-600 ml-2">(Auto-selected during autoplay)</span>
-            )}
-          </div>
-        )}
+          );
+        })()}
 
         {/* Autoplay + Generate button + History */}
         <div className="flex gap-2 items-center">
@@ -532,36 +519,7 @@ export function DirectorControl({
               {multiPhaseAutoplay.isRunning ? (
                 /* When running, show a compact status button that reopens the activity modal */
                 <button
-                  onClick={() => autoplayModal.open(
-                    <AutoplaySetupModal
-                      isOpen={true}
-                      onClose={autoplayModal.close}
-                      onStart={multiPhaseAutoplay.onStart}
-                      hasContent={multiPhaseAutoplay.hasContent}
-                      onSmartBreakdown={handleSmartBreakdownForAutoplay}
-                      canStart={multiPhaseAutoplay.canStart}
-                      canStartReason={multiPhaseAutoplay.canStartReason}
-                      isRunning={multiPhaseAutoplay.isRunning}
-                      // Activity mode props
-                      currentPhase={multiPhaseAutoplay.phase as any}
-                      sketchProgress={multiPhaseAutoplay.sketchProgress}
-                      gameplayProgress={multiPhaseAutoplay.gameplayProgress}
-                      posterSelected={multiPhaseAutoplay.posterSelected}
-                      hudGenerated={multiPhaseAutoplay.hudGenerated}
-                      hudTarget={multiPhaseAutoplay.gameplayProgress.target}
-                      error={multiPhaseAutoplay.error}
-                      textEvents={eventLog?.textEvents || []}
-                      imageEvents={eventLog?.imageEvents || []}
-                      onStop={multiPhaseAutoplay.onStop}
-                      onReset={() => {
-                        multiPhaseAutoplay.onReset();
-                        eventLog?.clearEvents();
-                      }}
-                      // Iteration tracking
-                      currentIteration={multiPhaseAutoplay.currentIteration}
-                      maxIterations={multiPhaseAutoplay.maxIterations}
-                    />
-                  )}
+                  onClick={() => setIsAutoplayModalOpen(true)}
                   className={`flex items-center gap-1.5 px-3 py-1 radius-sm border transition-colors
                     ${semanticColors.processing.bg} ${semanticColors.processing.border} ${semanticColors.processing.text}
                     hover:brightness-125`}
@@ -575,40 +533,7 @@ export function DirectorControl({
                 </button>
               ) : (
                 <button
-                  onClick={() => autoplayModal.open(
-                    <AutoplaySetupModal
-                      isOpen={true}
-                      onClose={autoplayModal.close}
-                      onStart={(config) => {
-                        // Clear events when starting fresh
-                        eventLog?.clearEvents();
-                        multiPhaseAutoplay.onStart(config);
-                      }}
-                      hasContent={multiPhaseAutoplay.hasContent}
-                      onSmartBreakdown={handleSmartBreakdownForAutoplay}
-                      canStart={multiPhaseAutoplay.canStart}
-                      canStartReason={multiPhaseAutoplay.canStartReason}
-                      isRunning={multiPhaseAutoplay.isRunning}
-                      // Activity mode props
-                      currentPhase={multiPhaseAutoplay.phase as any}
-                      sketchProgress={multiPhaseAutoplay.sketchProgress}
-                      gameplayProgress={multiPhaseAutoplay.gameplayProgress}
-                      posterSelected={multiPhaseAutoplay.posterSelected}
-                      hudGenerated={multiPhaseAutoplay.hudGenerated}
-                      hudTarget={multiPhaseAutoplay.gameplayProgress.target}
-                      error={multiPhaseAutoplay.error}
-                      textEvents={eventLog?.textEvents || []}
-                      imageEvents={eventLog?.imageEvents || []}
-                      onStop={multiPhaseAutoplay.onStop}
-                      onReset={() => {
-                        multiPhaseAutoplay.onReset();
-                        eventLog?.clearEvents();
-                      }}
-                      // Iteration tracking (will be undefined when not running, which is fine)
-                      currentIteration={multiPhaseAutoplay.currentIteration}
-                      maxIterations={multiPhaseAutoplay.maxIterations}
-                    />
-                  )}
+                  onClick={() => setIsAutoplayModalOpen(true)}
                   disabled={!multiPhaseAutoplay.canStart || (isAnyGenerating && !isAutoplayLocked)}
                   title={multiPhaseAutoplay.canStartReason || undefined}
                   className={`flex items-center gap-1.5 px-3 py-1 radius-sm border transition-colors
@@ -636,7 +561,17 @@ export function DirectorControl({
                 : 'hover:scale-[1.005]'
               }`}
           >
-            <div className="absolute inset-0 bg-gradient-to-r from-cyan-500 via-purple-500 to-amber-500 opacity-60 group-hover:opacity-100 transition-opacity duration-300" />
+            {/* Animated gradient border - shifts during autoplay */}
+            {isAutoplayLocked ? (
+              <motion.div
+                className="absolute inset-0 bg-gradient-to-r from-cyan-500 via-purple-500 to-cyan-500 opacity-80"
+                animate={{ backgroundPosition: ['0% 50%', '100% 50%', '0% 50%'] }}
+                transition={{ duration: 3, repeat: Infinity, ease: 'linear' }}
+                style={{ backgroundSize: '200% 100%' }}
+              />
+            ) : (
+              <div className="absolute inset-0 bg-gradient-to-r from-cyan-500 via-purple-500 to-amber-500 opacity-60 group-hover:opacity-100 transition-opacity duration-300" />
+            )}
             <div className="relative h-10 bg-black/90 radius-md flex items-center justify-center gap-3 group-hover:bg-black/80 transition-colors px-6">
               {isAnyGenerating ? (
                 (() => {
@@ -704,7 +639,44 @@ export function DirectorControl({
         </div>
       </div>
 
-      {/* Autoplay modal renders through ModalProvider at root level */}
+      {/* Autoplay modal - rendered inline for reactive prop updates */}
+      {multiPhaseAutoplay && (
+        <AutoplaySetupModal
+          isOpen={isAutoplayModalOpen}
+          onClose={() => setIsAutoplayModalOpen(false)}
+          onStart={(config) => {
+            // Clear events when starting fresh
+            eventLog?.clearEvents();
+            multiPhaseAutoplay.onStart(config);
+          }}
+          hasContent={multiPhaseAutoplay.hasContent}
+          onSmartBreakdown={handleSmartBreakdownForAutoplay}
+          canStart={multiPhaseAutoplay.canStart}
+          canStartReason={multiPhaseAutoplay.canStartReason}
+          isRunning={multiPhaseAutoplay.isRunning}
+          // Activity mode props - these now update reactively!
+          currentPhase={multiPhaseAutoplay.phase as AutoplayPhase}
+          sketchProgress={multiPhaseAutoplay.sketchProgress}
+          gameplayProgress={multiPhaseAutoplay.gameplayProgress}
+          posterSelected={multiPhaseAutoplay.posterSelected}
+          hudGenerated={multiPhaseAutoplay.hudGenerated}
+          hudTarget={multiPhaseAutoplay.gameplayProgress.target}
+          error={multiPhaseAutoplay.error}
+          textEvents={eventLog?.textEvents || []}
+          imageEvents={eventLog?.imageEvents || []}
+          onStop={multiPhaseAutoplay.onStop}
+          onReset={() => {
+            multiPhaseAutoplay.onReset();
+            eventLog?.clearEvents();
+          }}
+          currentIteration={multiPhaseAutoplay.currentIteration}
+          maxIterations={multiPhaseAutoplay.maxIterations}
+          activePrompts={prompts.generatedPrompts}
+          activeImages={generatedImages}
+          onRetry={multiPhaseAutoplay.onRetry}
+          errorPhase={multiPhaseAutoplay.errorPhase}
+        />
+      )}
     </div>
   );
 }

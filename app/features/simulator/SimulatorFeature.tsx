@@ -109,6 +109,7 @@ function SimulatorContent() {
     saveImageToPanel: imageGen.saveImageToPanel,
     leftPanelSlots: imageGen.leftPanelSlots,
     rightPanelSlots: imageGen.rightPanelSlots,
+    resetSaveTracking: imageGen.resetSaveTracking,
     setFeedback: brain.setFeedback,
     setOutputMode: brain.setOutputMode,
     baseImage: brain.baseImage,
@@ -166,9 +167,13 @@ function SimulatorContent() {
     posterSelected: multiPhaseAutoplay.posterSelected,
     hudGenerated: multiPhaseAutoplay.hudGenerated,
     error: multiPhaseAutoplay.error,
+    errorPhase: multiPhaseAutoplay.errorPhase,
     onStart: multiPhaseAutoplay.startMultiPhase,
     onStop: multiPhaseAutoplay.abort,
     onReset: multiPhaseAutoplay.reset,
+    onRetry: multiPhaseAutoplay.retry,
+    currentIteration: multiPhaseAutoplay.currentIteration,
+    maxIterations: multiPhaseAutoplay.maxIterations,
     // Event log for activity modal
     eventLog: {
       textEvents: eventLog.textEvents,
