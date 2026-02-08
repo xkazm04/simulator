@@ -373,7 +373,7 @@ export function PosterFullOverlay({
             </div>
             <div className="text-center">
               <p className="text-lg font-medium text-slate-400">No Poster Generated</p>
-              <p className="text-sm text-slate-600 mt-2 font-mono max-w-sm">
+              <p className="text-sm text-slate-600 mt-2 font-mono">
                 Select &quot;Poster&quot; mode and click Generate to create key art, or upload your own image
               </p>
             </div>

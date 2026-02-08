@@ -31,6 +31,8 @@ export interface GenerateOverrides {
   baseImage?: string;
   dimensions?: Array<{ type: DimensionType; label: string; reference: string }>;
   feedback?: { positive: string; negative: string };
+  /** Cumulative iteration history from autoplay (score trends, persistent issues) */
+  iterationContext?: string;
   /** Callback fired immediately after prompts are generated, bypassing async state timing */
   onPromptsReady?: (prompts: GeneratedPrompt[]) => void;
 }
@@ -100,7 +102,8 @@ export function SimulatorProvider({ children }: SimulatorProviderProps) {
         effectiveDimensions,
         effectiveFeedback,
         brain.outputMode,
-        prompts.lockedElements
+        prompts.lockedElements,
+        overrides?.iterationContext
       );
 
       if (result.success) {
@@ -128,7 +131,7 @@ export function SimulatorProvider({ children }: SimulatorProviderProps) {
           elements: p.elements,
         }));
         prompts.setGeneratedPrompts(generatedPrompts);
-        prompts.pushToHistory(generatedPrompts);
+        prompts.pushToHistory({ prompts: generatedPrompts, dimensions: dimensions.dimensions, baseImage: effectiveBaseImage });
 
         // Fire callback with fresh prompts (bypasses async state timing)
         overrides?.onPromptsReady?.(generatedPrompts);
@@ -150,7 +153,7 @@ export function SimulatorProvider({ children }: SimulatorProviderProps) {
           brain.outputMode
         );
         prompts.setGeneratedPrompts(fallbackPrompts);
-        prompts.pushToHistory(fallbackPrompts);
+        prompts.pushToHistory({ prompts: fallbackPrompts, dimensions: dimensions.dimensions, baseImage: brain.baseImage });
 
         // Fire callback with fallback prompts (bypasses async state timing)
         overrides?.onPromptsReady?.(fallbackPrompts);
@@ -166,7 +169,7 @@ export function SimulatorProvider({ children }: SimulatorProviderProps) {
         brain.outputMode
       );
       prompts.setGeneratedPrompts(fallbackPrompts);
-      prompts.pushToHistory(fallbackPrompts);
+      prompts.pushToHistory({ prompts: fallbackPrompts, dimensions: dimensions.dimensions, baseImage: brain.baseImage });
 
       // Fire callback with fallback prompts (bypasses async state timing)
       overrides?.onPromptsReady?.(fallbackPrompts);

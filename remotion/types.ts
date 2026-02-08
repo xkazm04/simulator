@@ -13,8 +13,28 @@ export interface ShowcaseVideoItem {
 }
 
 /**
+ * Sketch image item for grid display
+ */
+export interface ShowcaseSketchItem {
+  id: string;
+  imageUrl: string;
+  label: string;
+}
+
+/**
+ * Whatif before/after comparison pair
+ */
+export interface ShowcaseWhatifItem {
+  id: string;
+  beforeImageUrl: string;
+  afterImageUrl: string;
+  beforeCaption: string | null;
+  afterCaption: string | null;
+}
+
+/**
  * Props for the ShowcaseVideo composition
- * Sequence: Title card → Cover image (poster) → Videos in order
+ * Sequence: Title card → Cover image (poster) → Sketch grid → Whatif pairs → Videos in order
  */
 export interface ShowcaseVideoProps {
   projectName: string;
@@ -22,12 +42,20 @@ export interface ShowcaseVideoProps {
   coverUrl: string | null;
   /** Videos to play after the cover */
   videos: ShowcaseVideoItem[];
+  /** Sketch images to show after cover (max 6) */
+  sketches?: ShowcaseSketchItem[];
+  /** Whatif before/after pairs to show after sketches */
+  whatifs?: ShowcaseWhatifItem[];
   /** Duration for cover image in frames. Default: 90 (3 seconds at 30fps) */
   coverDuration?: number;
   /** Duration for each video in frames. Default: 150 (5 seconds at 30fps) */
   videoDuration?: number;
   /** Duration for title card in frames. Default: 90 (3 seconds at 30fps) */
   titleDuration?: number;
+  /** Duration for sketch grid in frames. Default: 120 (4 seconds at 30fps) */
+  sketchDuration?: number;
+  /** Duration for each whatif pair in frames. Default: 90 (3 seconds at 30fps) */
+  whatifDuration?: number;
 }
 
 /**
@@ -50,4 +78,8 @@ export const SHOWCASE_VIDEO_DEFAULTS = {
   lowerThirdDuration: 60,
   /** Default duration for title card in frames (3 seconds at 30fps) */
   titleDuration: 90,
+  /** Default duration for sketch grid in frames (4 seconds at 30fps) */
+  sketchDuration: 120,
+  /** Default duration for each whatif pair in frames (3 seconds at 30fps) */
+  whatifDuration: 90,
 } as const;

@@ -6,7 +6,7 @@
 
 'use client';
 
-import React, { useState, useCallback, lazy, Suspense } from 'react';
+import React, { useState, useCallback, useMemo, useRef, useEffect, lazy, Suspense } from 'react';
 import { GeneratedPrompt, SavedPanelImage } from './types';
 import { useImageGeneration } from './hooks/useImageGeneration';
 import { useProjectManager } from './hooks/useProjectManager';
@@ -73,6 +73,44 @@ function SimulatorContent() {
     outputMode: brain.outputMode,
   });
 
+  // --- Panel image error cleanup: collect 403 failures, debounce, call cleanup API ---
+  const failedPanelIdsRef = useRef<Set<string>>(new Set());
+  const panelCleanupTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handlePanelImageError = useCallback((imageId: string) => {
+    if (!currentProjectId) return;
+    failedPanelIdsRef.current.add(imageId);
+
+    if (panelCleanupTimerRef.current) clearTimeout(panelCleanupTimerRef.current);
+    panelCleanupTimerRef.current = setTimeout(async () => {
+      const ids = Array.from(failedPanelIdsRef.current);
+      failedPanelIdsRef.current.clear();
+      if (ids.length === 0) return;
+
+      try {
+        const res = await fetch(`/api/projects/${currentProjectId}/images/cleanup`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ imageIds: ids }),
+        });
+        const data = await res.json();
+        if (data.success && data.deleted.length > 0) {
+          for (const deletedId of data.deleted) {
+            imageGen.removePanelImage(deletedId);
+          }
+        }
+      } catch (err) {
+        console.error('Panel image cleanup failed:', err);
+      }
+    }, 2000);
+  }, [currentProjectId, imageGen]);
+
+  useEffect(() => {
+    return () => {
+      if (panelCleanupTimerRef.current) clearTimeout(panelCleanupTimerRef.current);
+    };
+  }, []);
+
   const pm = useProjectManager({ imageGen, onProjectChange: setCurrentProjectId });
   const ph = usePosterHandlers({
     setShowPosterOverlay: pm.setShowPosterOverlay,
@@ -90,6 +128,7 @@ function SimulatorContent() {
     isGeneratingImages: imageGen.isGeneratingImages,
     generateImagesFromPrompts: imageGen.generateImagesFromPrompts,
     saveImageToPanel: imageGen.saveImageToPanel,
+    updateGeneratedImageUrl: imageGen.updateGeneratedImageUrl,
     setFeedback: brain.setFeedback,
     generatedPrompts: prompts.generatedPrompts,
     outputMode: brain.outputMode,
@@ -107,6 +146,7 @@ function SimulatorContent() {
     isGeneratingImages: imageGen.isGeneratingImages,
     generateImagesFromPrompts: imageGen.generateImagesFromPrompts,
     saveImageToPanel: imageGen.saveImageToPanel,
+    updateGeneratedImageUrl: imageGen.updateGeneratedImageUrl,
     leftPanelSlots: imageGen.leftPanelSlots,
     rightPanelSlots: imageGen.rightPanelSlots,
     resetSaveTracking: imageGen.resetSaveTracking,
@@ -123,9 +163,11 @@ function SimulatorContent() {
     selectPoster: ph.handleSelectPoster,
     savePoster: ph.handleSavePoster,
     isGeneratingPoster: ph.poster.isGenerating,
+    existingPoster: ph.poster.poster,
     currentProjectId,
     currentProjectName: pm.project.currentProject?.name || 'Untitled',
     onRegeneratePrompts: simulator.handleGenerate,
+    clearHistory: prompts.clearHistory,
     onLogEvent: eventLog.addEvent,
   });
 
@@ -138,8 +180,8 @@ function SimulatorContent() {
   });
   useAutosave();
 
-  // Create autoplay props object to pass down through layouts (legacy single-mode)
-  const autoplayProps = {
+  // Memoized autoplay props to prevent OnionLayout re-renders (legacy single-mode)
+  const autoplayProps = useMemo(() => ({
     isRunning: autoplayOrchestrator.isRunning,
     canStart: autoplayOrchestrator.canStart,
     canStartReason: autoplayOrchestrator.canStartReason,
@@ -153,10 +195,31 @@ function SimulatorContent() {
     onStart: autoplayOrchestrator.startAutoplay,
     onStop: autoplayOrchestrator.abortAutoplay,
     onReset: autoplayOrchestrator.resetAutoplay,
-  };
+  }), [
+    autoplayOrchestrator.isRunning,
+    autoplayOrchestrator.canStart,
+    autoplayOrchestrator.canStartReason,
+    autoplayOrchestrator.status,
+    autoplayOrchestrator.currentIteration,
+    autoplayOrchestrator.maxIterations,
+    autoplayOrchestrator.totalSaved,
+    autoplayOrchestrator.targetSaved,
+    autoplayOrchestrator.completionReason,
+    autoplayOrchestrator.error,
+    autoplayOrchestrator.startAutoplay,
+    autoplayOrchestrator.abortAutoplay,
+    autoplayOrchestrator.resetAutoplay,
+  ]);
 
-  // Create multi-phase autoplay props
-  const multiPhaseAutoplayProps = {
+  // Memoized event log props (nested object, memoize separately)
+  const eventLogProps = useMemo(() => ({
+    textEvents: eventLog.textEvents,
+    imageEvents: eventLog.imageEvents,
+    clearEvents: eventLog.clearEvents,
+  }), [eventLog.textEvents, eventLog.imageEvents, eventLog.clearEvents]);
+
+  // Memoized multi-phase autoplay props
+  const multiPhaseAutoplayProps = useMemo(() => ({
     isRunning: multiPhaseAutoplay.isRunning,
     canStart: multiPhaseAutoplay.canStart,
     canStartReason: multiPhaseAutoplay.canStartReason,
@@ -174,17 +237,44 @@ function SimulatorContent() {
     onRetry: multiPhaseAutoplay.retry,
     currentIteration: multiPhaseAutoplay.currentIteration,
     maxIterations: multiPhaseAutoplay.maxIterations,
-    // Event log for activity modal
-    eventLog: {
-      textEvents: eventLog.textEvents,
-      imageEvents: eventLog.imageEvents,
-      clearEvents: eventLog.clearEvents,
-    },
-  };
+    currentImageInPhase: multiPhaseAutoplay.currentImageInPhase,
+    phaseTarget: multiPhaseAutoplay.phaseTarget,
+    singlePhaseStatus: multiPhaseAutoplay.singlePhaseStatus,
+    eventLog: eventLogProps,
+  }), [
+    multiPhaseAutoplay.isRunning,
+    multiPhaseAutoplay.canStart,
+    multiPhaseAutoplay.canStartReason,
+    multiPhaseAutoplay.hasContent,
+    multiPhaseAutoplay.phase,
+    multiPhaseAutoplay.sketchProgress,
+    multiPhaseAutoplay.gameplayProgress,
+    multiPhaseAutoplay.posterSelected,
+    multiPhaseAutoplay.hudGenerated,
+    multiPhaseAutoplay.error,
+    multiPhaseAutoplay.errorPhase,
+    multiPhaseAutoplay.startMultiPhase,
+    multiPhaseAutoplay.abort,
+    multiPhaseAutoplay.reset,
+    multiPhaseAutoplay.retry,
+    multiPhaseAutoplay.currentIteration,
+    multiPhaseAutoplay.maxIterations,
+    multiPhaseAutoplay.currentImageInPhase,
+    multiPhaseAutoplay.phaseTarget,
+    multiPhaseAutoplay.singlePhaseStatus,
+    eventLogProps,
+  ]);
 
   const selectedPromptImage = selectedPrompt ? imageGen.generatedImages.find(img => img.promptId === selectedPrompt.id) : undefined;
 
   const handleCopyWithToast = useCallback(() => showToast('Prompt copied to clipboard', 'success'), [showToast]);
+
+  const handleTogglePosterOverlay = useCallback(
+    () => pm.setShowPosterOverlay(prev => !prev),
+    [pm.setShowPosterOverlay]
+  );
+
+  const handleOpenComparison = useCallback(() => setShowComparisonModal(true), []);
 
   return (
     <div className="h-full w-full flex flex-col ms-surface font-sans">
@@ -209,6 +299,7 @@ function SimulatorContent() {
           rightPanelSlots={imageGen.rightPanelSlots}
           onRemovePanelImage={imageGen.removePanelImage}
           onViewPanelImage={setSelectedPanelImage}
+          onPanelImageError={handlePanelImageError}
           generatedImages={imageGen.generatedImages}
           isGeneratingImages={imageGen.isGeneratingImages}
           onStartImage={ie.handleStartImage}
@@ -217,7 +308,7 @@ function SimulatorContent() {
           onDeleteGenerations={imageGen.deleteAllGenerations}
           projectPoster={ph.poster.poster}
           showPosterOverlay={pm.showPosterOverlay}
-          onTogglePosterOverlay={() => pm.setShowPosterOverlay(!pm.showPosterOverlay)}
+          onTogglePosterOverlay={handleTogglePosterOverlay}
           isGeneratingPoster={ph.poster.isGenerating}
           onUploadPoster={ph.handleUploadPoster}
           onGeneratePoster={ph.handleGeneratePoster}
@@ -227,7 +318,7 @@ function SimulatorContent() {
           onSelectPoster={ph.handleSelectPoster}
           onSavePoster={ph.handleSavePoster}
           onCancelPosterGeneration={ph.handleCancelPosterGeneration}
-          onOpenComparison={() => setShowComparisonModal(true)}
+          onOpenComparison={handleOpenComparison}
           onViewPrompt={setSelectedPrompt}
           onUploadImageToPanel={imageGen.uploadImageToPanel}
           autoplay={autoplayProps}

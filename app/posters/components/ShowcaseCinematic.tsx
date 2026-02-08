@@ -19,11 +19,10 @@ import { HeroZone } from './cinematic/HeroZone';
 import { FloatingGallery } from './cinematic/FloatingGallery';
 import { DimensionRibbon } from './cinematic/DimensionRibbon';
 import { DimensionSpotlight } from './cinematic/DimensionSpotlight';
-import { BasePromptBanner } from './cinematic/BasePromptBanner';
 import { ShowcasePlayer } from './cinematic/ShowcasePlayer';
 import { AmbientEffects } from './cinematic/AmbientEffects';
 import { SketchSidebar } from './cinematic/SketchSidebar';
-import { ShowcaseVideoItem, SHOWCASE_VIDEO_DEFAULTS } from '@/remotion/types';
+import { ShowcaseVideoItem, ShowcaseSketchItem, ShowcaseWhatifItem, SHOWCASE_VIDEO_DEFAULTS } from '@/remotion/types';
 import { useVideoPreloader } from '../hooks/useVideoPreloader';
 import { useVideoExport } from '../hooks/useVideoExport';
 import { ExportButton } from './cinematic/ExportButton';
@@ -38,32 +37,17 @@ interface Dimension {
 
 interface ShowcaseCinematicProps {
   project: ProjectWithState;
+  dimensions: Dimension[];
   onImageClick: (imageId: string) => void;
+  onImageError?: (imageId: string) => void;
 }
 
-export function ShowcaseCinematic({ project, onImageClick }: ShowcaseCinematicProps) {
+export function ShowcaseCinematic({ project, dimensions, onImageClick, onImageError }: ShowcaseCinematicProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [selectedDimension, setSelectedDimension] = useState<Dimension | null>(null);
 
   // Video export hook
   const { exportState, exportVideo, resetExport, isExporting } = useVideoExport();
-
-  // Parse dimensions from state (handles both array and stringified JSON)
-  const dimensions = useMemo((): Dimension[] => {
-    if (!project.state?.dimensions_json) return [];
-    const raw = project.state.dimensions_json;
-    // If already an array, use directly
-    if (Array.isArray(raw)) return raw;
-    // If string, parse it
-    if (typeof raw === 'string') {
-      try {
-        return JSON.parse(raw);
-      } catch {
-        return [];
-      }
-    }
-    return [];
-  }, [project.state?.dimensions_json]);
 
   // Separate sketch images from other images
   const { sketchImages, nonSketchImages } = useMemo(() => {
@@ -87,6 +71,28 @@ export function ShowcaseCinematic({ project, onImageClick }: ShowcaseCinematicPr
       label: `${img.side} • Slot ${img.slot_index + 1}`,
     }));
   }, [imagesWithVideos]);
+
+  // Sketches for the showcase player (max 6)
+  const showcaseSketches: ShowcaseSketchItem[] = useMemo(() => {
+    return sketchImages.slice(0, 6).map(img => ({
+      id: img.id,
+      imageUrl: img.image_url,
+      label: `Sketch ${img.slot_index + 1}`,
+    }));
+  }, [sketchImages]);
+
+  // Whatif pairs for the showcase player (only pairs with both images)
+  const showcaseWhatifs: ShowcaseWhatifItem[] = useMemo(() => {
+    return (project.whatifs || [])
+      .filter(w => w.before_image_url && w.after_image_url)
+      .map(w => ({
+        id: w.id,
+        beforeImageUrl: w.before_image_url!,
+        afterImageUrl: w.after_image_url!,
+        beforeCaption: w.before_caption,
+        afterCaption: w.after_caption,
+      }));
+  }, [project.whatifs]);
 
   // Extract video URLs for preloading
   const videoUrls = useMemo(() => showcaseVideos.map(v => v.videoUrl), [showcaseVideos]);
@@ -149,13 +155,13 @@ export function ShowcaseCinematic({ project, onImageClick }: ShowcaseCinematicPr
   }, [project.poster, nonSketchImages]);
 
   // Check if we have content to show in video preview
-  // Title card always shows, so we need cover OR videos for meaningful content
-  const hasContent = Boolean(heroImage) || showcaseVideos.length > 0;
+  // Title card always shows, so we need cover, sketches, whatifs, OR videos for meaningful content
+  const hasContent = Boolean(heroImage) || showcaseSketches.length > 0 || showcaseWhatifs.length > 0 || showcaseVideos.length > 0;
   const hasVideos = showcaseVideos.length > 0;
 
   // Export handler - calculates duration and triggers export
   const handleExport = useCallback(() => {
-    const { titleDuration, coverDuration, estimatedVideoDuration, transitionDuration } = SHOWCASE_VIDEO_DEFAULTS;
+    const { titleDuration, coverDuration, estimatedVideoDuration, transitionDuration, sketchDuration, whatifDuration } = SHOWCASE_VIDEO_DEFAULTS;
 
     // Calculate duration (same logic as ShowcasePlayer)
     let totalSequenceDuration = titleDuration;
@@ -166,10 +172,20 @@ export function ShowcaseCinematic({ project, onImageClick }: ShowcaseCinematicPr
       numTransitions++;
     }
 
+    if (showcaseSketches.length > 0) {
+      totalSequenceDuration += sketchDuration;
+      numTransitions++;
+    }
+
+    if (showcaseWhatifs.length > 0) {
+      totalSequenceDuration += showcaseWhatifs.length * whatifDuration;
+      numTransitions++; // transition into first whatif
+      numTransitions += Math.max(0, showcaseWhatifs.length - 1);
+    }
+
     if (showcaseVideos.length > 0) {
       totalSequenceDuration += showcaseVideos.length * estimatedVideoDuration;
-      if (!heroImage) numTransitions++;
-      else numTransitions++;
+      numTransitions++; // transition into first video
       numTransitions += Math.max(0, showcaseVideos.length - 1);
     }
 
@@ -182,12 +198,16 @@ export function ShowcaseCinematic({ project, onImageClick }: ShowcaseCinematicPr
         projectName: project.name,
         coverUrl: heroImage || null,
         videos: showcaseVideos,
+        sketches: showcaseSketches,
+        whatifs: showcaseWhatifs,
         coverDuration,
         titleDuration,
+        sketchDuration,
+        whatifDuration,
       },
       durationInFrames,
     });
-  }, [project.name, heroImage, showcaseVideos, exportVideo]);
+  }, [project.name, heroImage, showcaseVideos, showcaseSketches, showcaseWhatifs, exportVideo]);
 
   return (
     <div className="relative w-full h-dvh overflow-hidden bg-[#030303]">
@@ -211,11 +231,6 @@ export function ShowcaseCinematic({ project, onImageClick }: ShowcaseCinematicPr
 
           {/* Center: Hero / Video Player */}
           <div className="flex-1 flex flex-col min-w-0 min-h-0 relative">
-            {/* Base Prompt Banner - Absolute top inside center area */}
-            <div className="absolute top-0 left-0 right-0 z-20 px-4 pt-2">
-              <BasePromptBanner prompt={project.state?.base_prompt || null} />
-            </div>
-
             {/* Main Content: Hero Zone or Video Player */}
             <AnimatePresence mode="wait">
               {isPlaying ? (
@@ -242,6 +257,8 @@ export function ShowcaseCinematic({ project, onImageClick }: ShowcaseCinematicPr
                       projectName={project.name}
                       coverUrl={heroImage || null}
                       videos={showcaseVideos}
+                      sketches={showcaseSketches}
+                      whatifs={showcaseWhatifs}
                       className="rounded-lg overflow-hidden shadow-2xl shadow-black/50"
                       autoPlay
                     />
@@ -309,6 +326,7 @@ export function ShowcaseCinematic({ project, onImageClick }: ShowcaseCinematicPr
                         images={leftSketches}
                         side="left"
                         onImageClick={onImageClick}
+                        onImageError={onImageError}
                       />
                     </div>
                   )}
@@ -317,8 +335,10 @@ export function ShowcaseCinematic({ project, onImageClick }: ShowcaseCinematicPr
                   <div className="relative">
                     <HeroZone
                       imageUrl={heroImage}
+                      imageId={project.poster?.id || nonSketchImages[0]?.id}
                       projectName={project.name}
                       onImageClick={() => heroImage && onImageClick(project.poster?.id || nonSketchImages[0]?.id)}
+                      onImageError={onImageError}
                     />
 
                     {/* Play Button Overlay with Loading Progress */}
@@ -438,6 +458,7 @@ export function ShowcaseCinematic({ project, onImageClick }: ShowcaseCinematicPr
                         images={rightSketches}
                         side="right"
                         onImageClick={onImageClick}
+                        onImageError={onImageError}
                       />
                     </div>
                   )}
@@ -475,6 +496,7 @@ export function ShowcaseCinematic({ project, onImageClick }: ShowcaseCinematicPr
               <FloatingGallery
                 images={allImages}
                 onImageClick={onImageClick}
+                onImageError={onImageError}
               />
             </div>
           </div>

@@ -56,6 +56,8 @@ export interface AutoplayOrchestratorDeps {
   isGeneratingImages: boolean;
   generateImagesFromPrompts: (prompts: Array<{ id: string; prompt: string }>) => Promise<void>;
   saveImageToPanel: (promptId: string, promptText: string) => boolean;
+  /** Update a generated image's URL in-memory (for polish: replace original with polished) */
+  updateGeneratedImageUrl: (promptId: string, newUrl: string) => void;
 
   // From useBrain
   setFeedback: (feedback: { positive: string; negative: string }) => void;
@@ -82,7 +84,9 @@ export interface AutoplayOrchestratorDeps {
    * @param overrides - Optional overrides for feedback and onPromptsReady callback
    */
   onRegeneratePrompts: (overrides?: {
+    baseImage?: string;
     feedback?: { positive: string; negative: string };
+    iterationContext?: string;
     onPromptsReady?: (prompts: GeneratedPrompt[]) => void;
   }) => void;
 
@@ -92,6 +96,9 @@ export interface AutoplayOrchestratorDeps {
     message: string,
     details?: AutoplayLogEntry['details']
   ) => void;
+
+  /** Max prompts to generate images for per iteration. undefined = all (default). Set to 1 for sequential mode. */
+  maxPromptsPerIteration?: number;
 }
 
 export interface UseAutoplayOrchestratorReturn {
@@ -121,6 +128,7 @@ export function useAutoplayOrchestrator(
     isGeneratingImages,
     generateImagesFromPrompts,
     saveImageToPanel,
+    updateGeneratedImageUrl,
     setFeedback,
     generatedPrompts,
     outputMode,
@@ -172,6 +180,18 @@ export function useAutoplayOrchestrator(
   // Store evaluation criteria for use in polish phase
   const evaluationCriteriaRef = useRef<EvaluationCriteria | null>(null);
 
+  // Cumulative refinement brief — accumulates evaluation insights across iterations
+  // so Claude gets progressively richer context instead of just single-iteration feedback
+  const refinementBriefRef = useRef<string>('');
+
+  // Evolved base image description — starts as the original baseImage and grows
+  // with evaluation insights so prompt generation anchors on progressively refined context
+  const evolvedBaseImageRef = useRef<string>('');
+
+  // Track which prompt IDs belong to the current iteration — prevents completion detector
+  // and evaluator from acting on stale images from a previous phase/session
+  const activePromptIdsRef = useRef<Set<string>>(new Set());
+
   // Create state key for deduplication
   const stateKey = `${autoplay.state.status}-${autoplay.state.currentIteration}-${autoplay.state.totalSaved}`;
 
@@ -215,12 +235,20 @@ export function useAutoplayOrchestrator(
             regeneratingRef.current = true;
 
             // Pass callback to receive prompts immediately after generation
+            // iterationContext flows as a separate channel (not crammed into feedback.positive)
             onRegeneratePrompts({
+              baseImage: evolvedBaseImageRef.current || undefined,
               feedback: feedbackOverride || undefined,
+              iterationContext: refinementBriefRef.current || undefined,
               onPromptsReady: (newPrompts) => {
-                console.log('[Autoplay] Prompts ready, triggering image generation for', newPrompts.length, 'prompts');
                 regeneratingRef.current = false;
-                generateImagesFromPrompts(newPrompts.map(p => ({ id: p.id, prompt: p.prompt })));
+                // Apply maxPromptsPerIteration limit (sequential mode uses 1)
+                const limit = deps.maxPromptsPerIteration;
+                const promptsToUse = limit ? newPrompts.slice(0, limit) : newPrompts;
+                // Track which prompt IDs belong to THIS iteration
+                activePromptIdsRef.current = new Set(promptsToUse.map(p => p.id));
+                console.log('[Autoplay] Prompts ready, triggering image generation for', promptsToUse.length, 'prompts (of', newPrompts.length, 'available)');
+                generateImagesFromPrompts(promptsToUse.map(p => ({ id: p.id, prompt: p.prompt })));
               },
             });
           }
@@ -228,9 +256,10 @@ export function useAutoplayOrchestrator(
         }
 
         case 'evaluating': {
-          // Get completed images for evaluation
+          // Get completed images for evaluation — scoped to current iteration's prompts
+          const activeIds = activePromptIdsRef.current;
           const completedImages = generatedImages.filter(
-            img => img.status === 'complete' && img.url
+            img => img.status === 'complete' && img.url && (activeIds.size === 0 || activeIds.has(img.promptId))
           );
 
           if (completedImages.length === 0) {
@@ -249,7 +278,7 @@ export function useAutoplayOrchestrator(
             expectedAspects: dimensions
               .filter(d => d.reference.trim())
               .map(d => `${d.label}: ${d.reference}`),
-            outputMode: outputMode as 'gameplay' | 'concept',
+            outputMode: outputMode,
             approvalThreshold: 70,
             // Include breakdown context if available (from Smart Breakdown)
             breakdown: breakdown ? {
@@ -287,7 +316,7 @@ export function useAutoplayOrchestrator(
             }));
           }
 
-          // Identify polish candidates (score 50-69, not yet polished)
+          // Identify polish candidates: rescue (50-69) AND excellence (70-89)
           const polishCandidates: NonNullable<AutoplayIteration['polishCandidates']> = [];
 
           // Log individual evaluation results and identify polish candidates
@@ -298,6 +327,33 @@ export function useAutoplayOrchestrator(
                 score: evaluation.score,
                 approved: true,
               });
+
+              // Check for excellence polish (approved images scoring 70-89)
+              const polishAttempts = polishAttemptsRef.current.get(evaluation.promptId) || 0;
+              if (polishAttempts < DEFAULT_POLISH_CONFIG.maxPolishAttempts) {
+                const decision = decidePolishAction(
+                  evaluation,
+                  DEFAULT_POLISH_CONFIG,
+                  outputMode,
+                  70 // approval threshold
+                );
+
+                if (decision.action === 'polish' && decision.polishPrompt) {
+                  const image = completedImages.find(img => img.promptId === evaluation.promptId);
+                  if (image?.url) {
+                    polishCandidates.push({
+                      promptId: evaluation.promptId,
+                      imageUrl: image.url,
+                      originalScore: evaluation.score,
+                      polishPrompt: decision.polishPrompt,
+                    });
+                    logEvent('polish_started', `Queued for excellence polish (score: ${evaluation.score})`, {
+                      promptId: evaluation.promptId,
+                      score: evaluation.score,
+                    });
+                  }
+                }
+              }
             } else {
               logEvent('image_rejected', `Image rejected (score: ${evaluation.score}): ${evaluation.feedback?.slice(0, 80) || 'No feedback'}`, {
                 promptId: evaluation.promptId,
@@ -312,7 +368,7 @@ export function useAutoplayOrchestrator(
                 const decision = decidePolishAction(
                   evaluation,
                   DEFAULT_POLISH_CONFIG,
-                  outputMode as 'gameplay' | 'concept',
+                  outputMode,
                   70 // approval threshold
                 );
 
@@ -382,7 +438,7 @@ export function useAutoplayOrchestrator(
                 polishPrompt: candidate.polishPrompt,
                 criteria,
                 aspectRatio: '16:9',
-                polishType: 'rescue',
+                polishType: candidate.originalScore >= 70 ? 'excellence' : 'rescue',
                 minScoreImprovement: DEFAULT_POLISH_CONFIG.minScoreImprovement,
                 originalScore: candidate.originalScore,
               };
@@ -407,8 +463,9 @@ export function useAutoplayOrchestrator(
                   polishedUrl: result.polishedUrl,
                 });
 
-                // TODO: Update the generated image URL with polished version
-                // This would require a callback to useImageGeneration
+                // Update the generated image URL with polished version
+                // so saveImageToPanel (in refining phase) saves the polished image
+                updateGeneratedImageUrl(candidate.promptId, result.polishedUrl);
               } else {
                 logEvent('polish_no_improvement', `Polish did not improve (delta: ${result.scoreDelta ?? 0})`, {
                   promptId: candidate.promptId,
@@ -446,14 +503,22 @@ export function useAutoplayOrchestrator(
 
           const evaluations = currentIter.evaluations;
 
-          // Save approved images
+          // Save approved images - ranked by score, limited to remaining target
           const approvedEvals = evaluations.filter(e => e.approved);
+
+          // Sort by score descending (best images first)
+          const sortedApproved = [...approvedEvals].sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
+
+          // Limit to remaining target to prevent over-saving
+          const remainingTarget = autoplay.state.config.targetSavedCount - autoplay.state.totalSaved;
+          const toSave = sortedApproved.slice(0, Math.max(1, remainingTarget));
+
           let savedCount = 0;
 
           // Use ref to get current prompts (avoids stale closure issues)
           const currentPrompts = generatedPromptsRef.current;
 
-          for (const eval_ of approvedEvals) {
+          for (const eval_ of toSave) {
             // Find the prompt text for this promptId
             const prompt = currentPrompts.find(p => p.id === eval_.promptId);
             if (prompt) {
@@ -482,13 +547,82 @@ export function useAutoplayOrchestrator(
 
           const refinementFeedback = extractRefinementFeedback(fullEvaluations);
 
+          // Build cumulative iteration context from evaluation insights
+          // This gives Claude a growing history of what worked/failed across iterations
+          const iterationNum = autoplay.state.currentIteration;
+          const sortedByScore = [...fullEvaluations].sort((a, b) => b.score - a.score);
+          const bestEval = sortedByScore[0];
+          const insights: string[] = [];
+
+          if (bestEval?.strengths?.length) {
+            insights.push(`Strengths: ${bestEval.strengths.slice(0, 2).join(', ')}`);
+          }
+          if (bestEval?.score) {
+            insights.push(`top score ${bestEval.score}/100`);
+          }
+          const rejectedInsights = fullEvaluations
+            .filter(e => !e.approved && e.feedback)
+            .map(e => e.feedback)
+            .slice(0, 2);
+          if (rejectedInsights.length) {
+            insights.push(`Fix: ${rejectedInsights.join('; ').slice(0, 120)}`);
+          }
+
+          if (insights.length > 0) {
+            const entry = `[Iter ${iterationNum}] ${insights.join('. ')}`;
+            refinementBriefRef.current = refinementBriefRef.current
+              ? `${refinementBriefRef.current}\n${entry}`
+              : entry;
+          }
+
+          // Evolve baseImage text with evaluation insights so prompt generation
+          // anchors on a progressively refined description instead of the static original
+          const allStrengths = fullEvaluations.flatMap(e => e.strengths).filter(Boolean);
+          const allImprovements = fullEvaluations
+            .filter(e => !e.approved)
+            .flatMap(e => e.improvements)
+            .filter(Boolean);
+          const uniqueStrengths = [...new Set(allStrengths)].slice(0, 3);
+          const uniqueImprovements = [...new Set(allImprovements)].slice(0, 3);
+
+          const directives: string[] = [];
+          if (uniqueStrengths.length > 0) {
+            directives.push(`emphasize ${uniqueStrengths.join(', ')}`);
+          }
+          if (uniqueImprovements.length > 0) {
+            directives.push(`improve ${uniqueImprovements.join(', ')}`);
+          }
+          if (directives.length > 0) {
+            // Cap evolution: keep original baseImage + only last 2 rounds of directives.
+            // This prevents the string from becoming an unparseable mess after many iterations.
+            const newDirective = directives.join('; ');
+            const currentEvolved = evolvedBaseImageRef.current || '';
+            const parts = currentEvolved.split(' — ').filter(Boolean);
+            // parts[0] is original baseImage (or empty), rest are directive rounds
+            const originalBase = parts.length > 0 ? parts[0] : baseImage;
+            const existingDirectives = parts.slice(1);
+            // Keep only last directive round + the new one (max 2 rounds)
+            const keptDirectives = existingDirectives.length > 0
+              ? [existingDirectives[existingDirectives.length - 1], newDirective]
+              : [newDirective];
+            evolvedBaseImageRef.current = `${originalBase} — ${keptDirectives.join(' — ')}`;
+            logEvent('feedback_applied', `Base image evolved: ...${newDirective.slice(0, 60)}`);
+          }
+
+          // Keep feedback clean: PRESERVE = strengths, CHANGE = targeted issues
+          // Iteration history goes through a separate iterationContext channel
+          const cleanFeedback = {
+            positive: refinementFeedback.positive,
+            negative: refinementFeedback.negative,
+          };
+
           // Store feedback in ref for next iteration (avoids React state timing issues)
           // Also apply to state for UI display, but the ref is what we'll actually use
-          if (refinementFeedback.positive || refinementFeedback.negative) {
-            pendingFeedbackRef.current = refinementFeedback;
-            setFeedback(refinementFeedback);
-            logEvent('feedback_applied', `Feedback applied: ${refinementFeedback.negative.slice(0, 80) || refinementFeedback.positive.slice(0, 80)}`, {
-              feedback: refinementFeedback.negative || refinementFeedback.positive,
+          if (cleanFeedback.positive || cleanFeedback.negative) {
+            pendingFeedbackRef.current = cleanFeedback;
+            setFeedback(cleanFeedback);
+            logEvent('feedback_applied', `Feedback: ${cleanFeedback.negative.slice(0, 80) || cleanFeedback.positive.slice(0, 80)}`, {
+              feedback: cleanFeedback.negative || cleanFeedback.positive,
             });
           }
 
@@ -545,11 +679,16 @@ export function useAutoplayOrchestrator(
     const hasImagesForPrompts = generatedImages.some(img => promptIds.has(img.promptId));
     if (hasImagesForPrompts) return; // Already have images for these prompts
 
-    console.log('[Autoplay] Backup trigger: generating images for', currentPrompts.length, 'prompts');
+    // Apply maxPromptsPerIteration limit (sequential mode uses 1)
+    const limit = deps.maxPromptsPerIteration;
+    const promptsToUse = limit ? currentPrompts.slice(0, limit) : currentPrompts;
+    // Track which prompt IDs belong to THIS iteration
+    activePromptIdsRef.current = new Set(promptsToUse.map(p => p.id));
+    console.log('[Autoplay] Backup trigger: generating images for', promptsToUse.length, 'prompts');
 
     // Trigger image generation
     generateImagesFromPrompts(
-      currentPrompts.map(p => ({
+      promptsToUse.map(p => ({
         id: p.id,
         prompt: p.prompt,
       }))
@@ -558,21 +697,37 @@ export function useAutoplayOrchestrator(
 
   /**
    * Effect: Watch for generation completion
+   * Only transitions when ALL images are in a terminal state (complete or failed).
    */
   useEffect(() => {
     if (autoplay.state.status !== 'generating') return;
     if (isGeneratingImages) return; // Still generating
     if (regeneratingRef.current) return; // Prompts being regenerated, old images are stale
 
-    // Generation finished - check if we have completed images
-    const completedImages = generatedImages.filter(
+    // Only consider images belonging to the CURRENT iteration's prompts.
+    // Without this filter, stale images from a previous phase (e.g. sketch)
+    // would trigger completion immediately when a new phase (e.g. gameplay) starts.
+    const activeIds = activePromptIdsRef.current;
+    if (activeIds.size === 0) return; // No active prompts registered yet
+
+    const relevantImages = generatedImages.filter(img => activeIds.has(img.promptId));
+    if (relevantImages.length === 0) return; // No images for current prompts yet
+
+    // Ensure ALL relevant images are in a terminal state before transitioning
+    const pendingImages = relevantImages.filter(
+      img => img.status === 'pending' || img.status === 'generating'
+    );
+    if (pendingImages.length > 0) return; // Some images still in progress
+
+    // All current-iteration images done - check results
+    const completedImages = relevantImages.filter(
       img => img.status === 'complete' && img.url
     );
 
     if (completedImages.length > 0) {
       const promptIds = completedImages.map(img => img.promptId);
       autoplay.onGenerationComplete(promptIds);
-    } else if (generatedImages.length > 0 && generatedImages.every(img => img.status === 'failed')) {
+    } else {
       // All generations failed
       logEvent('image_failed', 'All image generations failed');
       autoplay.setError('All image generations failed');
@@ -592,19 +747,34 @@ export function useAutoplayOrchestrator(
 
   /**
    * Effect: Timeout safety net - abort if stuck in generating for too long
+   *
+   * IMPORTANT: Deps are intentionally status + iteration ONLY (no `autoplay` object).
+   * The `autoplay` object is non-memoized and changes every render, which would cause
+   * the timer to reset on every render. During Leonardo polling (2s intervals), 'pending'
+   * responses don't call setGeneratedImages → no re-renders → timer would accumulate
+   * 60-120s silently. With `autoplay` in deps, the timer accidentally depended on
+   * re-render frequency instead of actual time-in-state.
+   *
+   * Uses refs for callbacks so they're always fresh without being in the deps array.
    */
+  const setErrorRef = useRef(autoplay.setError);
+  setErrorRef.current = autoplay.setError;
+  const logEventRef = useRef(logEvent);
+  logEventRef.current = logEvent;
+
   useEffect(() => {
     if (autoplay.state.status !== 'generating') return;
 
-    const TIMEOUT_MS = 120000; // 120 seconds - generous for slow AI services
+    // 240s covers: Claude API (30s) + Leonardo generation (120s) + evaluation/polish overhead
+    const TIMEOUT_MS = 240000;
     const timeoutId = setTimeout(() => {
       console.error('[Autoplay] Timeout: stuck in generating state for', TIMEOUT_MS / 1000, 'seconds');
-      logEvent('timeout', 'Generation timed out after 120 seconds');
-      autoplay.setError('Generation timed out - please try again');
+      logEventRef.current('timeout', `Generation timed out after ${TIMEOUT_MS / 1000} seconds`);
+      setErrorRef.current('Generation timed out - please try again');
     }, TIMEOUT_MS);
 
     return () => clearTimeout(timeoutId);
-  }, [autoplay, autoplay.state.status, autoplay.state.currentIteration, logEvent]);
+  }, [autoplay.state.status, autoplay.state.currentIteration]);
 
   /**
    * Start autoplay - validates prerequisites and kicks off the loop
@@ -625,6 +795,22 @@ export function useAutoplayOrchestrator(
       console.error('Cannot start autoplay: no base image or generated prompts');
       return;
     }
+
+    // Reset ALL tracking refs for new session — critical when orchestrator
+    // is reused across phases (e.g. sketch → gameplay in multi-phase)
+    processedStateRef.current = '';
+    currentIterationRef.current = 0;
+    polishAttemptsRef.current = new Map();
+    evaluationCriteriaRef.current = null;
+    activePromptIdsRef.current = new Set();
+    refinementBriefRef.current = '';
+    evolvedBaseImageRef.current = '';
+
+    // Set regenerating flag IMMEDIATELY (synchronously) to prevent the completion
+    // detector effect from firing on stale images before the async runEffect sets it.
+    // The main effect's async runEffect will call onRegeneratePrompts which clears it
+    // in the onPromptsReady callback.
+    regeneratingRef.current = true;
 
     autoplay.start(config);
   }, [autoplay, generatedPrompts, outputMode, baseImage]);

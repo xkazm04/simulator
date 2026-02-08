@@ -14,7 +14,7 @@ import { useViewModeStore, ViewMode } from '../../stores';
 const VIEW_TABS: Array<{ id: ViewMode; label: string; icon: React.ReactNode; title: string }> = [
   { id: 'cmd', label: 'CMD', icon: <Terminal size={12} />, title: 'Command - Main prompt workflow' },
   { id: 'poster', label: 'POSTER', icon: <Film size={12} />, title: 'Poster - Project artwork' },
-  { id: 'whatif', label: 'WHAT IF', icon: <GitCompare size={12} />, title: 'What If - Before/After comparison' },
+  { id: 'whatif', label: 'COMPARE', icon: <GitCompare size={12} />, title: 'Compare - Before/After comparison' },
 ];
 
 export function ViewModeSwitcher() {

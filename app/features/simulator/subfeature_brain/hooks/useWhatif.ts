@@ -92,7 +92,7 @@ export function useWhatif({ projectId }: UseWhatifOptions): UseWhatifReturn {
     setError(null);
 
     try {
-      const response = await fetch(`/api/projects/${projectId}/whatifs`);
+      const response = await fetch(`/api/projects/${projectId}/whatifs`, { cache: 'no-store' });
       const result = await response.json();
 
       if (result.success && result.whatifs) {

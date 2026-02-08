@@ -36,7 +36,9 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ success: false, error: 'Failed to get prompts' }, { status: 500 });
     }
 
-    return NextResponse.json({ success: true, prompts: prompts as DbGeneratedPrompt[] });
+    return NextResponse.json({ success: true, prompts: prompts as DbGeneratedPrompt[] }, {
+      headers: { 'Cache-Control': 'no-store' },
+    });
   } catch (error) {
     console.error('Get prompts error:', error);
     return NextResponse.json({ success: false, error: 'Failed to get prompts' }, { status: 500 });

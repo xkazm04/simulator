@@ -134,7 +134,7 @@ function getModeInstructions(outputMode: string): string {
 }
 
 export function createGenerateWithFeedbackPrompt(body: GenerateWithFeedbackRequest): string {
-  const { baseImage, dimensions, feedback, outputMode, lockedElements } = body;
+  const { baseImage, dimensions, feedback, outputMode, lockedElements, iterationContext } = body;
 
   const dimList = dimensions
     .filter(d => d.reference?.trim())
@@ -147,14 +147,19 @@ export function createGenerateWithFeedbackPrompt(body: GenerateWithFeedbackReque
 
   const modeInstructions = getModeInstructions(outputMode);
 
+  // Iteration context section (only present during autoplay)
+  const contextSection = iterationContext
+    ? `\nIteration History (learn from previous rounds):\n${iterationContext}\n\nUSE THIS CONTEXT to avoid repeating past mistakes and build on what worked.`
+    : '';
+
   return `Base Image Format: "${baseImage}"
 Output Mode: ${outputMode.toUpperCase()}
 ${modeInstructions}
 
-Feedback:
-PRESERVE: "${feedback.positive || 'none'}"
-CHANGE: "${feedback.negative || 'none'}"
-
+Direction:
+PRESERVE (strengths to keep): "${feedback.positive || 'none'}"
+CHANGE (specific issues to fix): "${feedback.negative || 'none'}"
+${contextSection}
 Dimensions:
 ${dimList || 'No dimensions set'}
 

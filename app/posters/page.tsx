@@ -6,9 +6,9 @@
 
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
-import { Film, ArrowLeft } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
 import { PosterGallery, GalleryPoster } from '../features/simulator/components/PosterGallery';
 import { ProjectShowcaseModal } from './components';
 
@@ -36,50 +36,54 @@ export default function PostersPage() {
     fetchPosters();
   }, []);
 
+  // --- Poster error cleanup: collect 403 failures, debounce, call cleanup API ---
+  const failedPosterIdsRef = useRef<Set<string>>(new Set());
+  const cleanupTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handlePosterError = useCallback((posterId: string) => {
+    failedPosterIdsRef.current.add(posterId);
+
+    if (cleanupTimerRef.current) clearTimeout(cleanupTimerRef.current);
+    cleanupTimerRef.current = setTimeout(async () => {
+      const ids = Array.from(failedPosterIdsRef.current);
+      failedPosterIdsRef.current.clear();
+      if (ids.length === 0) return;
+
+      try {
+        const res = await fetch('/api/posters/cleanup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ posterIds: ids }),
+        });
+        const data = await res.json();
+        if (data.success && data.deleted.length > 0) {
+          const deletedSet = new Set<string>(data.deleted);
+          setPosters(prev => prev.filter(p => !deletedSet.has(p.id)));
+        }
+      } catch (err) {
+        console.error('Poster cleanup failed:', err);
+      }
+    }, 2000);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (cleanupTimerRef.current) clearTimeout(cleanupTimerRef.current);
+    };
+  }, []);
+
   return (
     <div className="min-h-screen bg-[#050505] text-slate-200 font-sans">
-      {/* Header */}
-      <header className="sticky top-0 z-40 border-b border-slate-800/50 bg-[#050505]/95 backdrop-blur-sm">
-        <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
-          {/* Back to Simulator */}
-          <Link href="/" className="flex items-center gap-2 text-slate-500 hover:text-slate-300 transition-colors">
-            <ArrowLeft size={16} />
-            <span className="text-sm font-mono">Back to Simulator</span>
-          </Link>
-
-          {/* Title */}
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-full bg-rose-500/20 border border-rose-500/30">
-              <Film size={20} className="text-rose-400" />
-            </div>
-            <div>
-              <h1 className="text-lg font-bold text-white">Poster Gallery</h1>
-              <p className="text-[10px] font-mono text-slate-500 uppercase tracking-wider">
-                {posters.length} poster{posters.length !== 1 ? 's' : ''}
-              </p>
-            </div>
-          </div>
-
-          {/* Navigation */}
-          <div className="flex items-center p-1 bg-slate-900/80 rounded-lg border border-slate-800/50">
-            <Link href="/">
-              <button className="px-3 py-1.5 rounded-md text-[10px] font-mono uppercase tracking-wider text-slate-500 hover:text-slate-300 transition-colors">
-                Simulator
-              </button>
-            </Link>
-            <div className="w-px h-4 bg-slate-800 mx-1" />
-            <Link href="/character-studio">
-              <button className="px-3 py-1.5 rounded-md text-[10px] font-mono uppercase tracking-wider text-slate-500 hover:text-slate-300 transition-colors">
-                Characters
-              </button>
-            </Link>
-            <div className="w-px h-4 bg-slate-800 mx-1" />
-            <button className="px-3 py-1.5 rounded-md text-[10px] font-mono uppercase tracking-wider shadow-sm transition-all shadow-rose-900/20 text-rose-400 bg-rose-950/30 border border-rose-500/20">
-              Posters
-            </button>
-          </div>
-        </div>
-      </header>
+      {/* Floating Back Button */}
+      <Link
+        href="/"
+        className="fixed top-4 left-4 z-50 flex items-center gap-2 px-3 py-2
+                   bg-slate-900/80 backdrop-blur-sm border border-slate-700/50
+                   rounded-lg text-slate-400 hover:text-white transition-colors"
+      >
+        <ArrowLeft size={14} />
+        <span className="text-sm font-mono">Back to Simulator</span>
+      </Link>
 
       {/* Gallery */}
       <main className="max-w-7xl mx-auto py-8">
@@ -87,6 +91,7 @@ export default function PostersPage() {
           posters={posters}
           isLoading={isLoading}
           onPosterClick={(poster) => setSelectedProjectId(poster.project_id)}
+          onPosterError={handlePosterError}
         />
       </main>
 

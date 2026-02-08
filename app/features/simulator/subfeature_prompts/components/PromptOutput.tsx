@@ -12,6 +12,10 @@ import { GitCompare } from 'lucide-react';
 import { GeneratedPrompt, PromptElement, GeneratedImage } from '../../types';
 import { PromptCard, SkeletonPromptCard } from './PromptCard';
 
+// Module-level constants to avoid creating new objects on every render
+const EMPTY_IMAGES: GeneratedImage[] = [];
+const EMPTY_SET = new Set<string>();
+
 interface PromptOutputProps {
   prompts: GeneratedPrompt[];
   onRate: (id: string, rating: 'up' | 'down' | null) => void;
@@ -43,10 +47,10 @@ function PromptOutputComponent({
   acceptingElementId,
   onCopy,
   onViewPrompt,
-  generatedImages = [],
+  generatedImages = EMPTY_IMAGES,
   onStartImage,
   onDeleteImage,
-  savedPromptIds = new Set(),
+  savedPromptIds = EMPTY_SET,
   allSlotsFull = false,
   onOpenComparison,
   isGenerating = false,

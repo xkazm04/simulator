@@ -115,6 +115,7 @@ export function ProjectSelector({
       onCreate(newProjectName.trim());
       setNewProjectName('');
       setIsCreating(false);
+      setIsOpen(false);
     }
   };
 

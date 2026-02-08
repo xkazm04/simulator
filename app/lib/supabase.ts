@@ -184,4 +184,5 @@ export interface ProjectWithState extends DbProject {
   prototypes?: DbInteractivePrototype[];
   generatedPrompts?: DbGeneratedPrompt[];
   metadata?: DbProjectMetadata | null;
+  whatifs?: DbProjectWhatif[];
 }

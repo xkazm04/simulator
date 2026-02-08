@@ -31,26 +31,8 @@ export function MediaSkeleton({ className, variant = 'image' }: MediaSkeletonPro
       {/* Base pulse animation */}
       <div className="absolute inset-0 animate-pulse bg-slate-700/30" />
 
-      {/* Shimmer overlay - sweeps from left to right */}
-      <div
-        className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-slate-600/20 to-transparent"
-        style={{
-          // Inline keyframes for shimmer animation (Tailwind 4 compatible)
-          animation: 'shimmer 2s infinite',
-        }}
-      />
-
-      {/* Inline keyframe definition */}
-      <style jsx>{`
-        @keyframes shimmer {
-          0% {
-            transform: translateX(-100%);
-          }
-          100% {
-            transform: translateX(100%);
-          }
-        }
-      `}</style>
+      {/* Shimmer overlay - uses global skeleton-shimmer class from globals.css */}
+      <div className="absolute inset-0 skeleton-shimmer" />
     </div>
   );
 }

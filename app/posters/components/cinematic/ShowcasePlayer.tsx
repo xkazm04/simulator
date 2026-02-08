@@ -3,7 +3,7 @@
 /**
  * ShowcasePlayer - Remotion Player wrapper for in-browser video preview
  *
- * Plays: Cover image (poster) → Project videos in sequence
+ * Plays: Cover image (poster) → Sketch grid → Whatif pairs → Project videos in sequence
  * CRITICAL: Uses useMemo for inputProps to prevent re-render cascade.
  *
  * Key patterns:
@@ -15,7 +15,13 @@
 import React, { useMemo } from 'react';
 import { Player } from '@remotion/player';
 import { ShowcaseVideo } from '@/remotion/compositions/ShowcaseVideo';
-import { ShowcaseVideoProps, ShowcaseVideoItem, SHOWCASE_VIDEO_DEFAULTS } from '@/remotion/types';
+import {
+  ShowcaseVideoProps,
+  ShowcaseVideoItem,
+  ShowcaseSketchItem,
+  ShowcaseWhatifItem,
+  SHOWCASE_VIDEO_DEFAULTS,
+} from '@/remotion/types';
 
 export interface ShowcasePlayerProps {
   projectName: string;
@@ -23,6 +29,10 @@ export interface ShowcasePlayerProps {
   coverUrl: string | null;
   /** Videos to play after cover */
   videos: ShowcaseVideoItem[];
+  /** Sketch images to show after cover (max 6) */
+  sketches?: ShowcaseSketchItem[];
+  /** Whatif before/after pairs to show after sketches */
+  whatifs?: ShowcaseWhatifItem[];
   className?: string;
   /** Auto-play on mount */
   autoPlay?: boolean;
@@ -46,12 +56,14 @@ function EmptyPlaceholder() {
  * ShowcasePlayer component
  *
  * Renders Remotion Player with ShowcaseVideo composition.
- * Plays cover image followed by project videos.
+ * Plays cover image followed by sketches, whatifs, then project videos.
  */
 export function ShowcasePlayer({
   projectName,
   coverUrl,
   videos,
+  sketches = [],
+  whatifs = [],
   className,
   autoPlay = true,
 }: ShowcasePlayerProps) {
@@ -63,17 +75,19 @@ export function ShowcasePlayer({
     titleDuration,
     estimatedVideoDuration,
     transitionDuration,
+    sketchDuration,
+    whatifDuration,
   } = SHOWCASE_VIDEO_DEFAULTS;
 
   // Calculate total duration for TransitionSeries
   // TransitionSeries overlaps scenes during transitions, so:
   // Total = sum(sequences) - sum(transitions)
-  // Sequence: Title card -> Cover (if exists) -> Videos (if any)
+  // Sequence: Title card -> Cover (if exists) -> Sketches (if any) -> Whatifs (if any) -> Videos (if any)
   const durationInFrames = useMemo(() => {
     // Title card always shows
     let totalSequenceDuration = titleDuration;
 
-    // Count transitions starting with title -> cover/video
+    // Count transitions starting with title -> next slide
     let numTransitions = 0;
 
     // Cover sequence
@@ -82,12 +96,31 @@ export function ShowcasePlayer({
       numTransitions++; // title -> cover
     }
 
+    // Sketch grid sequence
+    if (sketches.length > 0) {
+      totalSequenceDuration += sketchDuration;
+      if (!coverUrl) numTransitions++; // title -> sketches (when no cover)
+      else numTransitions++; // cover -> sketches
+    }
+
+    // Whatif sequences
+    if (whatifs.length > 0) {
+      totalSequenceDuration += whatifs.length * whatifDuration;
+      // Transition into first whatif
+      if (sketches.length === 0 && !coverUrl) numTransitions++; // title -> first whatif
+      else if (sketches.length === 0) numTransitions++; // cover -> first whatif
+      else numTransitions++; // sketches -> first whatif
+      // Transitions between whatifs
+      numTransitions += Math.max(0, whatifs.length - 1);
+    }
+
     // Video sequences
     if (videos.length > 0) {
       totalSequenceDuration += videos.length * estimatedVideoDuration;
-      // Transition from cover to first video (or title to first video if no cover)
-      if (!coverUrl) numTransitions++; // title -> first video
-      else numTransitions++; // cover -> first video
+      // Transition into first video from whatever precedes it
+      if (whatifs.length === 0 && sketches.length === 0 && !coverUrl) numTransitions++;
+      else if (whatifs.length === 0 && sketches.length === 0) numTransitions++;
+      else numTransitions++; // whatifs/sketches -> first video
       // Transitions between videos
       numTransitions += Math.max(0, videos.length - 1);
     }
@@ -98,6 +131,10 @@ export function ShowcasePlayer({
     titleDuration,
     coverUrl,
     coverDuration,
+    sketches.length,
+    sketchDuration,
+    whatifs.length,
+    whatifDuration,
     videos.length,
     estimatedVideoDuration,
     transitionDuration,
@@ -110,14 +147,18 @@ export function ShowcasePlayer({
       projectName,
       coverUrl,
       videos,
+      sketches,
+      whatifs,
       coverDuration,
       titleDuration,
+      sketchDuration,
+      whatifDuration,
     }),
-    [projectName, coverUrl, videos, coverDuration, titleDuration]
+    [projectName, coverUrl, videos, sketches, whatifs, coverDuration, titleDuration, sketchDuration, whatifDuration]
   );
 
-  // Handle empty state - title card always shows, so we need cover or videos for meaningful content
-  const hasContent = Boolean(coverUrl) || (videos && videos.length > 0);
+  // Handle empty state - title card always shows, so we need cover, sketches, whatifs, or videos
+  const hasContent = Boolean(coverUrl) || sketches.length > 0 || whatifs.length > 0 || (videos && videos.length > 0);
   if (!hasContent) {
     return <EmptyPlaceholder />;
   }

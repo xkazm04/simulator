@@ -9,7 +9,7 @@
  */
 
 // Context
-export { PromptsProvider, usePromptsContext } from './PromptsContext';
+export { PromptsProvider, usePromptsContext, usePromptsState, usePromptsActions } from './PromptsContext';
 
 // Hooks
 export { usePrompts } from './hooks/usePrompts';

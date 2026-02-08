@@ -9,7 +9,7 @@
  */
 
 // Context
-export { BrainProvider, useBrainContext } from './BrainContext';
+export { BrainProvider, useBrainContext, useBrainState, useBrainActions } from './BrainContext';
 
 // Hooks
 export { useBrain } from './hooks/useBrain';

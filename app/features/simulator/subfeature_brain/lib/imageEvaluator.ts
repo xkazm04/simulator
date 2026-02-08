@@ -21,8 +21,8 @@ export interface EvaluationCriteria {
   originalPrompt: string;
   /** Key aspects that should be present (from dimensions) */
   expectedAspects: string[];
-  /** Output mode affects evaluation (gameplay should have UI, concept should be clean) */
-  outputMode: 'gameplay' | 'concept';
+  /** Output mode affects evaluation (gameplay should have UI, others should be clean) */
+  outputMode: string;
   /** Minimum score threshold for approval (0-100) */
   approvalThreshold?: number;
   /** Smart Breakdown context for richer evaluation (optional for backward compat) */
@@ -220,8 +220,8 @@ export async function evaluateImages(
 /**
  * Extract refinement feedback from evaluation results
  *
- * Aggregates feedback from rejected images into actionable refinement
- * that can be applied to the feedback system for the next iteration.
+ * Uses granular score categories (technicalScore, goalFitScore, modeCompliance)
+ * to generate targeted, actionable feedback instead of generic improvements.
  */
 export function extractRefinementFeedback(evaluations: ImageEvaluation[]): {
   positive: string;
@@ -230,23 +230,60 @@ export function extractRefinementFeedback(evaluations: ImageEvaluation[]): {
   const rejected = evaluations.filter(e => !e.approved);
   const approved = evaluations.filter(e => e.approved);
 
-  // Gather all improvements needed
-  const allImprovements = rejected.flatMap(e => e.improvements || []);
-  const uniqueImprovements = [...new Set(allImprovements)];
+  // --- Targeted negative feedback based on score breakdown ---
+  const negParts: string[] = [];
 
-  // Gather strengths to preserve
-  const allStrengths = [...approved, ...rejected]
-    .flatMap(e => e.strengths || []);
-  const uniqueStrengths = [...new Set(allStrengths)];
+  // Identify the weakest category across all evaluations
+  const avgTechnical = avg(evaluations.map(e => e.technicalScore));
+  const avgGoalFit = avg(evaluations.map(e => e.goalFitScore));
+  const avgAesthetic = avg(evaluations.map(e => e.aestheticScore));
+  const modeViolations = evaluations.filter(e => e.modeCompliance === false);
 
-  // Build feedback strings
-  const negative = uniqueImprovements.length > 0
-    ? `Avoid: ${uniqueImprovements.slice(0, 3).join(', ')}`
+  if (modeViolations.length > 0) {
+    negParts.push(`Mode violation in ${modeViolations.length}/${evaluations.length} images — ensure correct UI/style for output mode`);
+  }
+
+  // Target the weakest scoring category with specific improvements
+  if (avgTechnical !== null && avgGoalFit !== null && avgAesthetic !== null) {
+    const weakest = Math.min(avgTechnical, avgGoalFit, avgAesthetic);
+    if (weakest === avgTechnical && avgTechnical < 75) {
+      const techImprovements = rejected
+        .filter(e => (e.technicalScore ?? 100) < 70)
+        .flatMap(e => e.improvements || [])
+        .slice(0, 2);
+      negParts.push(`Technical quality weak (avg ${avgTechnical}): ${techImprovements.length > 0 ? techImprovements.join(', ') : 'fix artifacts, rendering issues'}`);
+    } else if (weakest === avgGoalFit && avgGoalFit < 75) {
+      const goalImprovements = rejected
+        .filter(e => (e.goalFitScore ?? 100) < 70)
+        .flatMap(e => e.improvements || [])
+        .slice(0, 2);
+      negParts.push(`Goal alignment weak (avg ${avgGoalFit}): ${goalImprovements.length > 0 ? goalImprovements.join(', ') : 'better match prompt content and dimensions'}`);
+    } else if (weakest === avgAesthetic && avgAesthetic < 75) {
+      negParts.push(`Aesthetic quality weak (avg ${avgAesthetic}): improve composition, lighting, color harmony`);
+    }
+  }
+
+  // Fallback: use raw improvements if no subcategory scores available
+  if (negParts.length === 0 && rejected.length > 0) {
+    const allImprovements = [...new Set(rejected.flatMap(e => e.improvements || []))];
+    if (allImprovements.length > 0) {
+      negParts.push(`Avoid: ${allImprovements.slice(0, 3).join(', ')}`);
+    }
+  }
+
+  // --- Positive feedback from strengths ---
+  const allStrengths = [...new Set(
+    [...approved, ...rejected].flatMap(e => e.strengths || [])
+  )];
+  const positive = allStrengths.length > 0
+    ? `Keep: ${allStrengths.slice(0, 3).join(', ')}`
     : '';
 
-  const positive = uniqueStrengths.length > 0
-    ? `Keep: ${uniqueStrengths.slice(0, 3).join(', ')}`
-    : '';
+  return { positive, negative: negParts.join('. ') };
+}
 
-  return { positive, negative };
+/** Average of defined numbers, null if none */
+function avg(values: (number | undefined)[]): number | null {
+  const defined = values.filter((v): v is number => v !== undefined && v !== null);
+  return defined.length > 0 ? Math.round(defined.reduce((a, b) => a + b, 0) / defined.length) : null;
 }

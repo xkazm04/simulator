@@ -12,8 +12,8 @@
 
 import { useState, useCallback } from 'react';
 import { usePoster } from './usePoster';
-import { useDimensionsContext } from '../subfeature_dimensions';
-import { useBrainContext } from '../subfeature_brain';
+import { useDimensionsState } from '../subfeature_dimensions';
+import { useBrainState } from '../subfeature_brain';
 
 interface UsePosterHandlersOptions {
   setShowPosterOverlay: (show: boolean) => void;
@@ -24,8 +24,8 @@ interface UsePosterHandlersOptions {
 }
 
 export function usePosterHandlers({ setShowPosterOverlay, poster, currentProject }: UsePosterHandlersOptions) {
-  const dimensions = useDimensionsContext();
-  const brain = useBrainContext();
+  const dimensions = useDimensionsState();
+  const brain = useBrainState();
 
   const [isSavingPoster, setIsSavingPoster] = useState(false);
 

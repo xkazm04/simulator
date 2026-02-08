@@ -10,6 +10,7 @@ import {
   DbProjectState,
   DbPanelImage,
   DbProjectPoster,
+  DbProjectWhatif,
   DbInteractivePrototype,
   DbGeneratedPrompt,
   ProjectWithState,
@@ -44,12 +45,13 @@ export async function fetchProjectWithState(
   if (!project) return null;
 
   // Use maybeSingle() instead of single() to handle missing records gracefully
-  const [stateResult, panelImagesResult, posterResult, prototypesResult, promptsResult] = await Promise.all([
+  const [stateResult, panelImagesResult, posterResult, prototypesResult, promptsResult, whatifResult] = await Promise.all([
     supabase.from(TABLES.projectState).select('*').eq('project_id', id).maybeSingle(),
     supabase.from(TABLES.panelImages).select('*').eq('project_id', id).order('side').order('slot_index'),
     supabase.from(TABLES.projectPosters).select('*').eq('project_id', id).maybeSingle(),
     supabase.from(TABLES.interactivePrototypes).select('*').eq('project_id', id),
     supabase.from(TABLES.generatedPrompts).select('*').eq('project_id', id).order('scene_number'),
+    supabase.from(TABLES.projectWhatifs).select('*').eq('project_id', id).order('display_order'),
   ]);
 
   return {
@@ -59,6 +61,7 @@ export async function fetchProjectWithState(
     poster: (posterResult.data as DbProjectPoster) || null,
     prototypes: (prototypesResult.data as DbInteractivePrototype[]) || [],
     generatedPrompts: (promptsResult.data as DbGeneratedPrompt[]) || [],
+    whatifs: (whatifResult.data as DbProjectWhatif[]) || [],
   };
 }
 

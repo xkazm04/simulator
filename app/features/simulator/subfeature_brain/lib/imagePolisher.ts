@@ -119,6 +119,20 @@ const EXCELLENCE_TEMPLATES = {
 };
 
 // ============================================
+// Output Mode Normalization
+// ============================================
+
+/**
+ * Normalize any output mode to the two polish categories.
+ * Polish templates are fundamentally "has game UI" vs "no game UI".
+ * - gameplay → gameplay (has HUD/UI)
+ * - All others (sketch, trailer, poster, realistic, concept) → concept (no HUD/UI)
+ */
+function normalizePolishMode(outputMode: string): 'gameplay' | 'concept' {
+  return outputMode === 'gameplay' ? 'gameplay' : 'concept';
+}
+
+// ============================================
 // Polish Decision Logic
 // ============================================
 
@@ -134,11 +148,12 @@ const EXCELLENCE_TEMPLATES = {
 export function decidePolishAction(
   evaluation: ImageEvaluation,
   config: Partial<PolishConfig> = {},
-  outputMode: 'gameplay' | 'concept' = 'gameplay',
+  outputMode: string = 'gameplay',
   approvalThreshold: number = 70
 ): PolishDecision {
   const fullConfig = { ...DEFAULT_POLISH_CONFIG, ...config };
   const { score } = evaluation;
+  const normalizedMode = normalizePolishMode(outputMode);
 
   // Already excellent - save without polish
   if (score >= fullConfig.excellenceCeiling) {
@@ -153,7 +168,7 @@ export function decidePolishAction(
     if (fullConfig.excellenceEnabled && score < fullConfig.excellenceCeiling) {
       const polishPrompt = buildExcellencePolishPrompt(
         evaluation,
-        outputMode,
+        normalizedMode,
         fullConfig.excellenceIntensity
       );
       return {
@@ -171,7 +186,7 @@ export function decidePolishAction(
 
   // Near-approval - attempt rescue polish
   if (score >= fullConfig.rescueFloor && fullConfig.rescueEnabled) {
-    const polishPrompt = buildRescuePolishPrompt(evaluation, outputMode);
+    const polishPrompt = buildRescuePolishPrompt(evaluation, normalizedMode);
     return {
       action: 'polish',
       reason: `Score ${score} is ${approvalThreshold - score} points from approval - attempting rescue polish`,

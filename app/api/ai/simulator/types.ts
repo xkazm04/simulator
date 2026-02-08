@@ -88,6 +88,8 @@ export interface GenerateWithFeedbackRequest {
   feedback: { positive: string; negative: string };
   outputMode: 'gameplay' | 'sketch' | 'trailer' | 'poster' | 'realistic';
   lockedElements: Array<{ id: string; text: string; category: string; locked: boolean }>;
+  /** Cumulative iteration history from autoplay (score trends, persistent issues) */
+  iterationContext?: string;
 }
 
 export interface RefineFeedbackRequest {

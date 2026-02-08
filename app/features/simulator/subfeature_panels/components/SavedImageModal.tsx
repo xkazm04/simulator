@@ -465,6 +465,7 @@ export function SavedImageModal({
                             src={image.url}
                             alt={`Saved image ${slotLabel}`}
                             className="w-full h-full object-cover"
+                            onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
                           />
                         </div>
                       </div>

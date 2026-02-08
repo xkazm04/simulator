@@ -13,41 +13,15 @@
 
 'use client';
 
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Wand2, Loader2, Sparkles, ChevronDown, ChevronUp, Shuffle } from 'lucide-react';
+import { Wand2, Loader2, Sparkles, ChevronDown, ChevronUp } from 'lucide-react';
 import { smartBreakdown, SmartBreakdownResult } from '../lib/simulatorAI';
 import { Dimension, DimensionType, OutputMode, createDimensionWithDefaults } from '../../types';
 import { getDimensionPreset } from '../../subfeature_dimensions/lib/defaultDimensions';
 import { v4 as uuidv4 } from 'uuid';
 import { semanticColors } from '../../lib/semanticColors';
 import { expandCollapse, slideDown, transitions } from '../../lib/motion';
-
-/** Example vision sentences to inspire users */
-const VISION_EXAMPLES = [
-  "Baldur's Gate but in the Star Wars universe",
-  "Pokemon but photorealistic like a nature documentary",
-  "The Last of Us reimagined as a Studio Ghibli film",
-  "Minecraft world rendered in Unreal Engine 5 hyperrealism",
-  "Zelda: Breath of the Wild in cyberpunk Tokyo setting",
-  "Dark Souls but in a cute Animal Crossing style",
-  "GTA San Andreas as a 1920s noir detective story",
-  "Horizon Zero Dawn machines in a medieval fantasy world",
-  "Stardew Valley but in the Warhammer 40K universe",
-  "Elden Ring reimagined as a watercolor painting",
-  "Resident Evil mansion in cozy cottage core aesthetic",
-  "Mario Kart tracks as realistic Formula 1 circuits",
-];
-
-/** Get random examples using Fisher-Yates shuffle */
-function getRandomExamples(count: number = 3): string[] {
-  const shuffled = [...VISION_EXAMPLES];
-  for (let i = shuffled.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-  }
-  return shuffled.slice(0, count);
-}
 
 interface SmartBreakdownProps {
   onApply: (
@@ -59,21 +33,17 @@ interface SmartBreakdownProps {
   ) => void;
   /** Restore vision sentence from saved project state */
   initialVisionSentence?: string | null;
+  /** Propagate local input changes to parent (e.g. brain state) */
+  onInputChange?: (value: string) => void;
   isDisabled?: boolean;
 }
 
-export function SmartBreakdown({ onApply, initialVisionSentence, isDisabled }: SmartBreakdownProps) {
+export function SmartBreakdown({ onApply, initialVisionSentence, onInputChange, isDisabled }: SmartBreakdownProps) {
   const [input, setInput] = useState(initialVisionSentence || '');
   const [isProcessing, setIsProcessing] = useState(false);
   const [result, setResult] = useState<SmartBreakdownResult | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [isExpanded, setIsExpanded] = useState(false);
-  const [examples, setExamples] = useState<string[]>([]);
-
-  // Initialize examples on mount (client-side only to avoid hydration mismatch)
-  useEffect(() => {
-    setExamples(getRandomExamples(3));
-  }, []);
+  const [isExpanded, setIsExpanded] = useState(true);
 
   // Sync input with saved vision sentence when project loads
   useEffect(() => {
@@ -81,14 +51,6 @@ export function SmartBreakdown({ onApply, initialVisionSentence, isDisabled }: S
       setInput(initialVisionSentence);
     }
   }, [initialVisionSentence]);
-
-  const handleShuffleExamples = useCallback(() => {
-    setExamples(getRandomExamples(3));
-  }, []);
-
-  const handleExampleClick = useCallback((exampleText: string) => {
-    setInput(exampleText);
-  }, []);
 
   const handleBreakdown = async () => {
     if (!input.trim() || isProcessing) return;
@@ -141,6 +103,11 @@ export function SmartBreakdown({ onApply, initialVisionSentence, isDisabled }: S
     // Do NOT clear input - keep it for persistence as the project's core identity
   };
 
+  const handleInputChange = (value: string) => {
+    setInput(value);
+    onInputChange?.(value);
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -157,7 +124,7 @@ export function SmartBreakdown({ onApply, initialVisionSentence, isDisabled }: S
       >
         <Sparkles size={14} className="text-purple-400" />
         <span className="font-mono type-label uppercase tracking-wider text-slate-400">
-          // smart_breakdown
+          // vision
         </span>
         <span className="font-mono type-label text-slate-500 ml-1">
           (describe your vision in one sentence)
@@ -183,17 +150,17 @@ export function SmartBreakdown({ onApply, initialVisionSentence, isDisabled }: S
             {/* Input Row */}
             <div className="flex gap-sm">
               <div className="flex-1 relative">
-                <input
-                  type="text"
+                <textarea
+                  rows={3}
                   value={input}
-                  onChange={(e) => setInput(e.target.value)}
+                  onChange={(e) => handleInputChange(e.target.value)}
                   onKeyDown={handleKeyDown}
                   placeholder="e.g., &quot;Baldur's Gate but in Star Wars with modern graphics&quot;"
                   disabled={isProcessing || isDisabled}
                   className="w-full px-4 py-3 bg-slate-900/60 border border-purple-500/30
                             rounded-md text-sm text-slate-200 placeholder-slate-500
                             focus:outline-none focus:border-purple-500/60 focus:ring-1 focus:ring-purple-500/20
-                            font-mono transition-colors disabled:opacity-50"
+                            font-mono transition-colors disabled:opacity-50 resize-none"
                 />
               </div>
 
@@ -220,41 +187,6 @@ export function SmartBreakdown({ onApply, initialVisionSentence, isDisabled }: S
                 )}
               </button>
             </div>
-
-            {/* Example Sentences */}
-            {examples.length > 0 && (
-              <div className="mt-2 flex items-start gap-2">
-                <span className="font-mono type-label text-slate-600 shrink-0 pt-1">
-                  try:
-                </span>
-                <div className="flex flex-wrap gap-1.5 flex-1">
-                  {examples.map((example, idx) => (
-                    <button
-                      key={`${example}-${idx}`}
-                      onClick={() => handleExampleClick(example)}
-                      disabled={isProcessing || isDisabled}
-                      className="px-2.5 py-1 bg-slate-800/40 border border-slate-700/40
-                                rounded-md font-mono type-label text-slate-400
-                                hover:bg-purple-500/10 hover:border-purple-500/30 hover:text-purple-300
-                                transition-colors disabled:opacity-50 disabled:cursor-not-allowed
-                                text-left"
-                      title={`Click to use: "${example}"`}
-                    >
-                      {example}
-                    </button>
-                  ))}
-                </div>
-                <button
-                  onClick={handleShuffleExamples}
-                  disabled={isProcessing || isDisabled}
-                  className="p-1.5 text-slate-500 hover:text-purple-400 hover:bg-purple-500/10
-                            rounded transition-colors disabled:opacity-50 shrink-0"
-                  title="Shuffle examples"
-                >
-                  <Shuffle size={12} />
-                </button>
-              </div>
-            )}
 
             {/* Error - red for error state */}
             {error && (

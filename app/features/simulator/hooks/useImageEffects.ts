@@ -9,7 +9,7 @@
  */
 
 import { useEffect, useRef, useCallback, MutableRefObject } from 'react';
-import { usePromptsContext } from '../subfeature_prompts';
+import { usePromptsState } from '../subfeature_prompts';
 import { useSimulatorContext } from '../SimulatorContext';
 import { useImageGeneration } from './useImageGeneration';
 
@@ -27,7 +27,7 @@ export function useImageEffects({
   setSavedPromptIds,
   isAutoplayRunning = false,
 }: UseImageEffectsOptions) {
-  const prompts = usePromptsContext();
+  const prompts = usePromptsState();
   const simulator = useSimulatorContext();
 
   // Track generation state for clearing images

@@ -10,13 +10,13 @@
 
 import { useEffect, useRef } from 'react';
 import { useProjectContext } from '../contexts';
-import { useDimensionsContext } from '../subfeature_dimensions';
-import { useBrainContext } from '../subfeature_brain';
+import { useDimensionsState } from '../subfeature_dimensions';
+import { useBrainState } from '../subfeature_brain';
 
 export function useAutosave() {
   const project = useProjectContext();
-  const dimensions = useDimensionsContext();
-  const brain = useBrainContext();
+  const dimensions = useDimensionsState();
+  const brain = useBrainState();
 
   const autosaveTimerRef = useRef<NodeJS.Timeout | null>(null);
   const isInitialMountRef = useRef(true);

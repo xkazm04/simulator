@@ -76,6 +76,8 @@ interface UseImageGenerationReturn {
   removePanelImage: (imageId: string) => void;
   updatePanelImage: (imageId: string, newUrl: string) => Promise<void>;
   updatePanelImageVideo: (imageId: string, videoUrl: string) => Promise<void>;
+  /** Update a generated image's URL in-memory (for polish operations before save) */
+  updateGeneratedImageUrl: (promptId: string, newUrl: string) => void;
   clearGeneratedImages: () => void;
   deleteAllGenerations: () => Promise<void>;
   /** Delete a single generated image by prompt ID */
@@ -83,6 +85,8 @@ interface UseImageGenerationReturn {
   clearPanelSlots: () => void;
   /** Rebuild savedPromptIdsRef from actual slot state — call before new autoplay sessions */
   resetSaveTracking: () => void;
+  /** Hydrate panel slots from database images (fills empty local slots with DB data) */
+  hydratePanelImages: (dbImages: SavedPanelImage[]) => void;
 }
 
 const POLL_INTERVAL = 2000; // 2 seconds
@@ -732,6 +736,16 @@ export function useImageGeneration(options: UseImageGenerationOptions): UseImage
   }, [panelStorage, projectId]);
 
   /**
+   * Update a generated image's URL in-memory (for polish operations).
+   * Called before saveImageToPanel so the polished URL gets saved instead of the original.
+   */
+  const updateGeneratedImageUrl = useCallback((promptId: string, newUrl: string) => {
+    setGeneratedImages(prev =>
+      prev.map(img => img.promptId === promptId ? { ...img, url: newUrl } : img)
+    );
+  }, []);
+
+  /**
    * Clear all generated images
    */
   const clearGeneratedImages = useCallback(() => {
@@ -842,6 +856,41 @@ export function useImageGeneration(options: UseImageGenerationOptions): UseImage
     panelStorage.setData(initialPanelData);
   }, [panelStorage]);
 
+  /**
+   * Hydrate panel slots from database images.
+   * Fully replaces local slot data with DB data (DB is source of truth).
+   * Uses overrideNextLoad to survive storage key changes (project switch).
+   */
+  const hydratePanelImages = useCallback((dbImages: SavedPanelImage[]) => {
+    savedPromptIdsRef.current.clear();
+    pendingSlotsRef.current.left.clear();
+    pendingSlotsRef.current.right.clear();
+
+    const newLeft = createEmptySlots();
+    const newRight = createEmptySlots();
+
+    if (dbImages && dbImages.length > 0) {
+      for (const dbImg of dbImages) {
+        const targetSlots = dbImg.side === 'left' ? newLeft : newRight;
+        const idx = dbImg.slotIndex;
+        if (idx < 0 || idx >= SLOTS_PER_SIDE) continue;
+
+        targetSlots[idx] = { index: idx, image: dbImg };
+        if (dbImg.promptId) {
+          savedPromptIdsRef.current.add(dbImg.promptId);
+        }
+      }
+    }
+
+    const newData = { leftSlots: newLeft, rightSlots: newRight };
+
+    // Use overrideNextLoad so the data survives the storageKey change
+    // that happens when onProjectChange fires after hydration.
+    // When loadFromStorage fires for the new key, it uses this data
+    // instead of reading (potentially stale) IndexedDB data.
+    panelStorage.overrideNextLoad(newData);
+  }, [panelStorage]);
+
   // Update isGeneratingImages when all images are done
   useEffect(() => {
     if (generatedImages.length > 0) {
@@ -865,10 +914,12 @@ export function useImageGeneration(options: UseImageGenerationOptions): UseImage
     removePanelImage,
     updatePanelImage,
     updatePanelImageVideo,
+    updateGeneratedImageUrl,
     clearGeneratedImages,
     deleteAllGenerations,
     deleteGeneration,
     clearPanelSlots,
     resetSaveTracking,
+    hydratePanelImages,
   };
 }

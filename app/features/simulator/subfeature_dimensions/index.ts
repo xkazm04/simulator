@@ -7,7 +7,7 @@
  */
 
 // Context
-export { DimensionsProvider, useDimensionsContext } from './DimensionsContext';
+export { DimensionsProvider, useDimensionsContext, useDimensionsState, useDimensionsActions } from './DimensionsContext';
 
 // Hooks
 export { useDimensions } from './hooks/useDimensions';

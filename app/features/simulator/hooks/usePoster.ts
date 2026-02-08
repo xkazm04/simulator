@@ -351,7 +351,7 @@ export function usePoster(): UsePosterReturn {
    */
   const fetchPoster = useCallback(async (projectId: string): Promise<ProjectPoster | null> => {
     try {
-      const response = await fetch(`/api/projects/${projectId}/poster`);
+      const response = await fetch(`/api/projects/${projectId}/poster`, { cache: 'no-store' });
       const data = await response.json();
 
       if (!data.success) {

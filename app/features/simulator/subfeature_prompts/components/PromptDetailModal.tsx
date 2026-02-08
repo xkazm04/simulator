@@ -93,7 +93,7 @@ export function PromptDetailModal({
                     animate="animate"
                     exit="exit"
                     transition={transitions.normal}
-                    className="relative w-full max-w-4xl bg-surface-primary border border-slate-700 radius-lg overflow-hidden flex flex-col max-h-[90vh] shadow-floating"
+                    className="relative w-[96vw] max-w-[96vw] bg-surface-primary border border-slate-700 radius-lg overflow-hidden flex flex-col max-h-[92vh] shadow-floating"
                     onClick={(e) => e.stopPropagation()}
                 >
                     {/* Header */}
@@ -119,22 +119,24 @@ export function PromptDetailModal({
                         </IconButton>
                     </div>
 
-                    {/* Body - Two column layout with image */}
-                    <div className="flex-1 overflow-y-auto custom-scrollbar" data-testid="prompt-detail-modal-body">
-                        <div className="flex flex-col lg:flex-row gap-md p-md">
-                            {/* Left: Image (major) */}
-                            <div className="lg:w-3/5 flex-shrink-0">
-                                <div className="relative aspect-[4/3] radius-md overflow-hidden border border-slate-700 bg-slate-900/50">
+                    {/* Body - Image row + elements, no scrolling */}
+                    <div className="flex-1 flex flex-col min-h-0" data-testid="prompt-detail-modal-body">
+                        {/* Top: Image + Prompt sidebar */}
+                        <div className="flex-1 min-h-0 flex flex-col lg:flex-row">
+                            {/* Left: Image (height-constrained, 16:9 centered) */}
+                            <div className="flex-1 min-w-0 min-h-0 bg-black/40 flex items-center justify-center p-3">
+                                <div className="relative h-full aspect-video max-w-full radius-md overflow-hidden border border-slate-700/50">
                                     {hasImage ? (
                                         <Image
                                             src={generatedImage.url!}
                                             alt={prompt.sceneType}
                                             fill
                                             className="object-cover"
+                                            sizes="70vw"
                                             unoptimized
                                         />
                                     ) : (
-                                        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
+                                        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-slate-900/60">
                                             <div className="p-4 rounded-full bg-slate-800/60">
                                                 <ImageIcon size={32} className="text-slate-600" />
                                             </div>
@@ -150,10 +152,10 @@ export function PromptDetailModal({
                                 </div>
                             </div>
 
-                            {/* Right: Prompt text (minor) */}
-                            <div className="lg:w-2/5 flex flex-col gap-3">
-                                <h4 className="type-body-sm font-medium text-slate-400 uppercase tracking-wider">Prompt Text</h4>
-                                <div className={`flex-1 p-4 radius-md border ${prompt.locked ? 'border-green-500/20 bg-green-500/5' : 'border-slate-800 bg-slate-900/40'}`}>
+                            {/* Right: Prompt text sidebar */}
+                            <div className="w-full lg:w-[320px] shrink-0 flex flex-col gap-2 p-3 border-l border-slate-800/60 bg-slate-900/30 min-h-0">
+                                <h4 className="type-body-sm font-medium text-slate-400 uppercase tracking-wider shrink-0">Prompt Text</h4>
+                                <div className={`flex-1 p-3 radius-md border overflow-y-auto custom-scrollbar min-h-0 ${prompt.locked ? 'border-green-500/20 bg-green-500/5' : 'border-slate-800 bg-slate-900/40'}`}>
                                     <p className="font-mono text-xs text-slate-300 leading-relaxed whitespace-pre-wrap">
                                         {prompt.prompt.split(/(".*?"|\d+)/g).map((part, i) => {
                                             if (part && part.startsWith('"') && part.endsWith('"')) {
@@ -168,11 +170,11 @@ export function PromptDetailModal({
                                 </div>
 
                                 {/* Quick actions */}
-                                <div className="flex gap-2">
+                                <div className="flex gap-2 shrink-0">
                                     <button
                                         onClick={handleCopy}
                                         data-testid="prompt-detail-copy-btn"
-                                        className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 radius-md border text-xs font-medium transition-colors ${justCopied
+                                        className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 radius-md border text-xs font-medium transition-colors ${justCopied
                                             ? 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30'
                                             : 'border-slate-700 text-slate-400 hover:text-white hover:bg-slate-800'
                                             }`}
@@ -182,7 +184,7 @@ export function PromptDetailModal({
                                     </button>
                                     <button
                                         onClick={handleLockWithSave}
-                                        className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 radius-md border text-xs font-medium transition-colors ${prompt.locked || isSavedToPanel
+                                        className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 radius-md border text-xs font-medium transition-colors ${prompt.locked || isSavedToPanel
                                             ? 'bg-green-500/20 text-green-400 border-green-500/30'
                                             : 'border-slate-700 text-slate-500 hover:text-green-400 hover:bg-slate-800'
                                             }`}
@@ -195,14 +197,11 @@ export function PromptDetailModal({
                             </div>
                         </div>
 
-                        {/* Bottom: Elements */}
-                        <div className="px-md pb-md">
-                            <div className="p-md radius-md border border-slate-800 bg-slate-900/30">
-                                <div className="flex items-center justify-between mb-sm">
-                                    <h4 className="type-body-sm font-medium text-slate-400 uppercase tracking-wider">Extracted Elements</h4>
-                                    <span className="type-label font-mono text-slate-600">Click to refine dimensions</span>
-                                </div>
-                                <div className="flex flex-wrap gap-2">
+                        {/* Bottom: Elements (compact, always visible) */}
+                        <div className="shrink-0 px-3 py-2 border-t border-slate-800/40">
+                            <div className="flex items-center gap-3">
+                                <span className="type-label font-mono text-slate-500 uppercase tracking-wider shrink-0">Elements</span>
+                                <div className="flex flex-wrap gap-1.5">
                                     {prompt.elements.map((element) => (
                                         <ElementChip
                                             key={element.id}
@@ -218,7 +217,7 @@ export function PromptDetailModal({
                     </div>
 
                     {/* Footer Actions */}
-                    <div className="px-4 py-3 bg-slate-900/30 border-t border-slate-800 flex items-center justify-between gap-4">
+                    <div className="px-4 py-2 bg-slate-900/30 border-t border-slate-800 flex items-center justify-between gap-4">
                         <div className="flex items-center gap-2">
                             <button
                                 onClick={() => handleRate('up')}

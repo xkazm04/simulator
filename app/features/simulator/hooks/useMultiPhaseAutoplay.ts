@@ -178,6 +178,8 @@ export interface MultiPhaseAutoplayDeps {
   isGeneratingImages: boolean;
   generateImagesFromPrompts: (prompts: Array<{ id: string; prompt: string }>) => Promise<void>;
   saveImageToPanel: (promptId: string, promptText: string) => boolean;
+  /** Update a generated image's URL in-memory (for polish: replace original with polished) */
+  updateGeneratedImageUrl: (promptId: string, newUrl: string) => void;
   leftPanelSlots: Array<{ image: { url: string } | null }>;
   rightPanelSlots: Array<{ image: { url: string } | null }>;
   /** Rebuild save tracking refs from actual slot state — call before new sessions */
@@ -201,13 +203,18 @@ export interface MultiPhaseAutoplayDeps {
   selectPoster: (index: number) => void;
   savePoster: () => Promise<void>;
   isGeneratingPoster: boolean;
+  /** Existing saved poster from DB — skip generation if already present */
+  existingPoster: { id: string; imageUrl: string } | null;
 
   // Project context
   currentProjectId: string | null;
   currentProjectName: string;
 
   // Generation trigger
-  onRegeneratePrompts: (overrides?: { feedback?: { positive: string; negative: string } }) => void;
+  onRegeneratePrompts: (overrides?: { baseImage?: string; feedback?: { positive: string; negative: string } }) => void;
+
+  // Clear prompt history on autoplay start (optional)
+  clearHistory?: () => void;
 
   // Event logging callback (optional)
   onLogEvent?: (
@@ -242,6 +249,14 @@ export interface UseMultiPhaseAutoplayReturn {
   /** Phase that errored (for retry) */
   errorPhase?: AutoplayPhase;
 
+  // Step-level tracking (for sequential UI)
+  /** Which image number within the current phase (1-indexed) */
+  currentImageInPhase?: number;
+  /** Total target for current phase */
+  phaseTarget?: number;
+  /** Single-phase orchestrator status (generating/evaluating/polishing/refining) */
+  singlePhaseStatus?: string;
+
   // Actions
   startMultiPhase: (config: ExtendedAutoplayConfig) => void;
   abort: () => void;
@@ -258,6 +273,7 @@ export function useMultiPhaseAutoplay(
     isGeneratingImages,
     generateImagesFromPrompts,
     saveImageToPanel,
+    updateGeneratedImageUrl,
     leftPanelSlots,
     rightPanelSlots,
     resetSaveTracking,
@@ -274,9 +290,11 @@ export function useMultiPhaseAutoplay(
     selectPoster,
     savePoster,
     isGeneratingPoster,
+    existingPoster,
     currentProjectId,
     currentProjectName,
     onRegeneratePrompts,
+    clearHistory,
     onLogEvent,
   } = deps;
 
@@ -318,14 +336,19 @@ export function useMultiPhaseAutoplay(
       if (currentPhase === 'sketch' || currentPhase === 'gameplay') {
         savedImagesThisPhaseRef.current++;
         dispatch({ type: 'IMAGE_SAVED', phase: currentPhase });
-        // Log the save event
+        // Find the image URL from generatedImages for the completion gallery
+        const savedImage = generatedImages.find(img => img.promptId === promptId);
+        // Log the save event with URL and prompt for CompletionSummary gallery
         logEvent('image_saved', `Image saved (${currentPhase})`, {
           phase: currentPhase,
           promptId,
+          imageUrl: savedImage?.url || undefined,
+          promptText: promptText || undefined,
         });
       }
       return true;
     },
+    updateGeneratedImageUrl,
     setFeedback,
     generatedPrompts,
     outputMode,
@@ -340,6 +363,7 @@ export function useMultiPhaseAutoplay(
     isGeneratingImages,
     generateImagesFromPrompts,
     saveImageToPanel,
+    updateGeneratedImageUrl,
     setFeedback,
     generatedPrompts,
     outputMode,
@@ -409,6 +433,9 @@ export function useMultiPhaseAutoplay(
     }
 
     console.log('[MultiPhase] Starting with config:', config);
+
+    // Clear prompt history so undo starts fresh for this autoplay run
+    clearHistory?.();
 
     // Reset save tracking to clear stale entries from previous sessions
     resetSaveTracking();
@@ -492,18 +519,8 @@ export function useMultiPhaseAutoplay(
       }
     }
 
-    // Check if current image generation phase is complete
-    if (phase === 'sketch') {
-      if (sketchProgress.saved >= config.sketchCount) {
-        console.log('[MultiPhase] Concept phase complete');
-        dispatch({ type: 'ADVANCE_PHASE' });
-      }
-    } else if (phase === 'gameplay') {
-      if (gameplayProgress.saved >= config.gameplayCount) {
-        console.log('[MultiPhase] Gameplay phase complete');
-        dispatch({ type: 'ADVANCE_PHASE' });
-      }
-    }
+    // Phase advancement is handled exclusively by the completion detection effect
+    // (single-phase orchestrator completes -> check progress -> ADVANCE_PHASE)
   }, [state, setOutputMode, logEvent]);
 
   /**
@@ -607,6 +624,14 @@ export function useMultiPhaseAutoplay(
       return;
     }
 
+    // Skip generation if a poster already exists in the database
+    if (existingPoster?.imageUrl) {
+      console.log('[MultiPhase] Poster already exists in DB, skipping generation');
+      logEvent('poster_selected', 'Existing poster preserved (skipped generation)');
+      dispatch({ type: 'POSTER_SELECTED' });
+      return;
+    }
+
     // Check if we have completed poster generations
     const completedPosters = posterGenerations.filter(p => p.status === 'complete' && p.imageUrl);
     const failedPosters = posterGenerations.filter(p => p.status === 'failed');
@@ -675,6 +700,7 @@ export function useMultiPhaseAutoplay(
     state.posterSelected,
     posterGenerations,
     isGeneratingPoster,
+    existingPoster,
     currentProjectId,
     currentProjectName,
     dimensions,
@@ -740,17 +766,20 @@ export function useMultiPhaseAutoplay(
       return;
     }
 
-    // Phase timeout: 2 minutes allows for multiple image generations + evaluations
+    // Phase timeout scales with target count (sequential mode: ~75s per image)
     // This is a safety net, not the normal exit path
-    const PHASE_TIMEOUT_MS = 120000; // 2 minutes per phase
+    const { config } = state;
+    const phaseTarget = phase === 'sketch' ? config.sketchCount
+      : phase === 'gameplay' ? config.gameplayCount : 1;
+    const PHASE_TIMEOUT_MS = Math.max(120000, 75000 * phaseTarget);
     const timeoutId = setTimeout(() => {
       console.error(`[MultiPhase] Phase '${phase}' timed out after ${PHASE_TIMEOUT_MS / 1000}s`);
-      logEvent('timeout', `Phase '${phase}' timed out after 2 minutes`, { phase });
+      logEvent('timeout', `Phase '${phase}' timed out after ${Math.round(PHASE_TIMEOUT_MS / 1000)}s`, { phase });
       dispatch({ type: 'ERROR', error: `Phase '${phase}' timed out - please try again`, phase });
     }, PHASE_TIMEOUT_MS);
 
     return () => clearTimeout(timeoutId);
-  }, [state.phase, logEvent]);
+  }, [state.phase, state.config, logEvent]);
 
   return {
     // State
@@ -773,6 +802,15 @@ export function useMultiPhaseAutoplay(
     totalSaved,
     targetSaved,
     completionReason,
+
+    // Step-level tracking (sequential mode)
+    currentImageInPhase: (state.phase === 'sketch' || state.phase === 'gameplay')
+      ? (state.phase === 'sketch' ? state.sketchProgress.saved : state.gameplayProgress.saved) + 1
+      : undefined,
+    phaseTarget: state.phase === 'sketch'
+      ? state.config.sketchCount
+      : state.phase === 'gameplay' ? state.config.gameplayCount : undefined,
+    singlePhaseStatus: singlePhaseOrchestrator.status,
 
     // Actions
     startMultiPhase,

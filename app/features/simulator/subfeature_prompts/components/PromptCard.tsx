@@ -45,7 +45,7 @@ export function SkeletonPromptCard({ index }: SkeletonPromptCardProps) {
       exit="exit"
       transition={getReducedMotionStaggeredTransition(index, prefersReducedMotion)}
       data-testid={`prompt-skeleton-${index}`}
-      className="group relative h-full min-h-[70px] radius-md overflow-hidden animate-pulse"
+      className="group relative aspect-video radius-md overflow-hidden animate-pulse"
     >
       {/* Background - Gradient placeholder with subtle shimmer */}
       <div className="absolute inset-0 bg-gradient-to-br from-slate-800/60 via-slate-900/80 to-slate-800/40" />
@@ -193,7 +193,7 @@ function PromptCardComponent({
       transition={getReducedMotionStaggeredTransition(index, prefersReducedMotion)}
       onClick={() => onView(prompt)}
       data-testid={`prompt-card-${prompt.id}`}
-      className={`group relative h-full min-h-[70px] radius-md overflow-hidden cursor-pointer transition-all duration-200 shadow-subtle
+      className={`group relative aspect-video radius-md overflow-hidden cursor-pointer transition-all duration-200 shadow-subtle
                   ${getRingClass()}`}
     >
       {/* Background - Generated image or gradient placeholder */}

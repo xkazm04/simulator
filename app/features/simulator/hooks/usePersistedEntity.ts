@@ -195,7 +195,7 @@ export function usePersistedEntity<T extends { id: string }, TCreate = Partial<T
     setError(null);
 
     try {
-      const response = await fetchFn(api.baseEndpoint);
+      const response = await fetchFn(api.baseEndpoint, { cache: 'no-store' as RequestCache });
       const data = await response.json();
 
       if (data.success) {
@@ -225,7 +225,7 @@ export function usePersistedEntity<T extends { id: string }, TCreate = Partial<T
     setError(null);
 
     try {
-      const response = await fetchFn(`${api.baseEndpoint}/${id}`);
+      const response = await fetchFn(`${api.baseEndpoint}/${id}`, { cache: 'no-store' as RequestCache });
       const data = await response.json();
 
       if (data.success) {

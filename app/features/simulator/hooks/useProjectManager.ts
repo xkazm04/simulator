@@ -20,6 +20,7 @@ import { useDimensionsContext } from '../subfeature_dimensions';
 import { useBrainContext } from '../subfeature_brain';
 import { useSimulatorContext } from '../SimulatorContext';
 import { usePromptsContext } from '../subfeature_prompts';
+import { useViewModeStore } from '../stores';
 
 // LocalStorage key for persisting last selected project
 const LAST_PROJECT_KEY = 'simulator:lastProjectId';
@@ -47,6 +48,7 @@ export function useProjectManager({ imageGen, onProjectChange }: UseProjectManag
   const brain = useBrainContext();
   const simulator = useSimulatorContext();
   const prompts = usePromptsContext();
+  const { setViewMode } = useViewModeStore();
 
   const [isInitialized, setIsInitialized] = useState(false);
   const [savedPromptIds, setSavedPromptIds] = useState<Set<string>>(new Set());
@@ -161,6 +163,9 @@ export function useProjectManager({ imageGen, onProjectChange }: UseProjectManag
 
         poster.setPoster(projectWithState?.poster || null);
 
+        // Hydrate panel images from database (replaces local state, survives key change)
+        imageGen.hydratePanelImages(projectWithState?.panelImages || []);
+
         // Persist selection to localStorage only if successful
         if (projectWithState) {
           try {
@@ -175,7 +180,7 @@ export function useProjectManager({ imageGen, onProjectChange }: UseProjectManag
       }
     };
     selectProject();
-  }, [isInitialized, project.projects.length, project.currentProject?.id, project.isLoading, project.selectProject, restoreProjectState, poster, prompts, onProjectChange]);
+  }, [isInitialized, project.projects.length, project.currentProject?.id, project.isLoading, project.selectProject, restoreProjectState, poster, prompts, onProjectChange, imageGen.hydratePanelImages]);
 
   // Handle project selection
   const handleProjectSelect = useCallback(async (projectId: string) => {
@@ -220,6 +225,10 @@ export function useProjectManager({ imageGen, onProjectChange }: UseProjectManag
     }
 
     poster.setPoster(projectWithState?.poster || null);
+
+    // Hydrate panel images from database (replaces local state, survives key change)
+    imageGen.hydratePanelImages(projectWithState?.panelImages || []);
+
     setShowPosterOverlay(false);
   }, [project, simulator, restoreProjectState, imageGen, poster, prompts, onProjectChange]);
 
@@ -246,10 +255,11 @@ export function useProjectManager({ imageGen, onProjectChange }: UseProjectManag
       submittedForGenerationRef.current.clear();
       poster.setPoster(null);
       setShowPosterOverlay(false);
+      setViewMode('cmd');
       // Clear restoring flag after initialization
       setTimeout(() => project.setIsRestoring(false), 0);
     }
-  }, [project, simulator, prompts, imageGen, poster, onProjectChange]);
+  }, [project, simulator, prompts, imageGen, poster, onProjectChange, setViewMode]);
 
   // Handle project reset
   const handleResetProject = useCallback(async () => {

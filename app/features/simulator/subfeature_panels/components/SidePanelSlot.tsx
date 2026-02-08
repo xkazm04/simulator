@@ -14,9 +14,9 @@
 
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import Image from 'next/image';
-import { Image as ImageIcon, X, Eye } from 'lucide-react';
+import { Image as ImageIcon, X, Eye, AlertTriangle } from 'lucide-react';
 import { SavedPanelImage } from '../../types';
 import { semanticColors } from '../../lib/semanticColors';
 
@@ -28,6 +28,8 @@ interface SidePanelSlotProps {
   onView?: (image: SavedPanelImage) => void;
   /** Callback when empty slot is clicked - for upload functionality */
   onEmptySlotClick?: (side: 'left' | 'right', slotIndex: number) => void;
+  /** Called when image fails to load (e.g. 403 from CDN) */
+  onImageError?: (imageId: string) => void;
 }
 
 export function SidePanelSlot({
@@ -37,7 +39,15 @@ export function SidePanelSlot({
   onRemove,
   onView,
   onEmptySlotClick,
+  onImageError,
 }: SidePanelSlotProps) {
+  const [hasError, setHasError] = useState(false);
+
+  // Reset error state when image URL changes (e.g. new image hydrated into same slot)
+  useEffect(() => {
+    setHasError(false);
+  }, [image?.url]);
+
   if (image) {
     return (
       <div
@@ -47,12 +57,21 @@ export function SidePanelSlot({
         onClick={() => onView?.(image)}
         data-testid={`side-panel-slot-${side}-${slotIndex}`}
       >
+        {/* Error fallback */}
+        {hasError && (
+          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-1 bg-slate-800/80">
+            <AlertTriangle size={16} className="text-slate-500" />
+            <span className="text-[8px] font-mono text-slate-500">Unavailable</span>
+          </div>
+        )}
+
         {/* Image */}
         <Image
           src={image.url}
           alt={`Saved image ${slotIndex + 1}`}
           fill
-          className="object-cover"
+          className={hasError ? "object-cover opacity-0" : "object-cover"}
+          onError={() => { setHasError(true); onImageError?.(image.id); }}
         />
 
         {/* Hover overlay */}

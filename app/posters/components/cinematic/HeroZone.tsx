@@ -5,28 +5,34 @@
 
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import Image from 'next/image';
 import { motion } from 'framer-motion';
-import { Maximize2, Sparkles } from 'lucide-react';
+import { Maximize2, Sparkles, AlertTriangle } from 'lucide-react';
 import { scaleIn, transitions } from '@/app/features/simulator/lib/motion';
 import { MediaSkeleton } from './MediaSkeleton';
 import { cn } from '@/app/lib/utils';
 
 interface HeroZoneProps {
   imageUrl?: string;
+  imageId?: string;
   projectName: string;
   onImageClick?: () => void;
+  onImageError?: (imageId: string) => void;
 }
 
-export function HeroZone({ imageUrl, projectName, onImageClick }: HeroZoneProps) {
+export function HeroZone({ imageUrl, imageId, projectName, onImageClick, onImageError }: HeroZoneProps) {
   const [isHovered, setIsHovered] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
+  const [hasError, setHasError] = useState(false);
+  const [prevImageUrl, setPrevImageUrl] = useState(imageUrl);
 
-  // Reset loading state when image URL changes
-  useEffect(() => {
+  // Reset loading/error state when image URL changes (render-time adjustment)
+  if (prevImageUrl !== imageUrl) {
+    setPrevImageUrl(imageUrl);
     setIsLoaded(false);
-  }, [imageUrl]);
+    setHasError(false);
+  }
 
   if (!imageUrl) {
     return (
@@ -63,7 +69,7 @@ export function HeroZone({ imageUrl, projectName, onImageClick }: HeroZoneProps)
             alt=""
             fill
             className="object-cover blur-3xl scale-110 opacity-50"
-            unoptimized
+            sizes="50vw"
           />
         </div>
       </motion.div>
@@ -91,9 +97,16 @@ export function HeroZone({ imageUrl, projectName, onImageClick }: HeroZoneProps)
           {/* Skeleton - fades out when loaded */}
           <div className={cn(
             "absolute inset-0 z-10 transition-opacity duration-500",
-            isLoaded ? "opacity-0 pointer-events-none" : "opacity-100"
+            isLoaded && !hasError ? "opacity-0 pointer-events-none" : "opacity-100"
           )}>
-            <MediaSkeleton variant="hero" className="w-full h-full" />
+            {hasError ? (
+              <div className="w-full h-full flex flex-col items-center justify-center gap-2 bg-slate-800/80">
+                <AlertTriangle size={24} className="text-slate-500" />
+                <span className="text-xs font-mono text-slate-500">Image unavailable</span>
+              </div>
+            ) : (
+              <MediaSkeleton variant="hero" className="w-full h-full" />
+            )}
           </div>
 
           {/* Main image */}
@@ -103,10 +116,11 @@ export function HeroZone({ imageUrl, projectName, onImageClick }: HeroZoneProps)
             fill
             className={cn(
               "object-cover transition-opacity duration-500",
-              isLoaded ? "opacity-100" : "opacity-0"
+              isLoaded && !hasError ? "opacity-100" : "opacity-0"
             )}
             onLoad={() => setIsLoaded(true)}
-            unoptimized
+            onError={() => { setHasError(true); if (imageId && onImageError) onImageError(imageId); }}
+            sizes="(max-width: 640px) 256px, (max-width: 1024px) 288px, (max-width: 1280px) 320px, 384px"
             priority
           />
 

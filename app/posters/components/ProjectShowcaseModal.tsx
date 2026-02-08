@@ -13,7 +13,7 @@
 
 'use client';
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Loader2, AlertCircle } from 'lucide-react';
@@ -60,6 +60,18 @@ interface GeneratedPrompt {
   created_at: string;
 }
 
+interface ProjectWhatif {
+  id: string;
+  project_id: string;
+  before_image_url: string | null;
+  before_caption: string | null;
+  after_image_url: string | null;
+  after_caption: string | null;
+  display_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
 interface Dimension {
   id: string;
   type: string;
@@ -87,6 +99,7 @@ export interface ProjectWithState {
   panelImages: PanelImage[];
   poster: ProjectPoster | null;
   generatedPrompts: GeneratedPrompt[];
+  whatifs?: ProjectWhatif[];
 }
 
 export interface LightboxImage {
@@ -227,6 +240,65 @@ export function ProjectShowcaseModal({ projectId, isOpen, onClose }: ProjectShow
     );
   }, [lightboxImages.length]);
 
+  // --- Image error cleanup: collect 403 failures, debounce, then call cleanup API ---
+  const failedImageIdsRef = useRef<Set<string>>(new Set());
+  const cleanupTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleImageError = useCallback((imageId: string) => {
+    if (!projectId) return;
+    failedImageIdsRef.current.add(imageId);
+
+    // Debounce: wait 2s after the last error before calling cleanup
+    if (cleanupTimerRef.current) clearTimeout(cleanupTimerRef.current);
+    cleanupTimerRef.current = setTimeout(async () => {
+      const ids = Array.from(failedImageIdsRef.current);
+      failedImageIdsRef.current.clear();
+      if (ids.length === 0) return;
+
+      try {
+        const res = await fetch(`/api/projects/${projectId}/images/cleanup`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ imageIds: ids }),
+        });
+        const data = await res.json();
+        if (data.success && data.deleted.length > 0) {
+          const deletedSet = new Set<string>(data.deleted);
+
+          // Update project state — remove deleted panel images, null poster if deleted
+          setProject(prev => {
+            if (!prev) return prev;
+            return {
+              ...prev,
+              panelImages: prev.panelImages.filter(img => !deletedSet.has(img.id)),
+              poster: prev.poster && deletedSet.has(prev.poster.id) ? null : prev.poster,
+            };
+          });
+
+          // Update lightbox images
+          setLightboxImages(prev => prev.filter(img => !deletedSet.has(img.id)));
+
+          // If lightbox is open, adjust index to avoid out-of-bounds
+          setLightboxIndex(prev => {
+            if (prev === null) return null;
+            const remaining = lightboxImages.filter(img => !deletedSet.has(img.id));
+            if (remaining.length === 0) return null;
+            return Math.min(prev, remaining.length - 1);
+          });
+        }
+      } catch (err) {
+        console.error('Image cleanup failed:', err);
+      }
+    }, 2000);
+  }, [projectId, lightboxImages]);
+
+  // Cleanup timer on unmount
+  useEffect(() => {
+    return () => {
+      if (cleanupTimerRef.current) clearTimeout(cleanupTimerRef.current);
+    };
+  }, []);
+
   // Parse dimensions from state (handles both array and stringified JSON)
   const parsedDimensions = useMemo((): Dimension[] => {
     if (!project?.state?.dimensions_json) return [];
@@ -252,7 +324,6 @@ export function ProjectShowcaseModal({ projectId, isOpen, onClose }: ProjectShow
     return {
       images: project.panelImages.length,
       dimensions: parsedDimensions.filter(d => d.reference).length,
-      prompts: project.generatedPrompts.length,
       videos: imagesWithVideos.length,
       sketches: sketchImages.length,
     };
@@ -324,7 +395,9 @@ export function ProjectShowcaseModal({ projectId, isOpen, onClose }: ProjectShow
             ) : project ? (
               <ShowcaseCinematic
                 project={project}
+                dimensions={parsedDimensions}
                 onImageClick={handleImageClick}
+                onImageError={handleImageError}
               />
             ) : null}
           </motion.div>
@@ -337,6 +410,7 @@ export function ProjectShowcaseModal({ projectId, isOpen, onClose }: ProjectShow
             onPrev={handleLightboxPrev}
             onNext={handleLightboxNext}
             projectName={project?.name || 'Project'}
+            onImageError={handleImageError}
           />
         </motion.div>
       )}

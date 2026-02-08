@@ -1,22 +1,20 @@
 /**
  * PromptSection - Collapsible prompt output section for top/bottom areas
  *
- * Uses PromptsContext and SimulatorContext to access state and handlers.
+ * Props-only leaf component (no context reads).
  * Displays generated prompts with images in a collapsible panel.
  * Used for both top (prompts 1-2) and bottom (prompts 3-4) sections.
  */
 
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronUp, ChevronDown } from 'lucide-react';
-import { GeneratedPrompt, GeneratedImage } from '../../types';
+import { GeneratedPrompt, GeneratedImage, PromptElement } from '../../types';
 import { PromptOutput } from './PromptOutput';
 import { IconButton } from '@/app/components/ui';
 import { fadeIn, EASE, DURATION, useReducedMotion, getReducedMotionTransitions } from '../../lib/motion';
-import { usePromptsContext } from '../PromptsContext';
-import { useSimulatorContext } from '../../SimulatorContext';
 
 export interface PromptSectionProps {
   /** Position of the section */
@@ -43,9 +41,23 @@ export interface PromptSectionProps {
   isExpanded?: boolean;
   /** Callback when expand state changes (required if isExpanded is provided) */
   onToggleExpand?: () => void;
+  /** Handler for prompt rating */
+  onRate: (id: string, rating: 'up' | 'down' | null) => void;
+  /** Handler for prompt lock toggle */
+  onLock: (id: string, isLocked: boolean) => void;
+  /** Handler for element lock toggle */
+  onLockElement: (promptId: string, elementId: string) => void;
+  /** Handler for accepting an element */
+  onAcceptElement?: (element: PromptElement) => void;
+  /** ID of the element currently being accepted */
+  acceptingElementId?: string | null;
+  /** Handler for copying a prompt (includes clipboard + state update) */
+  onCopy: (id: string) => void;
+  /** Whether prompts are currently being generated */
+  isGenerating?: boolean;
 }
 
-export function PromptSection({
+function PromptSectionComponent({
   position,
   prompts,
   onViewPrompt,
@@ -58,11 +70,14 @@ export function PromptSection({
   startSlotNumber,
   isExpanded: controlledExpanded,
   onToggleExpand: controlledToggle,
+  onRate,
+  onLock,
+  onLockElement,
+  onAcceptElement,
+  acceptingElementId,
+  onCopy,
+  isGenerating,
 }: PromptSectionProps) {
-  // Get handlers from context
-  const promptsCtx = usePromptsContext();
-  const simulatorCtx = useSimulatorContext();
-
   // Local expand state (used if not controlled)
   const [internalExpanded, setInternalExpanded] = useState(true);
 
@@ -87,21 +102,11 @@ export function PromptSection({
     }
   };
 
-  // Copy handler with toast notification (passed up to OnionLayout for toast)
-  const handleCopy = (id: string) => {
-    promptsCtx.handleCopy(id);
-    // Copy to clipboard
-    const prompt = prompts.find(p => p.id === id);
-    if (prompt) {
-      navigator.clipboard.writeText(prompt.prompt);
-    }
-  };
-
   return (
     <motion.div
       className="shrink-0 w-full relative group"
       initial={false}
-      animate={{ height: isExpanded ? 180 : 36 }}
+      animate={{ height: isExpanded ? 200 : 36 }}
       transition={{ duration: panelDuration, ease: EASE.default }}
     >
       <div className="absolute inset-0 bg-surface-primary/50 radius-lg border border-slate-700/60 overflow-hidden backdrop-blur-sm">
@@ -173,12 +178,12 @@ export function PromptSection({
               <div className="relative h-full p-3">
                 <PromptOutput
                   prompts={prompts}
-                  onRate={promptsCtx.handlePromptRate}
-                  onLock={promptsCtx.handlePromptLock}
-                  onLockElement={promptsCtx.handleElementLock}
-                  onAcceptElement={simulatorCtx.onAcceptElement}
-                  acceptingElementId={promptsCtx.acceptingElementId}
-                  onCopy={handleCopy}
+                  onRate={onRate}
+                  onLock={onLock}
+                  onLockElement={onLockElement}
+                  onAcceptElement={onAcceptElement}
+                  acceptingElementId={acceptingElementId}
+                  onCopy={onCopy}
                   onViewPrompt={onViewPrompt}
                   generatedImages={generatedImages}
                   onStartImage={onStartImage}
@@ -186,7 +191,7 @@ export function PromptSection({
                   savedPromptIds={savedPromptIds}
                   allSlotsFull={allSlotsFull}
                   onOpenComparison={onOpenComparison}
-                  isGenerating={simulatorCtx.isGenerating}
+                  isGenerating={isGenerating}
                   skeletonCount={2}
                 />
               </div>
@@ -198,4 +203,5 @@ export function PromptSection({
   );
 }
 
+export const PromptSection = memo(PromptSectionComponent);
 export default PromptSection;

@@ -35,7 +35,9 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ success: false, error: 'Project not found' }, { status: 404 });
     }
 
-    return NextResponse.json({ success: true, project: projectWithState });
+    return NextResponse.json({ success: true, project: projectWithState }, {
+      headers: { 'Cache-Control': 'no-store' },
+    });
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     console.error(`Get project error (id=${projectId}):`, errorMessage);

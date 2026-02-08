@@ -7,7 +7,7 @@
 
 import React from 'react';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Images, Layers, FileText, Video } from 'lucide-react';
+import { ArrowLeft, Images, Layers, Video } from 'lucide-react';
 import { fadeIn, transitions } from '@/app/features/simulator/lib/motion';
 
 interface ShowcaseHeaderProps {
@@ -17,7 +17,6 @@ interface ShowcaseHeaderProps {
   stats?: {
     images: number;
     dimensions: number;
-    prompts: number;
     videos: number;
     sketches?: number;
   };
@@ -27,7 +26,6 @@ export function ShowcaseHeader({ onClose, stats }: ShowcaseHeaderProps) {
   const statItems = stats ? [
     { icon: Images, label: 'Images', value: stats.images, color: 'cyan' },
     { icon: Layers, label: 'Dimensions', value: stats.dimensions, color: 'purple' },
-    { icon: FileText, label: 'Prompts', value: stats.prompts, color: 'amber' },
     ...(stats.videos > 0 ? [{ icon: Video, label: 'Videos', value: stats.videos, color: 'rose' }] : []),
   ] : [];
 

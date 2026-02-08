@@ -1,22 +1,20 @@
 /**
  * DimensionColumn - Collapsible dimension parameters column
  *
- * Uses DimensionsContext to access all dimension state and handlers.
+ * Props-only leaf component (no context reads).
  * Displays dimension cards in a vertical scrollable column.
  * Used for both left (Parameters A) and right (Parameters B) columns.
  */
 
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { Dimension } from '../../types';
+import { Dimension, DimensionFilterMode, DimensionTransformMode, DimensionPreset, PromptElement } from '../../types';
 import { DimensionGrid } from './DimensionGrid';
 import { IconButton } from '@/app/components/ui';
 import { fadeIn, EASE, DURATION, useReducedMotion, getReducedMotionTransitions } from '../../lib/motion';
-import { useDimensionsContext } from '../DimensionsContext';
-import { useSimulatorContext } from '../../SimulatorContext';
 
 export interface DimensionColumnProps {
   /** Position of the column */
@@ -29,6 +27,22 @@ export interface DimensionColumnProps {
   dimensions: Dimension[];
   /** Handler for reordering within this column's dimensions */
   onReorder: (reorderedDimensions: Dimension[]) => void;
+  /** Handler for dimension value change */
+  onChange: (id: string, reference: string) => void;
+  /** Handler for dimension weight change */
+  onWeightChange: (id: string, weight: number) => void;
+  /** Handler for dimension filter mode change */
+  onFilterModeChange: (id: string, filterMode: DimensionFilterMode) => void;
+  /** Handler for dimension transform mode change */
+  onTransformModeChange: (id: string, transformMode: DimensionTransformMode) => void;
+  /** Handler for dimension reference image change */
+  onReferenceImageChange: (id: string, imageDataUrl: string | null) => void;
+  /** Handler for removing a dimension */
+  onRemove: (id: string) => void;
+  /** Handler for adding a dimension */
+  onAdd: (preset: DimensionPreset) => void;
+  /** Handler for dropping an element on a dimension */
+  onDropElement: (element: PromptElement, dimensionId: string) => void;
   /** Controlled expand state (optional - uses internal state if not provided) */
   isExpanded?: boolean;
   /** Callback when expand state changes (required if isExpanded is provided) */
@@ -37,20 +51,24 @@ export interface DimensionColumnProps {
   disabled?: boolean;
 }
 
-export function DimensionColumn({
+function DimensionColumnComponent({
   side,
   label,
   collapsedLabel,
   dimensions,
   onReorder,
+  onChange,
+  onWeightChange,
+  onFilterModeChange,
+  onTransformModeChange,
+  onReferenceImageChange,
+  onRemove,
+  onAdd,
+  onDropElement,
   isExpanded: controlledExpanded,
   onToggleExpand: controlledToggle,
   disabled,
 }: DimensionColumnProps) {
-  // Get dimension handlers from context
-  const dimensionsCtx = useDimensionsContext();
-  const simulatorCtx = useSimulatorContext();
-
   // Local collapse state (used if not controlled)
   const [internalExpanded, setInternalExpanded] = useState(true);
 
@@ -175,15 +193,15 @@ export function DimensionColumn({
             <div className="pb-2">
               <DimensionGrid
                 dimensions={dimensions}
-                onChange={dimensionsCtx.handleDimensionChange}
-                onWeightChange={dimensionsCtx.handleDimensionWeightChange}
-                onFilterModeChange={dimensionsCtx.handleDimensionFilterModeChange}
-                onTransformModeChange={dimensionsCtx.handleDimensionTransformModeChange}
-                onReferenceImageChange={dimensionsCtx.handleDimensionReferenceImageChange}
-                onRemove={dimensionsCtx.handleDimensionRemove}
-                onAdd={dimensionsCtx.handleDimensionAdd}
+                onChange={onChange}
+                onWeightChange={onWeightChange}
+                onFilterModeChange={onFilterModeChange}
+                onTransformModeChange={onTransformModeChange}
+                onReferenceImageChange={onReferenceImageChange}
+                onRemove={onRemove}
+                onAdd={onAdd}
                 onReorder={onReorder}
-                onDropElement={simulatorCtx.onDropElementOnDimension}
+                onDropElement={onDropElement}
                 disabled={disabled}
               />
             </div>
@@ -194,4 +212,5 @@ export function DimensionColumn({
   );
 }
 
+export const DimensionColumn = memo(DimensionColumnComponent);
 export default DimensionColumn;

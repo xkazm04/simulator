@@ -17,6 +17,7 @@
 'use client';
 
 import React, { useState, useCallback, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   X,
@@ -28,7 +29,6 @@ import {
   ChevronLeft,
   ChevronRight,
   RefreshCw,
-  Lightbulb,
   Loader2,
   AlertCircle,
   Square,
@@ -38,6 +38,12 @@ import {
   Settings2,
   Crown,
   CheckCircle,
+  Sparkles,
+  Maximize2,
+  Minimize2,
+  Copy,
+  Check,
+  Clock,
 } from 'lucide-react';
 import {
   ExtendedAutoplayConfig,
@@ -48,7 +54,8 @@ import {
   GeneratedImage,
   DEFAULT_POLISH_CONFIG,
 } from '../../types';
-import { fadeIn, modalContent, transitions } from '../../lib/motion';
+import { fadeIn, modalContent, scaleIn, transitions } from '../../lib/motion';
+import { useCopyFeedback } from '../../hooks/useCopyFeedback';
 import { ActivityLogSidebar } from './ActivityLogSidebar';
 import { ActivityProgressCenter } from './ActivityProgressCenter';
 
@@ -62,6 +69,10 @@ export interface AutoplaySetupModalProps {
   hasContent: boolean;
   /** Callback to trigger Smart Breakdown with the prompt idea */
   onSmartBreakdown?: (visionSentence: string) => Promise<boolean>;
+  /** Shared vision sentence from brain state */
+  visionSentence?: string | null;
+  /** Update the shared vision sentence in brain state */
+  onVisionSentenceChange?: (value: string) => void;
   canStart: boolean;
   canStartReason: string | null;
   isRunning: boolean;
@@ -95,6 +106,11 @@ export interface AutoplaySetupModalProps {
   activePrompts?: GeneratedPrompt[];
   /** Current image generation statuses */
   activeImages?: GeneratedImage[];
+
+  // Step-level tracking (sequential mode)
+  currentImageInPhase?: number;
+  phaseTarget?: number;
+  singlePhaseStatus?: string;
 }
 
 const DEFAULT_CONFIG: ExtendedAutoplayConfig = {
@@ -324,7 +340,7 @@ function PresetSelector({
             onClick={() => onSelect(preset)}
             disabled={disabled}
             title={preset.description}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2 rounded border text-[10px] font-medium transition-all
+            className={`flex-1 flex flex-col items-center justify-center gap-0.5 py-2 px-3 rounded border text-xs font-medium transition-all
               ${disabled
                 ? 'border-slate-800/40 text-slate-700 cursor-not-allowed'
                 : isActive
@@ -332,8 +348,11 @@ function PresetSelector({
                   : 'border-slate-800/60 bg-black/20 text-slate-400 hover:border-slate-700 hover:text-slate-300'
               }`}
           >
-            <span className={isActive ? 'text-cyan-400' : 'text-slate-500'}>{preset.icon}</span>
-            {preset.label}
+            <div className="flex items-center gap-1.5">
+              <span className={isActive ? 'text-cyan-400' : 'text-slate-500'}>{preset.icon}</span>
+              {preset.label}
+            </div>
+            <span className="text-[10px] text-slate-600 font-normal">{preset.description}</span>
           </button>
         );
       })}
@@ -348,12 +367,12 @@ function SetupModeContent({
   config,
   setConfig,
   hasContent,
-  hasPromptIdea,
+  visionSentence,
+  onVisionSentenceChange,
   isRunning,
   isProcessingBreakdown,
   breakdownError,
   setBreakdownError,
-  totalImages,
   hasGameplay,
   activePreset,
   onPresetSelect,
@@ -361,43 +380,40 @@ function SetupModeContent({
   config: ExtendedAutoplayConfig;
   setConfig: (config: ExtendedAutoplayConfig) => void;
   hasContent: boolean;
-  hasPromptIdea: boolean;
+  visionSentence: string;
+  onVisionSentenceChange: (value: string) => void;
   isRunning: boolean;
   isProcessingBreakdown: boolean;
   breakdownError: string | null;
   setBreakdownError: (error: string | null) => void;
-  totalImages: number;
   hasGameplay: boolean;
   activePreset: string | null;
   onPresetSelect: (preset: AutoplayPreset) => void;
 }) {
+  const hasPromptIdea = Boolean(visionSentence?.trim());
+
   return (
     <div className="flex-1 overflow-y-auto p-3 space-y-3">
-      {/* Preset Selector */}
-      <PresetSelector
-        activePreset={activePreset}
-        onSelect={onPresetSelect}
-        disabled={isRunning || isProcessingBreakdown}
-      />
-
-      {/* Prompt Idea Input */}
+      {/* Vision Input - prominent header field */}
       <div className="space-y-1">
-        <label className="flex items-center gap-1.5 text-[10px] font-medium text-slate-400 uppercase tracking-wider">
-          <Lightbulb size={10} className={!hasContent ? 'text-amber-400' : 'text-slate-500'} />
-          Core Idea {!hasContent && <span className="text-amber-400 normal-case">(Required)</span>}
+        <label className="flex items-center gap-1.5 text-[10px] font-medium text-purple-400 uppercase tracking-wider">
+          <Sparkles size={10} />
+          Vision {!hasContent && !hasPromptIdea && <span className="text-amber-400 normal-case">(Required)</span>}
         </label>
         <textarea
-          value={config.promptIdea || ''}
+          rows={3}
+          value={visionSentence}
           onChange={(e) => {
-            setConfig({ ...config, promptIdea: e.target.value });
+            onVisionSentenceChange(e.target.value);
             setBreakdownError(null);
           }}
-          placeholder="e.g., 'Dark Souls meets Studio Ghibli in a cyberpunk world'"
-          className={`w-full h-14 bg-black/40 border rounded p-2 text-xs placeholder-slate-600 resize-none
-                    focus:outline-none focus:ring-1 transition-all
+          placeholder="e.g., &quot;Baldur's Gate but in Star Wars with modern graphics&quot;"
+          className={`w-full px-3 py-2.5 bg-slate-900/60 border rounded-md text-sm text-slate-200
+                    placeholder-slate-500 font-mono
+                    focus:outline-none focus:ring-1 transition-all resize-none
                     ${!hasContent && !hasPromptIdea
                       ? 'border-amber-500/40 focus:border-amber-500/50 focus:ring-amber-500/30'
-                      : 'border-slate-800 focus:border-cyan-500/50 focus:ring-cyan-500/30'
+                      : 'border-purple-500/30 focus:border-purple-500/60 focus:ring-purple-500/20'
                     }`}
           disabled={isRunning || isProcessingBreakdown}
         />
@@ -408,6 +424,13 @@ function SetupModeContent({
           </p>
         )}
       </div>
+
+      {/* Preset Selector - larger buttons */}
+      <PresetSelector
+        activePreset={activePreset}
+        onSelect={onPresetSelect}
+        disabled={isRunning || isProcessingBreakdown}
+      />
 
       {/* Two-column layout for counts and toggles */}
       <div className="grid grid-cols-2 gap-2">
@@ -478,15 +501,26 @@ function SetupModeContent({
           />
         </div>
       </div>
-
-      {/* Summary bar */}
-      <div className="flex items-center justify-between py-1.5 px-2 rounded border border-cyan-500/20 bg-cyan-500/5">
-        <span className="text-[10px] text-slate-400">Total images:</span>
-        <span className="font-mono text-sm text-cyan-400">{totalImages}</span>
-      </div>
     </div>
   );
 }
+
+/**
+ * Saved image data extracted from image events
+ */
+interface SavedImageInfo {
+  imageUrl: string;
+  promptText?: string;
+  promptId?: string;
+  phase?: string;
+  score?: number;
+  isPolished: boolean;
+}
+
+/**
+ * Image category filter tabs
+ */
+type ImageCategory = 'all' | 'sketch' | 'gameplay' | 'polished' | 'rejected';
 
 /**
  * Completion Summary - Shows results when autoplay finishes
@@ -502,6 +536,7 @@ function CompletionSummary({
   textEvents,
   imageEvents,
   onRetry,
+  isExpanded,
 }: {
   sketchProgress: PhaseProgress;
   gameplayProgress: PhaseProgress;
@@ -513,17 +548,107 @@ function CompletionSummary({
   textEvents: AutoplayLogEntry[];
   imageEvents: AutoplayLogEntry[];
   onRetry?: () => void;
+  isExpanded: boolean;
 }) {
   const totalSaved = sketchProgress.saved + gameplayProgress.saved;
   const totalTarget = sketchProgress.target + gameplayProgress.target;
-  const totalGenerated = imageEvents.filter(e =>
-    e.type === 'image_complete' || e.type === 'image_approved' || e.type === 'image_rejected'
-  ).length;
-  const approvedCount = imageEvents.filter(e => e.type === 'image_approved' || e.type === 'image_saved').length;
   const rejectedCount = imageEvents.filter(e => e.type === 'image_rejected').length;
   const polishCount = imageEvents.filter(e => e.type === 'image_polished').length;
-  const approvalRate = totalGenerated > 0 ? Math.round((approvedCount / totalGenerated) * 100) : 0;
   const isSuccess = !error && totalSaved >= totalTarget;
+
+  // Duration calculation from events
+  const allEvents = [...textEvents, ...imageEvents];
+  const firstEvent = allEvents.length > 0 ? allEvents.reduce((a, b) => a.timestamp < b.timestamp ? a : b) : null;
+  const lastEvent = allEvents.length > 0 ? allEvents.reduce((a, b) => a.timestamp > b.timestamp ? a : b) : null;
+  const durationMs = firstEvent && lastEvent ? lastEvent.timestamp.getTime() - firstEvent.timestamp.getTime() : 0;
+  const durationMin = Math.floor(durationMs / 60000);
+  const durationSec = Math.floor((durationMs % 60000) / 1000);
+  const durationStr = durationMin > 0 ? `${durationMin}m ${durationSec}s` : `${durationSec}s`;
+
+  // Extract actually saved images from image_saved events (with URLs)
+  const savedImages: SavedImageInfo[] = imageEvents
+    .filter(e => e.type === 'image_saved' && e.details?.imageUrl)
+    .map(e => {
+      const polished = imageEvents.some(
+        pe => pe.type === 'image_polished' && pe.details?.promptId === e.details?.promptId
+      );
+      return {
+        imageUrl: e.details!.imageUrl!,
+        promptText: e.details?.promptText,
+        promptId: e.details?.promptId,
+        phase: e.details?.phase,
+        score: e.details?.score,
+        isPolished: polished,
+      };
+    });
+
+  // Extract rejected images (no URLs typically, but track for count)
+  const rejectedImages: SavedImageInfo[] = imageEvents
+    .filter(e => e.type === 'image_rejected')
+    .map(e => ({
+      imageUrl: '',
+      promptText: e.message,
+      promptId: e.details?.promptId,
+      phase: e.details?.phase,
+      score: e.details?.score,
+      isPolished: false,
+    }));
+
+  // Category filter state
+  const [activeCategory, setActiveCategory] = useState<ImageCategory>('all');
+
+  // Filter images by category
+  const filteredImages = (() => {
+    switch (activeCategory) {
+      case 'sketch': return savedImages.filter(img => img.phase === 'sketch');
+      case 'gameplay': return savedImages.filter(img => img.phase === 'gameplay');
+      case 'polished': return savedImages.filter(img => img.isPolished);
+      case 'rejected': return rejectedImages;
+      default: return savedImages;
+    }
+  })();
+
+  // Category tabs config
+  const sketchSaved = savedImages.filter(img => img.phase === 'sketch');
+  const gameplaySaved = savedImages.filter(img => img.phase === 'gameplay');
+  const polishedSaved = savedImages.filter(img => img.isPolished);
+
+  const categories: { id: ImageCategory; label: string; count: number; color: string; activeColor: string }[] = [
+    ...(sketchSaved.length > 0 ? [{
+      id: 'sketch' as ImageCategory, label: 'Sketches', count: sketchSaved.length,
+      color: 'text-blue-400 border-blue-500/20 hover:border-blue-500/40 hover:bg-blue-500/5',
+      activeColor: 'text-blue-300 border-blue-500/50 bg-blue-500/15',
+    }] : []),
+    ...(gameplaySaved.length > 0 ? [{
+      id: 'gameplay' as ImageCategory, label: 'Gameplay', count: gameplaySaved.length,
+      color: 'text-purple-400 border-purple-500/20 hover:border-purple-500/40 hover:bg-purple-500/5',
+      activeColor: 'text-purple-300 border-purple-500/50 bg-purple-500/15',
+    }] : []),
+    ...(polishedSaved.length > 0 ? [{
+      id: 'polished' as ImageCategory, label: 'Polished', count: polishedSaved.length,
+      color: 'text-amber-400 border-amber-500/20 hover:border-amber-500/40 hover:bg-amber-500/5',
+      activeColor: 'text-amber-300 border-amber-500/50 bg-amber-500/15',
+    }] : []),
+    ...(rejectedCount > 0 ? [{
+      id: 'rejected' as ImageCategory, label: 'Rejected', count: rejectedCount,
+      color: 'text-red-400 border-red-500/20 hover:border-red-500/40 hover:bg-red-500/5',
+      activeColor: 'text-red-300 border-red-500/50 bg-red-500/15',
+    }] : []),
+  ];
+
+  // Lightbox state — track both URL and prompt for copy
+  const [lightboxImage, setLightboxImage] = useState<{ url: string; prompt?: string } | null>(null);
+  const lightboxCopy = useCopyFeedback();
+
+  const handleCopyLightboxPrompt = useCallback(async () => {
+    if (!lightboxImage?.prompt) return;
+    try {
+      await navigator.clipboard.writeText(lightboxImage.prompt);
+      lightboxCopy.triggerCopy();
+    } catch {
+      // Clipboard API may fail
+    }
+  }, [lightboxImage, lightboxCopy]);
 
   // Detect API-related errors for auto-retry
   const isApiError = error && (
@@ -568,52 +693,73 @@ function CompletionSummary({
   }, []);
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 space-y-4">
-      {/* Status banner */}
-      <div className={`flex items-center gap-3 p-3 rounded-lg border ${
-        isSuccess
-          ? 'border-green-500/30 bg-green-500/10'
-          : error
-            ? 'border-red-500/30 bg-red-500/10'
-            : 'border-amber-500/30 bg-amber-500/10'
-      }`}>
-        <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${
+    <div className="flex-1 overflow-y-auto p-4 space-y-3">
+      {/* Row 1: Compact status with inline stats */}
+      <motion.div
+        initial={{ opacity: 0, y: -8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3 }}
+        className={`flex items-center gap-3 px-3 py-2.5 rounded-lg border ${
           isSuccess
-            ? 'bg-green-500/20 text-green-400'
+            ? 'border-green-500/30 bg-green-500/5'
             : error
-              ? 'bg-red-500/20 text-red-400'
-              : 'bg-amber-500/20 text-amber-400'
-        }`}>
+              ? 'border-red-500/30 bg-red-500/5'
+              : 'border-amber-500/30 bg-amber-500/5'
+        }`}
+      >
+        <motion.div
+          initial={{ scale: 0 }}
+          animate={{ scale: 1 }}
+          transition={{ delay: 0.15, type: 'spring', stiffness: 300, damping: 20 }}
+          className={`relative shrink-0 ${
+            isSuccess ? 'text-green-400' : error ? 'text-red-400' : 'text-amber-400'
+          }`}
+        >
           {isSuccess ? (
-            <CheckCircle size={20} />
-          ) : error ? (
-            <AlertCircle size={20} />
+            <>
+              <CheckCircle size={18} />
+              <motion.div
+                className="absolute -top-1 -right-1 text-green-400"
+                animate={{ scale: [0, 1, 0], opacity: [0, 1, 0] }}
+                transition={{ duration: 1.5, delay: 0.4, repeat: 2 }}
+              >
+                <Sparkles size={8} />
+              </motion.div>
+            </>
           ) : (
-            <AlertCircle size={20} />
+            <AlertCircle size={18} />
           )}
-        </div>
+        </motion.div>
+
         <div className="flex-1 min-w-0">
-          <h3 className={`text-sm font-medium ${
+          <span className={`text-xs font-medium ${
             isSuccess ? 'text-green-300' : error ? 'text-red-300' : 'text-amber-300'
           }`}>
             {isSuccess ? 'Autoplay Complete' : error ? 'Stopped with Error' : 'Partially Complete'}
-          </h3>
-          <p className="text-[11px] text-slate-400">
-            {isSuccess
-              ? `Successfully generated ${totalSaved} images`
-              : error
-                ? error
-                : `Generated ${totalSaved}/${totalTarget} target images`
-            }
-          </p>
+          </span>
+          {error && !errorPhase && (
+            <p className="text-[10px] text-slate-500 truncate mt-0.5">{error}</p>
+          )}
           {error && errorPhase && (
             <p className="text-[10px] text-red-400/70 mt-0.5">
-              Failed during: <span className="font-mono uppercase">{errorPhase}</span> phase
-              {totalSaved > 0 && ` (${totalSaved} images saved before error)`}
+              Failed during <span className="font-mono uppercase">{errorPhase}</span>
+              {totalSaved > 0 && ` \u00b7 ${totalSaved} saved before error`}
             </p>
           )}
         </div>
-      </div>
+
+        {/* Inline stats */}
+        <div className="flex items-center gap-3 shrink-0 text-[11px] font-mono">
+          <span className="flex items-center gap-1 text-cyan-400">
+            <Image size={10} />
+            {totalSaved}/{totalTarget}
+          </span>
+          <span className="flex items-center gap-1 text-slate-500">
+            <Clock size={10} />
+            {durationStr}
+          </span>
+        </div>
+      </motion.div>
 
       {/* Auto-retry for API errors */}
       {isApiError && onRetry && (
@@ -635,7 +781,7 @@ function CompletionSummary({
             <>
               <RefreshCw size={12} className="text-amber-400" />
               <span className="text-[11px] text-amber-300 flex-1">
-                This looks like a temporary API error.
+                Temporary API error.
               </span>
               <button
                 onClick={() => startCountdown(10)}
@@ -648,59 +794,133 @@ function CompletionSummary({
         </div>
       )}
 
-      {/* Stats grid */}
-      <div className="grid grid-cols-2 gap-2">
-        <StatCard label="Images Saved" value={totalSaved} total={totalTarget} color="cyan" />
-        <StatCard label="Approval Rate" value={`${approvalRate}%`} color={approvalRate >= 70 ? 'green' : approvalRate >= 40 ? 'amber' : 'red'} />
-        {sketchProgress.target > 0 && (
-          <StatCard label="Sketches" value={sketchProgress.saved} total={sketchProgress.target} color="blue" />
-        )}
-        {gameplayProgress.target > 0 && (
-          <StatCard label="Gameplay" value={gameplayProgress.saved} total={gameplayProgress.target} color="purple" />
-        )}
-        {polishCount > 0 && (
-          <StatCard label="Polished" value={polishCount} color="amber" />
-        )}
-        {rejectedCount > 0 && (
-          <StatCard label="Rejected" value={rejectedCount} color="red" />
-        )}
-      </div>
+      {/* Row 2: Category filter tabs */}
+      {categories.length > 0 && (
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <button
+            onClick={() => setActiveCategory('all')}
+            className={`px-2.5 py-1 rounded border text-[11px] font-medium transition-all ${
+              activeCategory === 'all'
+                ? 'text-cyan-300 border-cyan-500/50 bg-cyan-500/15'
+                : 'text-slate-400 border-slate-700/50 hover:border-slate-600 hover:bg-slate-800/50'
+            }`}
+          >
+            All ({savedImages.length})
+          </button>
+          {categories.map(cat => (
+            <button
+              key={cat.id}
+              onClick={() => setActiveCategory(cat.id)}
+              className={`px-2.5 py-1 rounded border text-[11px] font-medium transition-all ${
+                activeCategory === cat.id ? cat.activeColor : cat.color
+              }`}
+            >
+              {cat.label} ({cat.count})
+            </button>
+          ))}
+        </div>
+      )}
 
-      {/* Phases completed */}
-      <div className="flex items-center gap-2 text-[11px]">
-        {sketchProgress.target > 0 && (
-          <span className={`px-2 py-0.5 rounded border ${
-            sketchProgress.saved >= sketchProgress.target
-              ? 'border-green-500/30 bg-green-500/10 text-green-400'
-              : 'border-slate-700 text-slate-500'
-          }`}>
-            Sketch {sketchProgress.saved >= sketchProgress.target ? '\u2713' : `${sketchProgress.saved}/${sketchProgress.target}`}
-          </span>
+      {/* Image gallery — from actual save events */}
+      {filteredImages.length > 0 && filteredImages[0].imageUrl ? (
+        <div className={`grid gap-2 ${isExpanded ? 'grid-cols-6' : 'grid-cols-4'}`}>
+          {filteredImages.filter(img => img.imageUrl).map((img, i) => (
+            <motion.button
+              key={`${img.promptId || i}-${i}`}
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ delay: i * 0.03 }}
+              onClick={() => setLightboxImage({ url: img.imageUrl, prompt: img.promptText })}
+              className="relative aspect-[3/2] rounded-md overflow-hidden border border-slate-700/50 hover:border-cyan-500/50 transition-all group"
+            >
+              <img src={img.imageUrl} alt={`${img.phase || 'Image'} ${i + 1}`} className="w-full h-full object-cover" />
+              {/* Phase badge */}
+              {img.phase && (
+                <span className={`absolute top-1 left-1 px-1 py-0.5 rounded text-[8px] font-mono uppercase ${
+                  img.phase === 'sketch' ? 'bg-blue-500/80 text-white' : 'bg-purple-500/80 text-white'
+                }`}>
+                  {img.phase.slice(0, 3)}
+                </span>
+              )}
+              {/* Polish indicator */}
+              {img.isPolished && (
+                <span className="absolute top-1 right-1 px-1 py-0.5 rounded text-[8px] bg-amber-500/80 text-white">
+                  <Wand2 size={8} className="inline" />
+                </span>
+              )}
+              {/* Hover overlay */}
+              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
+                <Maximize2 size={14} className="text-white opacity-0 group-hover:opacity-100 transition-opacity drop-shadow-lg" />
+              </div>
+            </motion.button>
+          ))}
+        </div>
+      ) : activeCategory === 'rejected' && rejectedCount > 0 ? (
+        /* Rejected images - no URLs, show as text list */
+        <div className="space-y-1">
+          {rejectedImages.map((img, i) => (
+            <div key={i} className="px-2 py-1.5 rounded bg-red-500/5 border border-red-500/10 text-[10px] text-red-400/80 truncate">
+              {img.score !== undefined && <span className="font-mono mr-1.5">Score: {img.score}</span>}
+              {img.promptText}
+            </div>
+          ))}
+        </div>
+      ) : savedImages.length === 0 && (
+        <div className="py-6 text-center text-[11px] text-slate-600">
+          No images saved during this session
+        </div>
+      )}
+
+      {/* Image lightbox with copy prompt */}
+      <AnimatePresence>
+        {lightboxImage && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[10000] bg-black/90 flex items-center justify-center p-8"
+            onClick={() => { setLightboxImage(null); lightboxCopy.reset(); }}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="relative max-w-[85vw] max-h-[85vh] flex flex-col items-center gap-3"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <img
+                src={lightboxImage.url}
+                alt="Full size"
+                className="max-w-full max-h-[75vh] object-contain rounded-lg"
+              />
+              {/* Prompt + copy below image */}
+              {lightboxImage.prompt && (
+                <button
+                  onClick={handleCopyLightboxPrompt}
+                  className="flex items-center gap-2 px-3 py-2 rounded-md bg-black/60 border border-slate-700/50 hover:border-cyan-500/30 transition-colors max-w-[600px] group"
+                  title="Click to copy prompt"
+                >
+                  <span className="shrink-0">
+                    {lightboxCopy.isCopied
+                      ? <Check size={12} className="text-green-400" />
+                      : <Copy size={12} className="text-slate-500 group-hover:text-cyan-400 transition-colors" />
+                    }
+                  </span>
+                  <span className="text-[11px] text-slate-400 group-hover:text-slate-300 transition-colors truncate text-left">
+                    {lightboxCopy.isCopied ? 'Copied to clipboard!' : lightboxImage.prompt}
+                  </span>
+                </button>
+              )}
+            </motion.div>
+            <button
+              onClick={() => { setLightboxImage(null); lightboxCopy.reset(); }}
+              className="absolute top-4 right-4 p-2 rounded-full bg-black/50 text-white hover:bg-black/80 transition-colors"
+            >
+              <X size={20} />
+            </button>
+          </motion.div>
         )}
-        {gameplayProgress.target > 0 && (
-          <span className={`px-2 py-0.5 rounded border ${
-            gameplayProgress.saved >= gameplayProgress.target
-              ? 'border-green-500/30 bg-green-500/10 text-green-400'
-              : 'border-slate-700 text-slate-500'
-          }`}>
-            Gameplay {gameplayProgress.saved >= gameplayProgress.target ? '\u2713' : `${gameplayProgress.saved}/${gameplayProgress.target}`}
-          </span>
-        )}
-        {posterSelected && (
-          <span className="px-2 py-0.5 rounded border border-green-500/30 bg-green-500/10 text-green-400">
-            Poster {'\u2713'}
-          </span>
-        )}
-        {hudTarget > 0 && (
-          <span className={`px-2 py-0.5 rounded border ${
-            hudGenerated >= hudTarget
-              ? 'border-green-500/30 bg-green-500/10 text-green-400'
-              : 'border-slate-700 text-slate-500'
-          }`}>
-            HUD {hudGenerated >= hudTarget ? '\u2713' : `${hudGenerated}/${hudTarget}`}
-          </span>
-        )}
-      </div>
+      </AnimatePresence>
     </div>
   );
 }
@@ -752,6 +972,10 @@ function ActivityModeContent({
   maxIterations,
   activePrompts,
   activeImages,
+  currentImageInPhase,
+  phaseTarget,
+  singlePhaseStatus,
+  isExpanded,
 }: {
   currentPhase: AutoplayPhase;
   sketchProgress: PhaseProgress;
@@ -766,11 +990,17 @@ function ActivityModeContent({
   maxIterations?: number;
   activePrompts?: GeneratedPrompt[];
   activeImages?: GeneratedImage[];
+  currentImageInPhase?: number;
+  phaseTarget?: number;
+  singlePhaseStatus?: string;
+  isExpanded: boolean;
 }) {
+  const sidebarClass = isExpanded ? 'w-[280px] shrink-0' : 'w-[200px] shrink-0';
+
   return (
     <div className="flex-1 flex min-h-0">
       {/* Left Sidebar - Text Events */}
-      <div className="w-[160px] shrink-0">
+      <div className={sidebarClass}>
         <ActivityLogSidebar
           title="Text"
           events={textEvents}
@@ -793,11 +1023,15 @@ function ActivityModeContent({
           maxIterations={maxIterations}
           activePrompts={activePrompts}
           activeImages={activeImages}
+          currentImageInPhase={currentImageInPhase}
+          phaseTarget={phaseTarget}
+          singlePhaseStatus={singlePhaseStatus}
+          isExpanded={isExpanded}
         />
       </div>
 
       {/* Right Sidebar - Image Events */}
-      <div className="w-[160px] shrink-0">
+      <div className={sidebarClass}>
         <ActivityLogSidebar
           title="Images"
           events={imageEvents}
@@ -815,6 +1049,8 @@ export function AutoplaySetupModal({
   onStart,
   hasContent,
   onSmartBreakdown,
+  visionSentence: visionSentenceProp,
+  onVisionSentenceChange,
   canStart,
   canStartReason,
   isRunning,
@@ -839,19 +1075,28 @@ export function AutoplaySetupModal({
   // Live preview
   activePrompts,
   activeImages,
+  // Step-level tracking
+  currentImageInPhase,
+  phaseTarget,
+  singlePhaseStatus,
 }: AutoplaySetupModalProps) {
   const [config, setConfig] = useState<ExtendedAutoplayConfig>(() => loadSavedConfig() || DEFAULT_CONFIG);
   const [isProcessingBreakdown, setIsProcessingBreakdown] = useState(false);
   const [breakdownError, setBreakdownError] = useState<string | null>(null);
   // Local state to track if we just started (forces activity mode)
   const [justStarted, setJustStarted] = useState(false);
+  // Expandable full-screen mode
+  const [isExpanded, setIsExpanded] = useState(false);
 
   const totalImages = config.sketchCount + config.gameplayCount;
   const hasGameplay = config.gameplayCount > 0;
   const activePreset = detectActivePreset(config);
 
-  // Validation: need either existing content OR a prompt idea
-  const hasPromptIdea = Boolean(config.promptIdea?.trim());
+  // Derive vision sentence (prop takes priority, fallback to empty string)
+  const visionSentence = visionSentenceProp ?? '';
+
+  // Validation: need either existing content OR a vision sentence
+  const hasPromptIdea = Boolean(visionSentence.trim());
   const canProceed = hasContent || hasPromptIdea;
 
   // Apply a preset (preserves promptIdea)
@@ -867,17 +1112,18 @@ export function AutoplaySetupModal({
   useEffect(() => {
     if (!isOpen) {
       setJustStarted(false);
+      setIsExpanded(false);
     }
   }, [isOpen]);
 
   const handleStart = useCallback(async () => {
     setBreakdownError(null);
 
-    // If no content exists but we have a prompt idea, trigger Smart Breakdown first
+    // If no content exists but we have a vision sentence, trigger Smart Breakdown first
     if (!hasContent && hasPromptIdea && onSmartBreakdown) {
       setIsProcessingBreakdown(true);
       try {
-        const success = await onSmartBreakdown(config.promptIdea!.trim());
+        const success = await onSmartBreakdown(visionSentence.trim());
         if (!success) {
           setBreakdownError('Smart Breakdown failed. Please try a different idea or add content manually.');
           setIsProcessingBreakdown(false);
@@ -898,16 +1144,22 @@ export function AutoplaySetupModal({
     // Set local flag to switch to activity mode immediately
     setJustStarted(true);
 
-    // Start autoplay - modal stays open in activity mode
-    onStart(config);
-  }, [config, onStart, hasContent, hasPromptIdea, onSmartBreakdown]);
+    // Start autoplay - pass visionSentence as promptIdea for the orchestrator
+    onStart({ ...config, promptIdea: visionSentence.trim() });
+  }, [config, visionSentence, onStart, hasContent, hasPromptIdea, onSmartBreakdown]);
 
   if (!isOpen) return null;
 
   // Modal dimensions based on mode
   const isActivityMode = effectiveMode === 'activity';
 
-  return (
+  // Guard against SSR — document.body doesn't exist during server rendering
+  if (typeof document === 'undefined') return null;
+
+  // Portal to document.body to escape backdrop-filter containing blocks
+  // (backdrop-blur on parent CentralBrain creates a new containing block
+  // that traps position:fixed elements)
+  return createPortal(
     <AnimatePresence>
       <div
         style={{
@@ -920,19 +1172,12 @@ export function AutoplaySetupModal({
           padding: '1rem',
         }}
       >
-        {/* Backdrop */}
-        <motion.div
-          variants={fadeIn}
-          initial="initial"
-          animate="animate"
-          exit="exit"
-          transition={transitions.normal}
+        {/* Click-away layer (transparent — no overlay shading so side panels stay visible) */}
+        <div
           onClick={onClose}
           style={{
             position: 'absolute',
             inset: 0,
-            background: 'rgba(0, 0, 0, 0.8)',
-            backdropFilter: 'blur(8px)',
           }}
         />
 
@@ -946,10 +1191,18 @@ export function AutoplaySetupModal({
           layout
           style={{
             position: 'relative',
-            width: isActivityMode ? 'min(92vw, 700px)' : 'min(90vw, 360px)',
-            maxWidth: isActivityMode ? '700px' : '360px',
-            height: isActivityMode ? 'min(75vh, 380px)' : 'auto',
-            maxHeight: isActivityMode ? '380px' : '80vh',
+            width: isActivityMode
+              ? isExpanded ? '96vw' : 'min(96vw, 960px)'
+              : 'min(92vw, 600px)',
+            maxWidth: isActivityMode
+              ? isExpanded ? 'none' : '960px'
+              : '600px',
+            height: isActivityMode
+              ? isExpanded ? '92vh' : 'min(85vh, 650px)'
+              : 'auto',
+            maxHeight: isActivityMode
+              ? isExpanded ? 'none' : '650px'
+              : '85vh',
             background: 'linear-gradient(180deg, #0c0c14 0%, #080810 100%)',
             border: '1px solid rgba(56, 189, 248, 0.15)',
             borderRadius: '0.375rem',
@@ -988,12 +1241,23 @@ export function AutoplaySetupModal({
                 </span>
               )}
             </div>
-            <button
-              onClick={onClose}
-              className="p-1 rounded text-slate-500 hover:text-white hover:bg-slate-800 transition-colors"
-            >
-              <X size={14} />
-            </button>
+            <div className="flex items-center gap-1">
+              {isActivityMode && (
+                <button
+                  onClick={() => setIsExpanded(prev => !prev)}
+                  className="p-1 rounded text-slate-500 hover:text-white hover:bg-slate-800 transition-colors"
+                  title={isExpanded ? 'Collapse' : 'Expand'}
+                >
+                  {isExpanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+                </button>
+              )}
+              <button
+                onClick={onClose}
+                className="p-1 rounded text-slate-500 hover:text-white hover:bg-slate-800 transition-colors"
+              >
+                <X size={14} />
+              </button>
+            </div>
           </div>
 
           {/* Body - switches based on mode */}
@@ -1010,6 +1274,7 @@ export function AutoplaySetupModal({
                 textEvents={textEvents}
                 imageEvents={imageEvents}
                 onRetry={onRetry}
+                isExpanded={isExpanded}
               />
             ) : (
               <ActivityModeContent
@@ -1026,6 +1291,10 @@ export function AutoplaySetupModal({
                 maxIterations={maxIterations}
                 activePrompts={activePrompts}
                 activeImages={activeImages}
+                currentImageInPhase={currentImageInPhase}
+                phaseTarget={phaseTarget}
+                singlePhaseStatus={singlePhaseStatus}
+                isExpanded={isExpanded}
               />
             )
           ) : (
@@ -1033,12 +1302,12 @@ export function AutoplaySetupModal({
               config={config}
               setConfig={setConfig}
               hasContent={hasContent}
-              hasPromptIdea={hasPromptIdea}
+              visionSentence={visionSentence}
+              onVisionSentenceChange={onVisionSentenceChange ?? (() => {})}
               isRunning={isRunning}
               isProcessingBreakdown={isProcessingBreakdown}
               breakdownError={breakdownError}
               setBreakdownError={setBreakdownError}
-              totalImages={totalImages}
               hasGameplay={hasGameplay}
               activePreset={activePreset}
               onPresetSelect={handlePresetSelect}
@@ -1103,13 +1372,16 @@ export function AutoplaySetupModal({
               </>
             ) : (
               <>
-                <button
-                  onClick={onClose}
-                  disabled={isProcessingBreakdown}
-                  className="px-3 py-1.5 rounded border text-xs border-slate-700 text-slate-400 hover:bg-slate-800 transition-colors disabled:opacity-50"
-                >
-                  Cancel
-                </button>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={onClose}
+                    disabled={isProcessingBreakdown}
+                    className="px-3 py-1.5 rounded border text-xs border-slate-700 text-slate-400 hover:bg-slate-800 transition-colors disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <span className="font-mono text-xs text-cyan-400">{totalImages} <span className="text-slate-500">images</span></span>
+                </div>
 
                 <button
                   onClick={handleStart}
@@ -1143,7 +1415,8 @@ export function AutoplaySetupModal({
           </div>
         </motion.div>
       </div>
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body,
   );
 }
 

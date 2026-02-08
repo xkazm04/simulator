@@ -246,7 +246,7 @@ export function useProject(): UseProjectReturn {
     }
 
     try {
-      const response = await fetch(`/api/projects/${id}`);
+      const response = await fetch(`/api/projects/${id}`, { cache: 'no-store' });
       const data = await response.json();
       console.log('[selectProject] API response:', { success: data.success, hasProject: !!data.project, error: data.error });
 
@@ -338,7 +338,7 @@ export function useProject(): UseProjectReturn {
   const duplicateProject = useCallback(async (id: string): Promise<Project | null> => {
     try {
       // 1. Fetch the source project's full state
-      const response = await fetch(`/api/projects/${id}`);
+      const response = await fetch(`/api/projects/${id}`, { cache: 'no-store' });
       const data = await response.json();
 
       if (!data.success) {

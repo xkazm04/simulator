@@ -1444,6 +1444,7 @@ export interface AutoplayLogEntry {
     phase?: AutoplayPhase;
     promptId?: string;
     imageUrl?: string;
+    promptText?: string;
     score?: number;
     approved?: boolean;
     feedback?: string;

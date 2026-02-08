@@ -53,6 +53,14 @@ export interface UseLocalPersistedEntityReturn<T> {
   /** Update data (triggers save) */
   setData: (data: T | ((prev: T) => T)) => void;
 
+  /**
+   * Set data that survives storage key changes.
+   * Sets React state immediately and stores the data so that the next
+   * loadFromStorage call (triggered by storageKey change) uses it instead
+   * of reading from IndexedDB, then saves it to the new key.
+   */
+  overrideNextLoad: (data: T) => void;
+
   /** Force save immediately */
   saveNow: () => Promise<boolean>;
 
@@ -88,6 +96,9 @@ export function useLocalPersistedEntity<T>(
   // Refs for debounced save
   const saveTimerRef = useRef<NodeJS.Timeout | null>(null);
   const pendingDataRef = useRef<T | null>(null);
+
+  // Override data: when set, loadFromStorage uses this instead of reading IndexedDB
+  const overrideRef = useRef<T | null>(null);
 
   // Refs for callbacks to avoid infinite loops (these don't need to trigger re-renders)
   const initialValueRef = useRef<T>(initialValue);
@@ -130,6 +141,26 @@ export function useLocalPersistedEntity<T>(
    * Load data from IndexedDB
    */
   const loadFromStorage = useCallback(async (): Promise<T> => {
+    // Check for override data (e.g. from hydratePanelImages before a key change)
+    if (overrideRef.current !== null) {
+      const overrideData = overrideRef.current;
+      overrideRef.current = null;
+
+      // Save the override data to the current (new) key
+      try {
+        await saveToIndexedDB(storageKey, overrideData);
+        onSavedRef.current?.(overrideData);
+      } catch (err) {
+        console.error('Failed to save override data to IndexedDB:', err);
+      }
+
+      setDataInternal(overrideData);
+      onLoadedRef.current?.(overrideData);
+      setIsLoading(false);
+      setIsInitialized(true);
+      return overrideData;
+    }
+
     setIsLoading(true);
     setError(null);
 
@@ -182,6 +213,17 @@ export function useLocalPersistedEntity<T>(
       return resolved;
     });
   }, [isInitialized, saveDebounce, performSave]);
+
+  /**
+   * Set data that survives storage key changes.
+   * Sets React state immediately. When loadFromStorage fires
+   * (e.g. after storageKey changes), uses this data instead of IndexedDB
+   * and saves it to the new key.
+   */
+  const overrideNextLoad = useCallback((newData: T) => {
+    overrideRef.current = newData;
+    setDataInternal(newData);
+  }, []);
 
   /**
    * Force save immediately
@@ -241,6 +283,7 @@ export function useLocalPersistedEntity<T>(
     isInitialized,
     error,
     setData,
+    overrideNextLoad,
     saveNow,
     reload,
     clear,

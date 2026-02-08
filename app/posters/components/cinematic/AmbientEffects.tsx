@@ -6,7 +6,6 @@
 'use client';
 
 import React from 'react';
-import { motion } from 'framer-motion';
 import Image from 'next/image';
 
 interface AmbientEffectsProps {
@@ -27,8 +26,7 @@ export function AmbientEffects({ heroImageUrl }: AmbientEffectsProps) {
             alt=""
             fill
             className="object-cover blur-3xl scale-110"
-            unoptimized
-            priority
+            sizes="100vw"
           />
           <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-transparent to-black/80" />
         </div>

@@ -23,7 +23,12 @@ import { TransitionSeries, linearTiming } from '@remotion/transitions';
 import { fade } from '@remotion/transitions/fade';
 import { slide } from '@remotion/transitions/slide';
 import { clockWipe } from '@remotion/transitions/clock-wipe';
-import { ShowcaseVideoProps, SHOWCASE_VIDEO_DEFAULTS } from '../types';
+import {
+  ShowcaseVideoProps,
+  ShowcaseSketchItem,
+  ShowcaseWhatifItem,
+  SHOWCASE_VIDEO_DEFAULTS,
+} from '../types';
 import { TitleCard } from './TitleCard';
 
 // ============================================================================
@@ -41,6 +46,369 @@ function CoverSlide({ url }: { url: string }) {
           objectFit: 'contain',
         }}
       />
+    </AbsoluteFill>
+  );
+}
+
+// ============================================================================
+// Sketch Grid - Adaptive layout based on image count
+// ============================================================================
+
+function SketchGrid({ images }: { images: ShowcaseSketchItem[] }) {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+
+  const progress = spring({
+    frame,
+    fps,
+    config: { damping: 20, stiffness: 100 },
+  });
+
+  const opacity = interpolate(progress, [0, 1], [0, 1]);
+  const scale = interpolate(progress, [0, 1], [0.95, 1]);
+
+  const count = images.length;
+
+  // Determine grid layout: cols x rows
+  let cols: number;
+  let rows: number;
+  if (count <= 1) {
+    cols = 1; rows = 1;
+  } else if (count <= 2) {
+    cols = 2; rows = 1;
+  } else if (count <= 4) {
+    cols = 2; rows = 2;
+  } else {
+    cols = 3; rows = 2;
+  }
+
+  const gap = 12;
+  const padding = 48;
+
+  return (
+    <AbsoluteFill
+      style={{
+        backgroundColor: '#0a0a0a',
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'center',
+        alignItems: 'center',
+        opacity,
+        transform: `scale(${scale})`,
+      }}
+    >
+      {/* Section label */}
+      <div
+        style={{
+          position: 'absolute',
+          top: 32,
+          left: 48,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+        }}
+      >
+        <div
+          style={{
+            width: 3,
+            height: 20,
+            backgroundColor: '#ca8a04',
+            borderRadius: 2,
+          }}
+        />
+        <div
+          style={{
+            color: '#ca8a04',
+            fontFamily: 'ui-monospace, monospace',
+            fontSize: 14,
+            fontWeight: 600,
+            textTransform: 'uppercase',
+            letterSpacing: '0.1em',
+          }}
+        >
+          Sketches
+        </div>
+      </div>
+
+      {/* Grid */}
+      <div
+        style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          justifyContent: 'center',
+          alignItems: 'center',
+          gap,
+          padding,
+          width: '100%',
+          height: '100%',
+          boxSizing: 'border-box',
+          paddingTop: padding + 32,
+        }}
+      >
+        {images.slice(0, 6).map((img, i) => {
+          // Stagger entrance per image
+          const itemProgress = spring({
+            frame: frame - i * 3,
+            fps,
+            config: { damping: 18, stiffness: 120 },
+          });
+          const itemOpacity = interpolate(itemProgress, [0, 1], [0, 1], {
+            extrapolateLeft: 'clamp',
+            extrapolateRight: 'clamp',
+          });
+
+          const cellWidth = `calc(${100 / cols}% - ${gap}px)`;
+          const cellHeight = `calc(${100 / rows}% - ${gap}px)`;
+
+          return (
+            <div
+              key={img.id}
+              style={{
+                width: cellWidth,
+                height: cellHeight,
+                borderRadius: 8,
+                overflow: 'hidden',
+                opacity: itemOpacity,
+                position: 'relative',
+              }}
+            >
+              <Img
+                src={img.imageUrl}
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'cover',
+                }}
+              />
+              {/* Label overlay */}
+              <div
+                style={{
+                  position: 'absolute',
+                  bottom: 0,
+                  left: 0,
+                  right: 0,
+                  padding: '6px 10px',
+                  background: 'linear-gradient(transparent, rgba(0,0,0,0.7))',
+                  color: '#e2e8f0',
+                  fontFamily: 'ui-monospace, monospace',
+                  fontSize: 11,
+                  fontWeight: 500,
+                }}
+              >
+                {img.label}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </AbsoluteFill>
+  );
+}
+
+// ============================================================================
+// Whatif Slide - Before/After comparison
+// ============================================================================
+
+function WhatifSlide({
+  whatif,
+  currentIndex,
+  totalCount,
+}: {
+  whatif: ShowcaseWhatifItem;
+  currentIndex: number;
+  totalCount: number;
+}) {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+
+  const progress = spring({
+    frame,
+    fps,
+    config: { damping: 20, stiffness: 100 },
+  });
+
+  const opacity = interpolate(progress, [0, 1], [0, 1]);
+
+  // Before image slides in from left
+  const beforeX = interpolate(progress, [0, 1], [-30, 0]);
+  // After image slides in from right
+  const afterX = interpolate(progress, [0, 1], [30, 0]);
+
+  return (
+    <AbsoluteFill
+      style={{
+        backgroundColor: '#0a0a0a',
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'center',
+        alignItems: 'center',
+        opacity,
+      }}
+    >
+      {/* Section label */}
+      <div
+        style={{
+          position: 'absolute',
+          top: 32,
+          left: 48,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+        }}
+      >
+        <div
+          style={{
+            width: 3,
+            height: 20,
+            backgroundColor: '#06b6d4',
+            borderRadius: 2,
+          }}
+        />
+        <div
+          style={{
+            color: '#06b6d4',
+            fontFamily: 'ui-monospace, monospace',
+            fontSize: 14,
+            fontWeight: 600,
+            textTransform: 'uppercase',
+            letterSpacing: '0.1em',
+          }}
+        >
+          What If {totalCount > 1 ? `${currentIndex + 1}/${totalCount}` : ''}
+        </div>
+      </div>
+
+      {/* Side-by-side comparison */}
+      <div
+        style={{
+          display: 'flex',
+          width: '100%',
+          height: '100%',
+          padding: '72px 48px 48px',
+          gap: 24,
+          boxSizing: 'border-box',
+        }}
+      >
+        {/* Before */}
+        <div
+          style={{
+            flex: 1,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 12,
+            transform: `translateX(${beforeX}px)`,
+          }}
+        >
+          <div
+            style={{
+              color: '#94a3b8',
+              fontFamily: 'ui-monospace, monospace',
+              fontSize: 13,
+              fontWeight: 600,
+              textTransform: 'uppercase',
+              letterSpacing: '0.08em',
+            }}
+          >
+            Before
+          </div>
+          <div
+            style={{
+              flex: 1,
+              borderRadius: 8,
+              overflow: 'hidden',
+              border: '1px solid rgba(148, 163, 184, 0.2)',
+            }}
+          >
+            <Img
+              src={whatif.beforeImageUrl}
+              style={{
+                width: '100%',
+                height: '100%',
+                objectFit: 'cover',
+              }}
+            />
+          </div>
+          {whatif.beforeCaption && (
+            <div
+              style={{
+                color: '#94a3b8',
+                fontFamily: 'system-ui, sans-serif',
+                fontSize: 14,
+                textAlign: 'center',
+                padding: '0 8px',
+              }}
+            >
+              {whatif.beforeCaption}
+            </div>
+          )}
+        </div>
+
+        {/* Center divider */}
+        <div
+          style={{
+            width: 2,
+            alignSelf: 'stretch',
+            marginTop: 32,
+            marginBottom: 16,
+            background: 'linear-gradient(to bottom, transparent, #334155, transparent)',
+            borderRadius: 1,
+          }}
+        />
+
+        {/* After */}
+        <div
+          style={{
+            flex: 1,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 12,
+            transform: `translateX(${afterX}px)`,
+          }}
+        >
+          <div
+            style={{
+              color: '#06b6d4',
+              fontFamily: 'ui-monospace, monospace',
+              fontSize: 13,
+              fontWeight: 600,
+              textTransform: 'uppercase',
+              letterSpacing: '0.08em',
+            }}
+          >
+            After
+          </div>
+          <div
+            style={{
+              flex: 1,
+              borderRadius: 8,
+              overflow: 'hidden',
+              border: '1px solid rgba(6, 182, 212, 0.2)',
+            }}
+          >
+            <Img
+              src={whatif.afterImageUrl}
+              style={{
+                width: '100%',
+                height: '100%',
+                objectFit: 'cover',
+              }}
+            />
+          </div>
+          {whatif.afterCaption && (
+            <div
+              style={{
+                color: '#94a3b8',
+                fontFamily: 'system-ui, sans-serif',
+                fontSize: 14,
+                textAlign: 'center',
+                padding: '0 8px',
+              }}
+            >
+              {whatif.afterCaption}
+            </div>
+          )}
+        </div>
+      </div>
     </AbsoluteFill>
   );
 }
@@ -255,9 +623,13 @@ export function ShowcaseVideo({
   projectName,
   coverUrl,
   videos,
+  sketches = [],
+  whatifs = [],
   coverDuration = SHOWCASE_VIDEO_DEFAULTS.coverDuration,
   videoDuration = SHOWCASE_VIDEO_DEFAULTS.estimatedVideoDuration,
   titleDuration = SHOWCASE_VIDEO_DEFAULTS.titleDuration,
+  sketchDuration = SHOWCASE_VIDEO_DEFAULTS.sketchDuration,
+  whatifDuration = SHOWCASE_VIDEO_DEFAULTS.whatifDuration,
 }: ShowcaseVideoProps) {
   const { transitionDuration, width, height } = SHOWCASE_VIDEO_DEFAULTS;
 
@@ -268,15 +640,13 @@ export function ShowcaseVideo({
     clockWipe({ width, height }),
   ];
 
+  // Track transition index for consistent rotation across all slide types
+  let transitionIndex = 0;
+
+  const hasContent = coverUrl || sketches.length > 0 || whatifs.length > 0 || (videos && videos.length > 0);
+
   // Empty state
-  if (!videos || videos.length === 0) {
-    if (coverUrl) {
-      return (
-        <AbsoluteFill style={{ backgroundColor: '#000' }}>
-          <CoverSlide url={coverUrl} />
-        </AbsoluteFill>
-      );
-    }
+  if (!hasContent) {
     return <EmptyState />;
   }
 
@@ -298,12 +668,52 @@ export function ShowcaseVideo({
             <TransitionSeries.Sequence durationInFrames={coverDuration}>
               <CoverSlide url={coverUrl} />
             </TransitionSeries.Sequence>
-            <TransitionSeries.Transition
-              presentation={fade()}
-              timing={linearTiming({ durationInFrames: transitionDuration })}
-            />
+            {(sketches.length > 0 || whatifs.length > 0 || (videos && videos.length > 0)) && (
+              <TransitionSeries.Transition
+                presentation={fade()}
+                timing={linearTiming({ durationInFrames: transitionDuration })}
+              />
+            )}
           </>
         )}
+
+        {/* Sketch grid if sketches exist */}
+        {sketches.length > 0 && (
+          <>
+            <TransitionSeries.Sequence durationInFrames={sketchDuration}>
+              <SketchGrid images={sketches} />
+            </TransitionSeries.Sequence>
+            {(whatifs.length > 0 || (videos && videos.length > 0)) && (
+              <TransitionSeries.Transition
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                presentation={transitions[transitionIndex++ % transitions.length] as any}
+                timing={linearTiming({ durationInFrames: transitionDuration })}
+              />
+            )}
+          </>
+        )}
+
+        {/* Whatif before/after pairs */}
+        {whatifs.map((whatif, index) => (
+          <React.Fragment key={whatif.id}>
+            <TransitionSeries.Sequence durationInFrames={whatifDuration}>
+              <WhatifSlide
+                whatif={whatif}
+                currentIndex={index}
+                totalCount={whatifs.length}
+              />
+            </TransitionSeries.Sequence>
+
+            {/* Transition after each whatif (not after the last one if no videos follow) */}
+            {(index < whatifs.length - 1 || (videos && videos.length > 0)) && (
+              <TransitionSeries.Transition
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                presentation={transitions[transitionIndex++ % transitions.length] as any}
+                timing={linearTiming({ durationInFrames: transitionDuration })}
+              />
+            )}
+          </React.Fragment>
+        ))}
 
         {/* Video slides with transitions between them */}
         {videos.map((video, index) => (
@@ -317,11 +727,11 @@ export function ShowcaseVideo({
               />
             </TransitionSeries.Sequence>
 
-            {/* Transition to next video (not after last) - rotate through fade, slide, clockWipe */}
+            {/* Transition to next video (not after last) */}
             {index < videos.length - 1 && (
               <TransitionSeries.Transition
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                presentation={transitions[index % transitions.length] as any}
+                presentation={transitions[transitionIndex++ % transitions.length] as any}
                 timing={linearTiming({ durationInFrames: transitionDuration })}
               />
             )}

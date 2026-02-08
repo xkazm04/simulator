@@ -127,7 +127,7 @@ const generateWithFeedback: DimensionTransformation<GenerateWithFeedbackRequest,
   action: 'generate-with-feedback',
   featureName: 'generate-with-feedback',
   systemPrompt: GENERATE_WITH_FEEDBACK_SYSTEM_PROMPT,
-  maxTokens: 4000, // Higher limit for 4 full prompts + adjustments
+  maxTokens: 8000, // 4 full prompts (~1500 chars each) + adjustments + JSON structure
   validate: (input) =>
     !input.baseImage?.trim()
       ? 'Base image description is required'

@@ -153,16 +153,9 @@ function autoplayReducer(state: AutoplayState, action: AutoplayAction): Autoplay
         savedCount: action.count,
       };
 
-      // Check if target met
-      if (newTotal >= state.config.targetSavedCount) {
-        return {
-          ...state,
-          status: 'complete',
-          totalSaved: newTotal,
-          iterations: updatedIterations,
-        };
-      }
-
+      // Don't transition to complete here — let the full iteration cycle
+      // finish (save → feedback extraction → cumulative context → refine).
+      // ITERATION_COMPLETE handles the target-met check.
       return {
         ...state,
         totalSaved: newTotal,

@@ -256,12 +256,13 @@ export async function generateWithFeedback(
   dimensions: Array<{ type: DimensionType; label: string; reference: string }>,
   feedback: { positive: string; negative: string },
   outputMode: OutputMode,
-  lockedElements: Array<{ id: string; text: string; category: string; locked: boolean }>
+  lockedElements: Array<{ id: string; text: string; category: string; locked: boolean }>,
+  iterationContext?: string
 ): Promise<GenerateWithFeedbackResult> {
   const response = await fetch(`${API_BASE}?action=generate-with-feedback`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ baseImage, dimensions, feedback, outputMode, lockedElements }),
+    body: JSON.stringify({ baseImage, dimensions, feedback, outputMode, lockedElements, iterationContext }),
   });
 
   if (!response.ok) {

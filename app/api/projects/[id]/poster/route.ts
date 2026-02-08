@@ -31,7 +31,9 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ success: false, error: 'Failed to get poster' }, { status: 500 });
     }
 
-    return NextResponse.json({ success: true, poster: (poster as DbProjectPoster) || null });
+    return NextResponse.json({ success: true, poster: (poster as DbProjectPoster) || null }, {
+      headers: { 'Cache-Control': 'no-store' },
+    });
   } catch (error) {
     console.error('Get poster error:', error);
     return NextResponse.json({ success: false, error: 'Failed to get poster' }, { status: 500 });

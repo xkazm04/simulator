@@ -5,7 +5,7 @@
 
 'use client';
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import Image from 'next/image';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -18,8 +18,10 @@ import {
   Play,
   ExternalLink,
   Copy,
+  AlertTriangle,
 } from 'lucide-react';
 import { fadeIn, transitions } from '@/app/features/simulator/lib/motion';
+import { cn } from '@/app/lib/utils';
 import { LightboxImage } from './ProjectShowcaseModal';
 
 interface ShowcaseLightboxProps {
@@ -29,6 +31,7 @@ interface ShowcaseLightboxProps {
   onPrev: () => void;
   onNext: () => void;
   projectName: string;
+  onImageError?: (imageId: string) => void;
 }
 
 export function ShowcaseLightbox({
@@ -38,20 +41,27 @@ export function ShowcaseLightbox({
   onPrev,
   onNext,
   projectName,
+  onImageError,
 }: ShowcaseLightboxProps) {
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadSuccess, setDownloadSuccess] = useState(false);
   const [showVideo, setShowVideo] = useState(false);
   const [promptCopied, setPromptCopied] = useState(false);
+  const [isLoaded, setIsLoaded] = useState(false);
+  const [hasError, setHasError] = useState(false);
+  const prevIndexRef = useRef(currentIndex);
 
   const isOpen = currentIndex !== null;
   const currentImage = isOpen ? images[currentIndex] : null;
   const hasVideo = Boolean(currentImage?.video_url);
 
-  // Reset video state when image changes
-  useEffect(() => {
+  // Reset states when image changes (render-time adjustment)
+  if (prevIndexRef.current !== currentIndex) {
+    prevIndexRef.current = currentIndex;
     setShowVideo(false);
-  }, [currentIndex]);
+    setIsLoaded(false);
+    setHasError(false);
+  }
 
   // Keyboard navigation
   useEffect(() => {
@@ -215,7 +225,7 @@ export function ShowcaseLightbox({
             </button>
 
             {/* Image/Video Display */}
-            <div className="relative w-full max-w-5xl max-h-[70vh] flex items-center justify-center">
+            <div className="relative w-full max-w-5xl h-[70vh] flex items-center justify-center">
               {showVideo && currentImage.video_url ? (
                 <video
                   src={currentImage.video_url}
@@ -224,14 +234,26 @@ export function ShowcaseLightbox({
                   className="max-w-full max-h-[70vh] rounded-lg"
                 />
               ) : (
-                <div className="relative w-full h-full flex items-center justify-center">
+                <div className="relative w-full h-full">
+                  {/* Error fallback */}
+                  {hasError && (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 z-10">
+                      <AlertTriangle size={32} className="text-slate-500" />
+                      <span className="text-sm font-mono text-slate-500">Image unavailable</span>
+                    </div>
+                  )}
+
                   <Image
                     src={currentImage.image_url}
                     alt={currentImage.label}
-                    width={1200}
-                    height={800}
-                    className="max-w-full max-h-[70vh] object-contain rounded-lg"
-                    unoptimized
+                    fill
+                    className={cn(
+                      "object-contain rounded-lg transition-opacity duration-300",
+                      isLoaded && !hasError ? "opacity-100" : "opacity-0"
+                    )}
+                    onLoad={() => setIsLoaded(true)}
+                    onError={() => { setHasError(true); if (currentImage && onImageError) onImageError(currentImage.id); }}
+                    sizes="(max-width: 768px) 100vw, 80vw"
                     priority
                   />
                 </div>
@@ -277,7 +299,7 @@ export function ShowcaseLightbox({
                   </div>
                   <div className="p-4 bg-slate-900/60 border border-slate-800 rounded-lg">
                     <p className="text-sm text-slate-300 leading-relaxed line-clamp-4">
-                      "{currentImage.prompt}"
+                      &quot;{currentImage.prompt}&quot;
                     </p>
                   </div>
                 </div>

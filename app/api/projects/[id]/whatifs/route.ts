@@ -39,7 +39,9 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ success: false, error: 'Failed to fetch whatifs' }, { status: 500 });
     }
 
-    return NextResponse.json({ success: true, whatifs: data as DbProjectWhatif[] });
+    return NextResponse.json({ success: true, whatifs: data as DbProjectWhatif[] }, {
+      headers: { 'Cache-Control': 'no-store' },
+    });
   } catch (error) {
     console.error('Get whatifs error:', error);
     return NextResponse.json({ success: false, error: 'Failed to fetch whatifs' }, { status: 500 });

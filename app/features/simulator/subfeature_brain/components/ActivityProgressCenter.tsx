@@ -12,8 +12,8 @@
 
 'use client';
 
-import React from 'react';
-import { motion } from 'framer-motion';
+import React, { useState, useCallback } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   Image,
   Gamepad2,
@@ -23,8 +23,15 @@ import {
   AlertCircle,
   Loader2,
   Activity,
+  Copy,
+  Check,
+  X,
+  Maximize2,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import { AutoplayPhase, PhaseProgress, GeneratedPrompt, GeneratedImage } from '../../types';
+import { useMultiCopyFeedback, useCopyFeedback } from '../../hooks/useCopyFeedback';
 
 export interface ActivityProgressCenterProps {
   currentPhase: AutoplayPhase;
@@ -40,6 +47,14 @@ export interface ActivityProgressCenterProps {
   activePrompts?: GeneratedPrompt[];
   /** Current image generation statuses */
   activeImages?: GeneratedImage[];
+  /** Which image number within the current phase (1-indexed, sequential mode) */
+  currentImageInPhase?: number;
+  /** Total target for current phase */
+  phaseTarget?: number;
+  /** Single-phase orchestrator status (generating/evaluating/polishing/refining) */
+  singlePhaseStatus?: string;
+  /** Whether the modal is in expanded/full-screen mode */
+  isExpanded?: boolean;
 }
 
 interface PhaseConfig {
@@ -214,7 +229,7 @@ function StatBadge({
 }
 
 /**
- * Prompt Preview - shows current prompts being generated with image status
+ * Prompt Preview - shows current prompts being generated with image status and copy buttons
  */
 function PromptPreview({
   prompts,
@@ -225,17 +240,52 @@ function PromptPreview({
   images: GeneratedImage[];
   phase: AutoplayPhase;
 }) {
+  const copyMulti = useMultiCopyFeedback();
+  const copyAll = useCopyFeedback();
+
+  const handleCopyPrompt = useCallback(async (id: string, text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      copyMulti.triggerCopy(id);
+    } catch {
+      // Clipboard API may fail
+    }
+  }, [copyMulti]);
+
+  const handleCopyAll = useCallback(async () => {
+    try {
+      const allText = prompts.map(p => p.prompt).join('\n\n');
+      await navigator.clipboard.writeText(allText);
+      copyAll.triggerCopy();
+    } catch {
+      // Clipboard API may fail
+    }
+  }, [prompts, copyAll]);
+
   if (prompts.length === 0) return null;
 
   const accent = getPhaseAccent(phase);
 
   return (
     <div className="space-y-1">
-      <span className="text-[9px] text-slate-600 uppercase tracking-wider font-medium">Current Prompts</span>
+      <div className="flex items-center justify-between">
+        <span className="text-[9px] text-slate-600 uppercase tracking-wider font-medium">Current Prompts</span>
+        {prompts.length > 1 && (
+          <button
+            onClick={handleCopyAll}
+            className="flex items-center gap-1 text-[9px] text-slate-600 hover:text-cyan-400 transition-colors"
+            title="Copy all prompts"
+          >
+            {copyAll.isCopied ? <Check size={8} className="text-green-400" /> : <Copy size={8} />}
+            {copyAll.isCopied ? 'Copied' : 'Copy All'}
+          </button>
+        )}
+      </div>
       <div className="space-y-0.5">
         {prompts.slice(0, 4).map((prompt) => {
           const image = images.find(img => img.promptId === prompt.id);
           const status = image?.status || 'pending';
+          const isCopied = copyMulti.isCopied(prompt.id);
 
           return (
             <div
@@ -271,6 +321,15 @@ function PromptPreview({
                 {prompt.prompt.length > 80 ? prompt.prompt.slice(0, 80) + '...' : prompt.prompt}
               </span>
 
+              {/* Copy button */}
+              <button
+                onClick={(e) => { e.stopPropagation(); handleCopyPrompt(prompt.id, prompt.prompt); }}
+                className="shrink-0 p-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity text-slate-500 hover:text-cyan-400"
+                title="Copy prompt"
+              >
+                {isCopied ? <Check size={9} className="text-green-400" /> : <Copy size={9} />}
+              </button>
+
               {/* Scene type badge */}
               <span className="text-[8px] text-slate-600 font-mono shrink-0 uppercase">
                 {prompt.sceneType?.slice(0, 6) || ''}
@@ -284,13 +343,34 @@ function PromptPreview({
 }
 
 /**
- * Heartbeat indicator - shows AI is actively working
+ * Heartbeat indicator - shows AI is actively working with step-level detail
  */
-function HeartbeatIndicator({ phase }: { phase: AutoplayPhase }) {
+function HeartbeatIndicator({ phase, currentImageInPhase, phaseTarget, singlePhaseStatus }: {
+  phase: AutoplayPhase;
+  currentImageInPhase?: number;
+  phaseTarget?: number;
+  singlePhaseStatus?: string;
+}) {
   const isActive = phase !== 'idle' && phase !== 'complete' && phase !== 'error';
   if (!isActive) return null;
 
   const accent = getPhaseAccent(phase);
+
+  // Derive step verb from single-phase orchestrator status
+  const statusVerb = (() => {
+    switch (singlePhaseStatus) {
+      case 'generating': return 'Generating';
+      case 'evaluating': return 'Evaluating';
+      case 'polishing': return 'Polishing';
+      case 'refining': return 'Saving';
+      default: return 'Processing';
+    }
+  })();
+
+  // Show step-level detail when available (e.g., "Generating sketch 1/2")
+  const label = currentImageInPhase && phaseTarget
+    ? `${statusVerb} ${phase} ${currentImageInPhase}/${phaseTarget}`
+    : statusVerb;
 
   return (
     <div className="flex items-center gap-1.5">
@@ -300,7 +380,86 @@ function HeartbeatIndicator({ phase }: { phase: AutoplayPhase }) {
       >
         <Activity size={10} className={accent.text} />
       </motion.div>
-      <span className={`text-[9px] ${accent.text} font-medium`}>Processing</span>
+      <motion.span
+        key={label}
+        initial={{ opacity: 0, y: 4 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3 }}
+        className={`text-[9px] ${accent.text} font-medium`}
+      >
+        {label}
+      </motion.span>
+    </div>
+  );
+}
+
+/**
+ * ImageGallery - Thumbnail grid of completed images with lightbox
+ */
+function ImageGallery({ images, phase }: { images: GeneratedImage[]; phase: AutoplayPhase }) {
+  const completedImages = images.filter(img => img.status === 'complete' && img.url);
+  const [showGallery, setShowGallery] = useState(true);
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+
+  if (completedImages.length === 0) return null;
+
+  return (
+    <div className="space-y-1">
+      <button
+        onClick={() => setShowGallery(prev => !prev)}
+        className="flex items-center gap-1 text-[9px] text-slate-600 uppercase tracking-wider font-medium hover:text-slate-400 transition-colors"
+      >
+        {showGallery ? <ChevronUp size={8} /> : <ChevronDown size={8} />}
+        Saved Images ({completedImages.length})
+      </button>
+      {showGallery && (
+        <div className="flex gap-1.5 flex-wrap">
+          {completedImages.map((img, i) => (
+            <motion.button
+              key={img.id || i}
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ delay: i * 0.05 }}
+              onClick={() => setLightboxUrl(img.url!)}
+              className="relative shrink-0 w-[72px] h-12 rounded overflow-hidden border border-slate-700/50 hover:border-cyan-500/50 transition-colors group"
+            >
+              <img src={img.url!} alt={`Saved ${i + 1}`} className="w-full h-full object-cover" />
+              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
+                <Maximize2 size={10} className="text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+              </div>
+            </motion.button>
+          ))}
+        </div>
+      )}
+
+      {/* Lightbox */}
+      <AnimatePresence>
+        {lightboxUrl && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[10000] bg-black/90 flex items-center justify-center p-8"
+            onClick={() => setLightboxUrl(null)}
+          >
+            <motion.img
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              src={lightboxUrl}
+              alt="Full size"
+              className="max-w-full max-h-full object-contain rounded-lg"
+              onClick={(e) => e.stopPropagation()}
+            />
+            <button
+              onClick={() => setLightboxUrl(null)}
+              className="absolute top-4 right-4 p-2 rounded-full bg-black/50 text-white hover:bg-black/80 transition-colors"
+            >
+              <X size={20} />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -317,6 +476,10 @@ export function ActivityProgressCenter({
   maxIterations,
   activePrompts = [],
   activeImages = [],
+  currentImageInPhase,
+  phaseTarget,
+  singlePhaseStatus,
+  isExpanded,
 }: ActivityProgressCenterProps) {
   const posterPhaseActive = currentPhase === 'poster' || posterSelected;
   const accent = getPhaseAccent(currentPhase);
@@ -394,11 +557,21 @@ export function ActivityProgressCenter({
         <PromptPreview prompts={activePrompts} images={activeImages} phase={currentPhase} />
       )}
 
+      {/* Image gallery - saved images during generation */}
+      {currentPhase !== 'idle' && (
+        <ImageGallery images={activeImages} phase={currentPhase} />
+      )}
+
       {/* Overall progress bar + heartbeat */}
       {totalTarget > 0 && (
         <div className="mt-auto space-y-1.5">
           <div className="flex items-center justify-between">
-            <HeartbeatIndicator phase={currentPhase} />
+            <HeartbeatIndicator
+              phase={currentPhase}
+              currentImageInPhase={currentImageInPhase}
+              phaseTarget={phaseTarget}
+              singlePhaseStatus={singlePhaseStatus}
+            />
             <span className={`text-[11px] font-mono font-bold ${
               currentPhase === 'complete' ? 'text-green-400' :
               currentPhase === 'error' ? 'text-red-400' :

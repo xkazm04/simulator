@@ -1,5 +1,8 @@
 /**
- * CmdCore - Command mode core layout
+ * CmdCore - Command mode core layout (bridge component)
+ *
+ * Reads fine-grained context hooks and distributes handlers as props
+ * to leaf components (DimensionColumn, PromptSection).
  *
  * Main prompt generation workflow:
  * - Top/Bottom prompt sections
@@ -17,14 +20,15 @@ import {
 } from '../../types';
 import { useResponsivePanels } from '../../lib/useResponsivePanels';
 
-// Context-aware components from subfeatures
+// Props-only leaf components from subfeatures
 import { DimensionColumn } from '../../subfeature_dimensions/components/DimensionColumn';
 import { CentralBrain } from '../../subfeature_brain/components/CentralBrain';
 import { PromptSection } from '../../subfeature_prompts/components/PromptSection';
 
-// Contexts
-import { useDimensionsContext } from '../../subfeature_dimensions/DimensionsContext';
-import { usePromptsContext } from '../../subfeature_prompts/PromptsContext';
+// Fine-grained context hooks
+import { useDimensionsState, useDimensionsActions } from '../../subfeature_dimensions/DimensionsContext';
+import { usePromptsState, usePromptsActions } from '../../subfeature_prompts/PromptsContext';
+import { useSimulatorContext } from '../../SimulatorContext';
 
 export interface CmdCoreProps {
   // Image generation props
@@ -108,8 +112,12 @@ function CmdCoreComponent({
   autoplay,
   multiPhaseAutoplay,
 }: CmdCoreProps) {
-  const dimensions = useDimensionsContext();
-  const prompts = usePromptsContext();
+  // Fine-grained context hooks
+  const dimensionsState = useDimensionsState();
+  const dimensionsActions = useDimensionsActions();
+  const promptsState = usePromptsState();
+  const promptsActions = usePromptsActions();
+  const simulator = useSimulatorContext();
   const panels = useResponsivePanels();
 
   // Derive autoplay lock state from multi-phase autoplay
@@ -117,31 +125,40 @@ function CmdCoreComponent({
 
   // Memoize dimension splitting
   const { leftDimensions, rightDimensions } = useMemo(() => {
-    const midPoint = Math.ceil(dimensions.dimensions.length / 2);
+    const midPoint = Math.ceil(dimensionsState.dimensions.length / 2);
     return {
-      leftDimensions: dimensions.dimensions.slice(0, midPoint),
-      rightDimensions: dimensions.dimensions.slice(midPoint),
+      leftDimensions: dimensionsState.dimensions.slice(0, midPoint),
+      rightDimensions: dimensionsState.dimensions.slice(midPoint),
     };
-  }, [dimensions.dimensions]);
+  }, [dimensionsState.dimensions]);
 
   // Memoize reorder handlers
   const handleLeftReorder = useCallback((reorderedLeft: typeof leftDimensions) => {
-    const currentMidPoint = Math.ceil(dimensions.dimensions.length / 2);
-    const currentRight = dimensions.dimensions.slice(currentMidPoint);
-    dimensions.handleDimensionReorder([...reorderedLeft, ...currentRight]);
-  }, [dimensions.dimensions, dimensions.handleDimensionReorder]);
+    const currentMidPoint = Math.ceil(dimensionsState.dimensions.length / 2);
+    const currentRight = dimensionsState.dimensions.slice(currentMidPoint);
+    dimensionsActions.handleDimensionReorder([...reorderedLeft, ...currentRight]);
+  }, [dimensionsState.dimensions, dimensionsActions.handleDimensionReorder]);
 
   const handleRightReorder = useCallback((reorderedRight: typeof rightDimensions) => {
-    const currentMidPoint = Math.ceil(dimensions.dimensions.length / 2);
-    const currentLeft = dimensions.dimensions.slice(0, currentMidPoint);
-    dimensions.handleDimensionReorder([...currentLeft, ...reorderedRight]);
-  }, [dimensions.dimensions, dimensions.handleDimensionReorder]);
+    const currentMidPoint = Math.ceil(dimensionsState.dimensions.length / 2);
+    const currentLeft = dimensionsState.dimensions.slice(0, currentMidPoint);
+    dimensionsActions.handleDimensionReorder([...currentLeft, ...reorderedRight]);
+  }, [dimensionsState.dimensions, dimensionsActions.handleDimensionReorder]);
+
+  // Copy handler with clipboard - bridges prompts context to leaf components
+  const handleCopy = useCallback((id: string) => {
+    promptsActions.handleCopy(id);
+    const prompt = promptsState.generatedPrompts.find(p => p.id === id);
+    if (prompt) {
+      navigator.clipboard.writeText(prompt.prompt);
+    }
+  }, [promptsActions.handleCopy, promptsState.generatedPrompts]);
 
   // Memoize prompt splitting
   const { topPrompts, bottomPrompts } = useMemo(() => ({
-    topPrompts: prompts.generatedPrompts.slice(0, 2),
-    bottomPrompts: prompts.generatedPrompts.slice(2),
-  }), [prompts.generatedPrompts]);
+    topPrompts: promptsState.generatedPrompts.slice(0, 2),
+    bottomPrompts: promptsState.generatedPrompts.slice(2),
+  }), [promptsState.generatedPrompts]);
 
   // Compute if all panel slots are full
   const allSlotsFull = useMemo(() => {
@@ -165,6 +182,13 @@ function CmdCoreComponent({
         startSlotNumber={1}
         isExpanded={panels.topBarExpanded}
         onToggleExpand={panels.toggleTopBar}
+        onRate={promptsActions.handlePromptRate}
+        onLock={promptsActions.handlePromptLock}
+        onLockElement={promptsActions.handleElementLock}
+        onAcceptElement={simulator.onAcceptElement}
+        acceptingElementId={promptsState.acceptingElementId}
+        onCopy={handleCopy}
+        isGenerating={simulator.isGenerating}
       />
 
       {/* Middle Layer: Dimensions - Center Brain - Dimensions */}
@@ -176,6 +200,14 @@ function CmdCoreComponent({
           collapsedLabel="PARAMS A"
           dimensions={leftDimensions}
           onReorder={handleLeftReorder}
+          onChange={dimensionsActions.handleDimensionChange}
+          onWeightChange={dimensionsActions.handleDimensionWeightChange}
+          onFilterModeChange={dimensionsActions.handleDimensionFilterModeChange}
+          onTransformModeChange={dimensionsActions.handleDimensionTransformModeChange}
+          onReferenceImageChange={dimensionsActions.handleDimensionReferenceImageChange}
+          onRemove={dimensionsActions.handleDimensionRemove}
+          onAdd={dimensionsActions.handleDimensionAdd}
+          onDropElement={simulator.onDropElementOnDimension}
           isExpanded={panels.sidebarsExpanded}
           onToggleExpand={panels.toggleSidebars}
           disabled={isAutoplayLocked}
@@ -199,6 +231,14 @@ function CmdCoreComponent({
           collapsedLabel="PARAMS B"
           dimensions={rightDimensions}
           onReorder={handleRightReorder}
+          onChange={dimensionsActions.handleDimensionChange}
+          onWeightChange={dimensionsActions.handleDimensionWeightChange}
+          onFilterModeChange={dimensionsActions.handleDimensionFilterModeChange}
+          onTransformModeChange={dimensionsActions.handleDimensionTransformModeChange}
+          onReferenceImageChange={dimensionsActions.handleDimensionReferenceImageChange}
+          onRemove={dimensionsActions.handleDimensionRemove}
+          onAdd={dimensionsActions.handleDimensionAdd}
+          onDropElement={simulator.onDropElementOnDimension}
           isExpanded={panels.sidebarsExpanded}
           onToggleExpand={panels.toggleSidebars}
           disabled={isAutoplayLocked}
@@ -219,6 +259,13 @@ function CmdCoreComponent({
         startSlotNumber={3}
         isExpanded={panels.bottomBarExpanded}
         onToggleExpand={panels.toggleBottomBar}
+        onRate={promptsActions.handlePromptRate}
+        onLock={promptsActions.handlePromptLock}
+        onLockElement={promptsActions.handleElementLock}
+        onAcceptElement={simulator.onAcceptElement}
+        acceptingElementId={promptsState.acceptingElementId}
+        onCopy={handleCopy}
+        isGenerating={simulator.isGenerating}
       />
     </div>
   );

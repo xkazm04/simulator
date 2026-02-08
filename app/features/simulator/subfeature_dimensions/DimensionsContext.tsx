@@ -6,24 +6,32 @@
  * - Auto-persistence to localStorage (debounced 500ms)
  * - Per-project storage keys
  * - SSR-safe initialization
+ *
+ * Split into separate State and Actions contexts to prevent unnecessary re-renders.
  */
 
 'use client';
 
-import React, { createContext, useContext, ReactNode, useEffect, useRef, useCallback } from 'react';
+import React, { createContext, useContext, ReactNode, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useDimensions, DimensionsState, DimensionsActions } from './hooks/useDimensions';
 import { createPersistenceManager, loadPersistedDimensions, clearPersistedDimensions } from './lib/dimensionPersistence';
 
-type DimensionsContextValue = DimensionsState & DimensionsActions & {
+type DimensionsStateValue = DimensionsState & {
   /** Current project ID for persistence */
   currentProjectId: string | undefined;
+};
+
+type DimensionsActionsValue = DimensionsActions & {
   /** Set current project ID (triggers load from localStorage) */
   setCurrentProjectId: (projectId: string | undefined) => void;
   /** Clear persisted data for current project */
   clearPersistence: () => void;
 };
 
-const DimensionsContext = createContext<DimensionsContextValue | null>(null);
+type DimensionsContextValue = DimensionsStateValue & DimensionsActionsValue;
+
+const DimensionsStateContext = createContext<DimensionsStateValue | null>(null);
+const DimensionsActionsContext = createContext<DimensionsActionsValue | null>(null);
 
 export interface DimensionsProviderProps {
   children: ReactNode;
@@ -89,24 +97,89 @@ export function DimensionsProvider({ children, initialProjectId }: DimensionsPro
     clearPersistedDimensions(projectIdRef.current);
   }, []);
 
-  const contextValue: DimensionsContextValue = {
-    ...dimensions,
+  const stateValue = useMemo<DimensionsStateValue>(() => ({
+    dimensions: dimensions.dimensions,
+    pendingDimensionChange: dimensions.pendingDimensionChange,
+    canUndoDimension: dimensions.canUndoDimension,
+    undoStackSize: dimensions.undoStackSize,
     currentProjectId: projectIdRef.current,
+  }), [
+    dimensions.dimensions,
+    dimensions.pendingDimensionChange,
+    dimensions.canUndoDimension,
+    dimensions.undoStackSize,
+  ]);
+
+  const actionsValue = useMemo<DimensionsActionsValue>(() => ({
+    handleDimensionChange: dimensions.handleDimensionChange,
+    handleDimensionWeightChange: dimensions.handleDimensionWeightChange,
+    handleDimensionFilterModeChange: dimensions.handleDimensionFilterModeChange,
+    handleDimensionTransformModeChange: dimensions.handleDimensionTransformModeChange,
+    handleDimensionReferenceImageChange: dimensions.handleDimensionReferenceImageChange,
+    handleDimensionRemove: dimensions.handleDimensionRemove,
+    handleDimensionAdd: dimensions.handleDimensionAdd,
+    handleDimensionReorder: dimensions.handleDimensionReorder,
+    handleDropElementOnDimension: dimensions.handleDropElementOnDimension,
+    handleUndoDimensionChange: dimensions.handleUndoDimensionChange,
+    handleUndoDimensionChangeByTag: dimensions.handleUndoDimensionChangeByTag,
+    handleConvertElementsToDimensions: dimensions.handleConvertElementsToDimensions,
+    setDimensions: dimensions.setDimensions,
+    setDimensionsWithUndo: dimensions.setDimensionsWithUndo,
+    resetDimensions: dimensions.resetDimensions,
+    loadExampleDimensions: dimensions.loadExampleDimensions,
+    clearDimensionUndoStack: dimensions.clearDimensionUndoStack,
     setCurrentProjectId,
     clearPersistence,
-  };
+  }), [
+    dimensions.handleDimensionChange,
+    dimensions.handleDimensionWeightChange,
+    dimensions.handleDimensionFilterModeChange,
+    dimensions.handleDimensionTransformModeChange,
+    dimensions.handleDimensionReferenceImageChange,
+    dimensions.handleDimensionRemove,
+    dimensions.handleDimensionAdd,
+    dimensions.handleDimensionReorder,
+    dimensions.handleDropElementOnDimension,
+    dimensions.handleUndoDimensionChange,
+    dimensions.handleUndoDimensionChangeByTag,
+    dimensions.handleConvertElementsToDimensions,
+    dimensions.setDimensions,
+    dimensions.setDimensionsWithUndo,
+    dimensions.resetDimensions,
+    dimensions.loadExampleDimensions,
+    dimensions.clearDimensionUndoStack,
+    setCurrentProjectId,
+    clearPersistence,
+  ]);
 
   return (
-    <DimensionsContext.Provider value={contextValue}>
-      {children}
-    </DimensionsContext.Provider>
+    <DimensionsStateContext.Provider value={stateValue}>
+      <DimensionsActionsContext.Provider value={actionsValue}>
+        {children}
+      </DimensionsActionsContext.Provider>
+    </DimensionsStateContext.Provider>
   );
 }
 
-export function useDimensionsContext(): DimensionsContextValue {
-  const context = useContext(DimensionsContext);
+export function useDimensionsState(): DimensionsStateValue {
+  const context = useContext(DimensionsStateContext);
   if (!context) {
-    throw new Error('useDimensionsContext must be used within a DimensionsProvider');
+    throw new Error('useDimensionsState must be used within a DimensionsProvider');
   }
   return context;
+}
+
+export function useDimensionsActions(): DimensionsActionsValue {
+  const context = useContext(DimensionsActionsContext);
+  if (!context) {
+    throw new Error('useDimensionsActions must be used within a DimensionsProvider');
+  }
+  return context;
+}
+
+/** Backward-compatible hook returning both state and actions */
+export function useDimensionsContext(): DimensionsContextValue {
+  const state = useDimensionsState();
+  const actions = useDimensionsActions();
+  return { ...state, ...actions };
 }

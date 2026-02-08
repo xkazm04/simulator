@@ -20,7 +20,7 @@ import {
 } from '../../types';
 import { labelToDimension } from '../../subfeature_brain/lib/simulatorAI';
 import { buildMockPromptWithElements } from '../lib/promptBuilder';
-import { usePromptHistory, PromptHistoryState } from './usePromptHistory';
+import { usePromptHistory, PromptHistoryState, HistoryEntry } from './usePromptHistory';
 import {
   startGenerationSession,
   recordGenerationIteration,
@@ -55,7 +55,9 @@ export interface PromptsActions {
   clearPrompts: () => void;
   handlePromptUndo: () => void;
   handlePromptRedo: () => void;
-  pushToHistory: (prompts: GeneratedPrompt[]) => void;
+  pushToHistory: (entry: HistoryEntry) => void;
+  clearHistory: () => void;
+  setHistoryProjectId: (id: string | null) => void;
   generateFallbackPrompts: (
     baseImage: string,
     dimensions: Dimension[],
@@ -74,10 +76,14 @@ export interface UsePromptsOptions {
   onDeletePrompts?: () => Promise<void>;
   /** Initial prompts to restore (from project load) */
   initialPrompts?: GeneratedPrompt[];
+  /** Callback to restore dimensions when undoing/redoing */
+  onRestoreDimensions?: (dimensions: Dimension[]) => void;
+  /** Callback to restore baseImage when undoing/redoing */
+  onRestoreBaseImage?: (baseImage: string) => void;
 }
 
 export function usePrompts(options: UsePromptsOptions = {}): PromptsState & PromptsActions {
-  const { onSavePrompts, onUpdatePrompt, onDeletePrompts, initialPrompts } = options;
+  const { onSavePrompts, onUpdatePrompt, onDeletePrompts, initialPrompts, onRestoreDimensions, onRestoreBaseImage } = options;
 
   const [generatedPrompts, setGeneratedPromptsState] = useState<GeneratedPrompt[]>(
     initialPrompts || []
@@ -220,23 +226,35 @@ export function usePrompts(options: UsePromptsOptions = {}): PromptsState & Prom
     }
   }, [onDeletePrompts]);
 
-  // Prompt history handlers
+  // Prompt history handlers — restore full snapshot (prompts + dimensions + baseImage)
   const handlePromptUndo = useCallback(() => {
-    const previousPrompts = promptHistoryHook.undo();
-    if (previousPrompts) {
-      setGeneratedPromptsState(previousPrompts);
+    const entry = promptHistoryHook.undo();
+    if (entry) {
+      setGeneratedPromptsState(entry.prompts);
+      onRestoreDimensions?.(entry.dimensions);
+      onRestoreBaseImage?.(entry.baseImage);
     }
-  }, [promptHistoryHook]);
+  }, [promptHistoryHook, onRestoreDimensions, onRestoreBaseImage]);
 
   const handlePromptRedo = useCallback(() => {
-    const nextPrompts = promptHistoryHook.redo();
-    if (nextPrompts) {
-      setGeneratedPromptsState(nextPrompts);
+    const entry = promptHistoryHook.redo();
+    if (entry) {
+      setGeneratedPromptsState(entry.prompts);
+      onRestoreDimensions?.(entry.dimensions);
+      onRestoreBaseImage?.(entry.baseImage);
     }
+  }, [promptHistoryHook, onRestoreDimensions, onRestoreBaseImage]);
+
+  const pushToHistory = useCallback((entry: HistoryEntry) => {
+    promptHistoryHook.push(entry);
   }, [promptHistoryHook]);
 
-  const pushToHistory = useCallback((prompts: GeneratedPrompt[]) => {
-    promptHistoryHook.push(prompts);
+  const clearHistory = useCallback(() => {
+    promptHistoryHook.clear();
+  }, [promptHistoryHook]);
+
+  const setHistoryProjectId = useCallback((id: string | null) => {
+    promptHistoryHook.setProjectId(id);
   }, [promptHistoryHook]);
 
   // Generate fallback prompts (client-side) when API fails
@@ -312,6 +330,8 @@ export function usePrompts(options: UsePromptsOptions = {}): PromptsState & Prom
     handlePromptUndo,
     handlePromptRedo,
     pushToHistory,
+    clearHistory,
+    setHistoryProjectId,
     generateFallbackPrompts,
     restorePrompts,
   };

@@ -32,6 +32,8 @@ export async function GET() {
     return NextResponse.json({
       success: true,
       projects: projects as DbProject[],
+    }, {
+      headers: { 'Cache-Control': 'no-store' },
     });
   } catch (error) {
     console.error('List projects error:', error);
